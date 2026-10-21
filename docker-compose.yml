@@ -1,0 +1,27 @@
+# 本機開發用的 PostgreSQL（只給自己電腦用，不是正式環境）
+# 啟動：docker compose up -d
+# 關閉：docker compose down      （資料會保留）
+# 清空：docker compose down -v   （⚠️ 資料全部刪除）
+
+services:
+  db:
+    image: postgres:16
+    container_name: moneymate-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres # 本機開發用，不是秘密；正式環境的密碼只放在 .env
+      POSTGRES_DB: app_dev
+      TZ: UTC
+    ports:
+      - "127.0.0.1:5432:5432" # 只有自己電腦連得到
+    volumes:
+      - pgdata:/var/lib/postgresql/data # 資料存在 volume，容器刪掉也不會不見
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro # 第一次啟動時建立 app_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
