@@ -5,7 +5,6 @@ import {
   IsIn,
   IsInt,
   IsOptional,
-  Matches,
   Max,
   Min,
   Validate,
@@ -17,8 +16,6 @@ import {
 export const NODE_ENVS = ['development', 'test', 'production'] as const;
 export type NodeEnv = (typeof NODE_ENVS)[number];
 
-const ORIGIN_PATTERN = /^https?:\/\/[^\s/:?#]+(:\d{1,5})?$/;
-
 /**
  * 把 CORS_ORIGIN 正規化成 origin 清單：用逗號切開、去前後空白、去掉結尾的 `/`。
  * 驗證（validateEnv）與 CORS 設定（configureApp）共用，兩邊看到的清單一定相同。
@@ -27,17 +24,47 @@ export function parseCorsOrigins(raw: string): string[] {
   return raw.split(',').map((item) => item.trim().replace(/\/+$/, ''));
 }
 
+/**
+ * 每一項都要和瀏覽器送出的 Origin 完全一樣，cors 才比對得到：
+ * 只有 http(s)、小寫 host、不帶預設 port、不帶路徑或帳密。
+ * 用 URL 解析後要求 `origin === 原字串`，寫錯的設定在啟動時就失敗，而不是到部署後 CORS 默默失效。
+ */
+function isExactOrigin(item: string): boolean {
+  if (!URL.canParse(item)) return false;
+  const url = new URL(item);
+  return (
+    (url.protocol === 'http:' || url.protocol === 'https:') &&
+    url.origin === item
+  );
+}
+
+// 錯誤訊息不可用 $value：validationError.value = false 擋不住訊息內插
 @ValidatorConstraint({ name: 'corsOrigins' })
 class CorsOriginsConstraint implements ValidatorConstraintInterface {
   validate(value: unknown): boolean {
-    if (typeof value !== 'string') return false;
-    const origins = parseCorsOrigins(value);
-    return origins.every((origin) => ORIGIN_PATTERN.test(origin));
+    return (
+      typeof value === 'string' && parseCorsOrigins(value).every(isExactOrigin)
+    );
   }
 
-  // 錯誤訊息不可用 $value：validationError.value = false 擋不住訊息內插
   defaultMessage(): string {
-    return 'CORS_ORIGIN 必須是以逗號分隔的 http(s)://host[:port] 清單（不接受 *、空值或帶路徑的網址）';
+    return 'CORS_ORIGIN 必須是以逗號分隔的 http(s)://host[:port] 清單：host 小寫、不寫預設 port、不帶路徑（不接受 * 或空值）';
+  }
+}
+
+@ValidatorConstraint({ name: 'postgresUrl' })
+class PostgresUrlConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return (
+      typeof value === 'string' &&
+      /^postgres(ql)?:\/\//.test(value) &&
+      URL.canParse(value) &&
+      new URL(value).hostname !== ''
+    );
+  }
+
+  defaultMessage(): string {
+    return 'DATABASE_URL 必須是 postgresql:// 開頭、可解析的連線字串（密碼中的 #、@、/ 等特殊字元要先做 URL 編碼）';
   }
 }
 
@@ -55,9 +82,7 @@ export class EnvVars {
   @Max(65535)
   PORT: number = 3001;
 
-  @Matches(/^postgres(ql)?:\/\//, {
-    message: 'DATABASE_URL 必須是 postgresql:// 開頭的連線字串',
-  })
+  @Validate(PostgresUrlConstraint)
   DATABASE_URL!: string;
 
   @IsOptional()

@@ -40,10 +40,35 @@ describe('validateEnv', () => {
     'http://localhost:3000,',
     'https://a.vercel.app/path',
     'localhost:3000',
+    // 以下格式看似合法，但永遠比對不到瀏覽器送出的 Origin
+    'https://MoneyMate.vercel.app',
+    'https://a.vercel.app:443',
+    'http://localhost:99999',
+    'http://user@localhost:3000',
+    'ftp://localhost:3000',
   ])('CORS_ORIGIN=%j 驗證失敗', (origin) => {
     expect(() => validateEnv({ ...valid, CORS_ORIGIN: origin })).toThrow(
       /CORS_ORIGIN/,
     );
+  });
+
+  it.each([
+    'mysql://postgres:postgres@localhost:5432/app_dev',
+    'postgresql://postgres:pa#ss@localhost:5432/app_dev',
+    'postgresql://',
+  ])('DATABASE_URL=%j 驗證失敗', (url) => {
+    expect(() => validateEnv({ ...valid, DATABASE_URL: url })).toThrow(
+      /DATABASE_URL/,
+    );
+  });
+
+  it('密碼做過 URL 編碼的 DATABASE_URL 通過', () => {
+    expect(() =>
+      validateEnv({
+        ...valid,
+        DATABASE_URL: 'postgresql://postgres:pa%23ss@localhost:5432/app_dev',
+      }),
+    ).not.toThrow();
   });
 
   it('列出所有缺少的必要變數', () => {
