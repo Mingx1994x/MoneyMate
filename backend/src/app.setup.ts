@@ -1,0 +1,25 @@
+import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { parseCorsOrigins, type EnvVars } from './config/env.validation.js';
+
+/**
+ * 所有會影響請求行為的設定都只放在這裡（前綴、CORS、安全標頭、代理、pipe、filter、
+ * interceptor、useLogger、shutdown hooks），正式程式（main.ts）與 e2e（createTestApp）共用。
+ * 之後加入：ValidationPipe（INF-4）、全域 filter（INF-3）、日誌（INF-5）、
+ * helmet（INF-1b）、trust proxy（DEP-2）。
+ */
+export function configureApp(app: NestExpressApplication): void {
+  const config = app.get<ConfigService<EnvVars, true>>(ConfigService);
+
+  app.setGlobalPrefix('api/v1', { exclude: ['health'] });
+
+  app.enableCors({
+    // 完整字串比對，不用 regex（不允許 *.vercel.app 這類寫法）
+    origin: parseCorsOrigins(config.get('CORS_ORIGIN', { infer: true })),
+    credentials: false,
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Request-Id'],
+    exposedHeaders: ['X-Request-Id'],
+  });
+
+  app.enableShutdownHooks();
+}
