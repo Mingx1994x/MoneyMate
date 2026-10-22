@@ -11,7 +11,8 @@ describe('骨架（e2e）', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    // createTestApp 丟錯時 app 沒建立，不要再多報一個錯
+    await app?.close();
   });
 
   it('GET /health 回 200，且不加 /api/v1 前綴', async () => {

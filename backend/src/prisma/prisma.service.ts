@@ -20,8 +20,9 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
         max: config.get('DATABASE_POOL_MAX', { infer: true }),
         connectionTimeoutMillis: 5000,
       }),
-      // 不開 query：查詢參數會含 Email、密碼雜湊
-      log: ['warn', 'error'],
+      // 只留 warn：query 與 error 都會把查詢參數（Email、密碼雜湊）原文印到 stdout。
+      // 錯誤本來就會丟給呼叫端，記錄方式交給 INF-3 的 filter。
+      log: ['warn'],
       // 互動式交易預設只有 5 秒，帳單繳費一次要呼叫好幾個 service
       transactionOptions: { timeout: 10_000 },
     });
