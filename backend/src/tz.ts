@@ -3,6 +3,3 @@
 process.env.TZ = 'UTC';
 
 export {};
-
-// CI 驗證用，驗證完移除
-export const ciLintCheck: any = 1;
