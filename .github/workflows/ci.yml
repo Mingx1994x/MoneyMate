@@ -1,4 +1,4 @@
-# CI-1：前後端的 lint、型別檢查、建置（後端另跑單元測試）。
+# CI-1：前後端的 lint、型別檢查、建置（後端另跑單元測試）；DEP-1：後端映像檔能 build 並啟動。
 # 分支保護只設 ci-ok 一個必要檢查；e2e 與 migration 檢查在 CI-2。
 name: CI
 
@@ -77,6 +77,42 @@ jobs:
       - run: npm run build
       - run: npm test
 
+  # Render 在合併後才 build 映像檔；這裡先確認 Dockerfile 能 build、容器能啟動
+  docker:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: docker build -t moneymate-api:ci backend
+      - name: 映像檔內容
+        run: |
+          docker run --rm --entrypoint id moneymate-api:ci | grep -q 'uid=1000(node)'
+          docker run --rm --entrypoint sh moneymate-api:ci -c 'test ! -e node_modules/vitest && test ! -e src && test -z "$(find /app -writable)"'
+      # 只 build 抓不到「runtime 套件被放進 devDependencies」：要真的啟動才會 ERR_MODULE_NOT_FOUND。
+      # 資料庫是假的（連不到的主機）；app 不在啟動時連線，/health 仍回 200。
+      - name: 啟動容器並確認 /health
+        run: |
+          docker run -d --name api -p 3001:3001 \
+            -e DATABASE_URL=postgresql://ci:ci@db.invalid:5432/ci \
+            -e CORS_ORIGIN=http://localhost:3000 \
+            moneymate-api:ci
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/health || true)
+            # INF-7 之後資料庫連不到時回 503，也算啟動成功
+            if [ "$code" = 200 ] || [ "$code" = 503 ]; then
+              echo "/health=$code"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::容器沒有在 30 秒內回應 /health"
+          docker logs api
+          exit 1
+
   # script 名稱與 A 約定；A 的 Nuxt 骨架合併前一定會被跳過
   frontend:
     needs: changes
@@ -100,10 +136,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
 
-  # 分支保護唯一的必要檢查。changes 失敗時 backend／frontend 都是 skipped，
-  # 所以 changes 必須是 success，另外兩個只接受 success 或 skipped。
+  # 分支保護唯一的必要檢查。changes 失敗時其他 job 都是 skipped，
+  # 所以 changes 必須是 success，其他只接受 success 或 skipped。
   ci-ok:
-    needs: [changes, backend, frontend]
+    needs: [changes, backend, docker, frontend]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -112,14 +148,15 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           BACKEND: ${{ needs.backend.result }}
+          DOCKER: ${{ needs.docker.result }}
           FRONTEND: ${{ needs.frontend.result }}
         run: |
-          echo "changes=$CHANGES backend=$BACKEND frontend=$FRONTEND"
+          echo "changes=$CHANGES backend=$BACKEND docker=$DOCKER frontend=$FRONTEND"
           if [ "$CHANGES" != success ]; then
             echo "::error::changes job 不是 success（$CHANGES）"
             exit 1
           fi
-          for result in "$BACKEND" "$FRONTEND"; do
+          for result in "$BACKEND" "$DOCKER" "$FRONTEND"; do
             case "$result" in
               success | skipped) ;;
               *)
