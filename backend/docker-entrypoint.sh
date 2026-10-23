@@ -10,5 +10,4 @@ if [ "${RUN_MIGRATIONS:-}" = "true" ]; then
 else
   echo "[entrypoint] RUN_MIGRATIONS is not exactly true: skipping migrations"
 fi
-echo "CI 驗證用：故意讓容器啟動失敗"; exit 1
 exec node dist/main.js
