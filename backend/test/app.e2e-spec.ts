@@ -39,6 +39,21 @@ describe('骨架（e2e）', () => {
     expect(denied.headers['access-control-allow-origin']).toBeUndefined();
   });
 
+  it('一般回應帶安全標頭，沒有 X-Powered-By', async () => {
+    const res = await request(app.getHttpServer()).get('/health').expect(200);
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-powered-by']).toBeUndefined();
+  });
+
+  it('CORS 預檢也帶安全標頭（安全標頭要在 enableCors 之前掛上）', async () => {
+    const res = await request(app.getHttpServer())
+      .options('/health')
+      .set('Origin', 'http://localhost:3000')
+      .set('Access-Control-Request-Method', 'GET');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-powered-by']).toBeUndefined();
+  });
+
   it('測試程序的時區是 UTC', () => {
     expect(new Date().getTimezoneOffset()).toBe(0);
     expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('UTC');
