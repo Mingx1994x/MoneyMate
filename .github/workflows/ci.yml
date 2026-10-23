@@ -1,0 +1,128 @@
+# CI-1：前後端的 lint、型別檢查、建置（後端另跑單元測試）。
+# 分支保護只設 ci-ok 一個必要檢查；e2e 與 migration 檢查在 CI-2。
+name: CI
+
+on:
+  # 不限定目標分支：疊在其他功能分支上的 PR 也要跑。禁止改成 pull_request_target。
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read # dorny/paths-filter 要讀 PR 的檔案清單
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      backend: ${{ steps.result.outputs.backend }}
+      frontend: ${{ steps.result.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/**'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/**'
+      # 該側的 lockfile 不存在就不跑（前端骨架合併前 frontend/ 只有 .gitkeep）。
+      # hashFiles() 不能用在 job 層級的 if:，所以在這裡判斷。
+      - id: result
+        env:
+          BACKEND_CHANGED: ${{ steps.filter.outputs.backend }}
+          FRONTEND_CHANGED: ${{ steps.filter.outputs.frontend }}
+        run: |
+          backend=false
+          frontend=false
+          if [ "$BACKEND_CHANGED" = true ] && [ -f backend/package-lock.json ]; then backend=true; fi
+          if [ "$FRONTEND_CHANGED" = true ] && [ -f frontend/package-lock.json ]; then frontend=true; fi
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+          echo "backend=$backend frontend=$frontend"
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: backend/.nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: node --version
+      # postinstall 會跑 prisma generate，不需要資料庫
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+  # script 名稱與 A 約定；A 的 Nuxt 骨架合併前一定會被跳過
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  # 分支保護唯一的必要檢查。changes 失敗時 backend／frontend 都是 skipped，
+  # 所以 changes 必須是 success，另外兩個只接受 success 或 skipped。
+  ci-ok:
+    needs: [changes, backend, frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          BACKEND: ${{ needs.backend.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+        run: |
+          echo "changes=$CHANGES backend=$BACKEND frontend=$FRONTEND"
+          if [ "$CHANGES" != success ]; then
+            echo "::error::changes job 不是 success（$CHANGES）"
+            exit 1
+          fi
+          for result in "$BACKEND" "$FRONTEND"; do
+            case "$result" in
+              success | skipped) ;;
+              *)
+                echo "::error::有 job 沒有通過（$result）"
+                exit 1
+                ;;
+            esac
+          done
