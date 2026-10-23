@@ -2,6 +2,7 @@ import {
   addDays,
   fromDbDate,
   isDateOnly,
+  isMonthString,
   monthOf,
   monthStart,
   nextMonthStart,
@@ -74,6 +75,11 @@ describe('toDbDate／fromDbDate', () => {
     expect(() => fromDbDate(new Date('invalid'))).toThrow(Error);
   });
 
+  it('fromDbDate 對 1970 以前的日期也正確', () => {
+    expect(fromDbDate(new Date('1960-06-15T00:00:00Z'))).toBe('1960-06-15');
+    expect(() => fromDbDate(new Date('1960-06-15T12:00:00Z'))).toThrow(Error);
+  });
+
   it('程序時區是 Asia/Taipei 時結果也一樣', () => {
     try {
       process.env.TZ = 'Asia/Taipei';
@@ -109,6 +115,15 @@ describe('addDays', () => {
     expect(() => addDays('2026-01-01', 1.5)).toThrow(Error);
     expect(() => addDays('2026-02-30', 1)).toThrow(Error);
   });
+
+  it.each([
+    ['2999-12-31', 1],
+    ['1900-01-01', -1],
+    ['2026-01-01', 3e6],
+    ['2026-01-01', 1e9],
+  ])('結果超出 1900–2999 時丟錯（%s %+d 天）', (d, n) => {
+    expect(() => addDays(d, n)).toThrow(/超出/);
+  });
 });
 
 describe('monthOf／monthStart／nextMonthStart', () => {
@@ -127,11 +142,20 @@ describe('monthOf／monthStart／nextMonthStart', () => {
     expect(nextMonthStart(m)).toBe(next);
   });
 
-  it.each(['2026-13', '2026-00', '2026-1', '2026-10-01', '1899-12'])(
-    '不合法的月份（%j）丟錯',
+  it.each(['2026-13', '2026-00', '2026-1', '2026-10-01', '1899-12', '2999-12'])(
+    '不合法的月份（%j）丟錯，isMonthString 回 false',
     (m) => {
+      expect(isMonthString(m)).toBe(false);
       expect(() => monthStart(m)).toThrow(Error);
       expect(() => nextMonthStart(m)).toThrow(Error);
     },
   );
+
+  it('isMonthString：合法月份通過、非字串不通過', () => {
+    expect(isMonthString('1900-01')).toBe(true);
+    expect(isMonthString('2999-11')).toBe(true);
+    expect(nextMonthStart('2999-11')).toBe('2999-12-01');
+    expect(isMonthString(202610)).toBe(false);
+    expect(isMonthString(null)).toBe(false);
+  });
 });

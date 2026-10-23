@@ -43,14 +43,22 @@ export function fromDbDate(d: Date): DateOnly {
   return d.toISOString().slice(0, 10);
 }
 
-/** 加減天數（n 可為負），以 UTC 計算。 */
+/** 加減天數（n 為整數，可為負），以 UTC 計算；結果超出 1900–2999 就丟錯。 */
 export function addDays(d: DateOnly, n: number): DateOnly {
   if (!Number.isInteger(n)) {
     throw new Error('addDays: 天數必須是整數');
   }
-  return fromDbDate(new Date(toDbDate(d).getTime() + n * DAY_MS));
+  const result = new Date(toDbDate(d).getTime() + n * DAY_MS);
+  const s = Number.isNaN(result.getTime())
+    ? ''
+    : result.toISOString().slice(0, 10);
+  if (!isDateOnly(s)) {
+    throw new Error('addDays: 結果超出 1900–2999');
+  }
+  return s;
 }
 
+/** 日期不合法時丟錯。 */
 export function monthOf(d: DateOnly): MonthString {
   if (!isDateOnly(d)) {
     throw new Error('monthOf: 日期格式不正確');
@@ -58,16 +66,28 @@ export function monthOf(d: DateOnly): MonthString {
   return d.slice(0, 7);
 }
 
-/** 該月 1 日。查某月的資料用半開區間：gte monthStart(m)、lt nextMonthStart(m)。 */
-export function monthStart(m: MonthString): DateOnly {
-  const first = `${m}-01`;
-  if (!MONTH_PATTERN.test(m) || !isDateOnly(first)) {
-    throw new Error('monthStart: 月份格式不正確');
-  }
-  return first;
+/**
+ * `YYYY-MM`、月份 01–12、年份 1900–2999（2999-12 的下個月超出範圍，不接受）。
+ * 任何輸入都只回 true／false，不丟錯。
+ */
+export function isMonthString(v: unknown): v is MonthString {
+  return (
+    typeof v === 'string' &&
+    MONTH_PATTERN.test(v) &&
+    isDateOnly(`${v}-01`) &&
+    v !== `${MAX_YEAR}-12`
+  );
 }
 
-/** 下個月 1 日（12 月接到隔年 1 月）。 */
+/** 該月 1 日。查某月的資料用半開區間：gte monthStart(m)、lt nextMonthStart(m)。月份不合法時丟錯。 */
+export function monthStart(m: MonthString): DateOnly {
+  if (!isMonthString(m)) {
+    throw new Error('monthStart: 月份格式不正確');
+  }
+  return `${m}-01`;
+}
+
+/** 下個月 1 日（12 月接到隔年 1 月）。月份不合法時丟錯。 */
 export function nextMonthStart(m: MonthString): DateOnly {
   const first = monthStart(m);
   const year = Number(first.slice(0, 4));

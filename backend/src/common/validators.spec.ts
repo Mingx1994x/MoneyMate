@@ -2,8 +2,10 @@ import { validate } from 'class-validator';
 import {
   IS_DATE_ONLY,
   IS_MONEY,
+  IS_MONTH,
   IsDateOnly,
   IsMoney,
+  IsMonth,
   MONEY_NON_NEGATIVE,
   MONEY_POSITIVE,
 } from './validators.js';
@@ -20,6 +22,15 @@ class Dto {
 
   @IsDateOnly()
   date: unknown = '2026-10-23';
+
+  @IsMonth()
+  month: unknown = '2026-10';
+
+  @IsMoney({ sign: 'positive' }, { each: true })
+  amounts: unknown = ['1'];
+
+  @IsMoney({ sign: 'positive' }, { message: '自訂訊息' })
+  withMessage: unknown = '1';
 }
 
 /** 回傳指定欄位的 constraint 名稱；沒有錯誤時回空陣列。 */
@@ -65,6 +76,28 @@ describe('@IsMoney', () => {
     expect(await constraintsOf(field, value)).toEqual([IS_MONEY]);
   });
 
+  it('each: true 時逐一檢查陣列元素（正負檢查也要拿到 validationOptions）', async () => {
+    expect(await constraintsOf('amounts', ['1', '2.5'])).toEqual([]);
+    expect(await constraintsOf('amounts', ['1', '-1'])).toEqual([
+      MONEY_POSITIVE,
+    ]);
+    expect(await constraintsOf('amounts', ['1', '1.234'])).toEqual([IS_MONEY]);
+  });
+
+  it('自訂 message 套用到格式與正負兩個 constraint', async () => {
+    const dto = new Dto();
+    dto.withMessage = '0';
+    const errors = await validate(dto);
+    expect(
+      errors.find((e) => e.property === 'withMessage')?.constraints,
+    ).toEqual({ [MONEY_POSITIVE]: '自訂訊息' });
+    dto.withMessage = 'x';
+    const errors2 = await validate(dto);
+    expect(
+      errors2.find((e) => e.property === 'withMessage')?.constraints,
+    ).toEqual({ [IS_MONEY]: '自訂訊息' });
+  });
+
   it('錯誤訊息不含輸入值', async () => {
     const dto = new Dto();
     dto.amount = 'secret';
@@ -73,6 +106,19 @@ describe('@IsMoney', () => {
       'secret',
     );
   });
+});
+
+describe('@IsMonth', () => {
+  it('有效月份通過', async () => {
+    expect(await constraintsOf('month', '2026-12')).toEqual([]);
+  });
+
+  it.each(['2026-13', '2026-00', '2026-1', '2026-10-01', 202610, null])(
+    '%j 不通過',
+    async (value) => {
+      expect(await constraintsOf('month', value)).toEqual([IS_MONTH]);
+    },
+  );
 });
 
 describe('@IsDateOnly', () => {

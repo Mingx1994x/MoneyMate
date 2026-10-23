@@ -66,12 +66,13 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
 - **日期**（`src/common/date-only.ts`）：
   - service 內部一律用字串 `DateOnly`（`YYYY-MM-DD`），可以直接用 `<`、`===` 比較。
   - 只在讀寫 Prisma 時用 `toDbDate`／`fromDbDate` 轉換；`fromDbDate` 只接受 `@db.Date` 欄位的值，傳時間戳會丟錯。
-  - 日期運算用 `addDays`、`monthOf`、`monthStart`、`nextMonthStart`，不要自己 `setUTCDate`，也不要用 `new Date(y, m, d)`、`getDate()`。
+  - 日期運算用 `addDays`、`monthOf`、`monthStart`、`nextMonthStart`，不要自己 `setUTCDate`，也不要用 `new Date(y, m, d)`、`getDate()`。日期範圍是 1900–2999，超出就丟錯。
   - 查某月的資料用半開區間：`{ gte: toDbDate(monthStart(m)), lt: toDbDate(nextMonthStart(m)) }`。
 - **DTO 驗證**（`src/common/validators.ts`）：
   - 金額欄位用 `@IsMoney({ sign })`，`sign` 必填：`'positive'`（> 0）、`'nonNegative'`（≥ 0）、`'any'`（可為負，正負在 service 檢查）。
-  - 日期欄位用 `@IsDateOnly()`（`@Matches` 擋不住 2/30）。
+  - 日期欄位用 `@IsDateOnly()`（`@Matches` 擋不住 2/30）；月份參數（例如 `?month=2026-10`）用 `@IsMonth()`。
   - `PATCH` 裡不可為空的欄位用 `@ValidateIf((_, v) => v !== undefined)`；`@IsOptional()` 會放過 `null`，只用在可為空的欄位。
+  - 用 `PartialType` 產生 UpdateDto 時一律寫 `PartialType(CreateDto, { skipNullProperties: false })`：預設會對每個欄位套 `@IsOptional()`，`{ amount: null }` 會通過驗證、到 service 才變成 500。可為 null 的欄位在子類別另外加 `@IsOptional()`。
   - 全域 ValidationPipe 在 INF-4（W2）才加入，在那之前 DTO 先用單元測試的 `validate()` 驗證；service 的業務驗證錯誤先丟 `new BadRequestException({ code, message })`。
 - **e2e**：一律用 `test/utils/create-test-app.ts` 的 `createTestApp()` 建 app，它和正式環境走同一個 `configureApp`。
 - **新增必填環境變數**：同一個 PR 要一起更新 `src/config/env.validation.ts`、`.env.example`、`.env.test.example` 與 CI 的 env。
