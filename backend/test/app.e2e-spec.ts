@@ -50,6 +50,11 @@ describe('骨架（e2e）', () => {
       .options('/health')
       .set('Origin', 'http://localhost:3000')
       .set('Access-Control-Request-Method', 'GET');
+    // 確認是 cors 結束的預檢回應（走到 Nest 的 404 本來就帶安全標頭，會因為錯的理由通過）
+    expect(res.status).toBe(204);
+    expect(res.headers['access-control-allow-origin']).toBe(
+      'http://localhost:3000',
+    );
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['x-powered-by']).toBeUndefined();
   });

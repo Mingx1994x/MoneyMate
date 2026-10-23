@@ -1,5 +1,5 @@
 import { ValidateBy, type ValidationOptions } from 'class-validator';
-import { isDateOnly } from './date-only.js';
+import { isDateOnly, isMonthString } from './date-only.js';
 import { isMoneyString, toMoney } from './money.js';
 
 /**
@@ -10,6 +10,7 @@ export const IS_MONEY = 'isMoney';
 export const MONEY_POSITIVE = 'moneyPositive';
 export const MONEY_NON_NEGATIVE = 'moneyNonNegative';
 export const IS_DATE_ONLY = 'isDateOnly';
+export const IS_MONTH = 'isMonth';
 
 /**
  * - `positive`：> 0（一般金額）
@@ -71,6 +72,22 @@ export function IsMoney(
   return (target, propertyKey) => {
     for (const decorator of decorators) decorator(target, propertyKey);
   };
+}
+
+/** 月份參數（例如 `?month=2026-10`）：`YYYY-MM`、月份 01–12（@Matches 擋不住 2026-13）。 */
+export function IsMonth(
+  validationOptions?: ValidationOptions,
+): PropertyDecorator {
+  return ValidateBy(
+    {
+      name: IS_MONTH,
+      validator: {
+        validate: (v) => isMonthString(v),
+        defaultMessage: () => '月份必須是有效的 YYYY-MM',
+      },
+    },
+    validationOptions,
+  );
 }
 
 /** 日期欄位：`YYYY-MM-DD`、真的存在的日期、年份 1900–2999（@Matches 擋不住 2/30）。 */
