@@ -32,7 +32,8 @@
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:deploy": "prisma migrate deploy",
-    "db:test:prepare": "dotenv run -q -f .env.test -- node scripts/assert-test-db.mjs && dotenv run -q -f .env.test -- prisma migrate deploy"
+    "db:test:prepare": "dotenv run -q -f .env.test -- node scripts/assert-test-db.mjs && dotenv run -q -f .env.test -- prisma migrate deploy",
+    "openapi:export": "npm run build && node dist/openapi/export.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
