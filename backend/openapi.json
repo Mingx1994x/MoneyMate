@@ -15,9 +15,19 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "資料庫連不到或逾時",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseDto"
+                }
+              }
+            }
           }
         },
-        "summary": "確認服務正常",
+        "summary": "確認服務與資料庫正常",
         "tags": [
           "health"
         ]
@@ -466,13 +476,23 @@
           "status": {
             "type": "string",
             "enum": [
-              "ok"
+              "ok",
+              "error"
+            ],
+            "example": "ok"
+          },
+          "db": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "down"
             ],
             "example": "ok"
           }
         },
         "required": [
-          "status"
+          "status",
+          "db"
         ]
       },
       "ErrorCode": {

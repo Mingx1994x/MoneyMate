@@ -19,7 +19,7 @@ npm ci
 # 3. 建立本機環境變數
 cp .env.example .env
 
-# 4. 啟動，打開 http://localhost:3001/health 應回 {"status":"ok"}
+# 4. 啟動，打開 http://localhost:3001/health 應回 {"status":"ok","db":"ok"}（資料庫連不到時回 503）
 npm run start:dev
 ```
 
