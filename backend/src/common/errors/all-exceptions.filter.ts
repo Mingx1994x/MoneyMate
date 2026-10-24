@@ -153,9 +153,17 @@ function errorName(exception: unknown): string {
   return typeof name === 'string' ? name : typeof exception;
 }
 
+/** Prisma 或 driver adapter 丟出的錯誤：describeError 只記結構化欄位，不記 message 與 stack */
+export function isDatabaseError(exception: unknown): boolean {
+  const name = errorName(exception);
+  return name.startsWith('PrismaClient') || name === 'DriverAdapterError';
+}
+
 /**
  * 500 的日誌內容。Prisma 的錯誤不記 message、stack、整包 meta：stack 第一行就是 message，
  * 可能含查詢參數；CHECK 違反的 cause.detail 含整列資料。只記名稱、代碼與約束名稱。
+ * causeCode 是 PostgreSQL 的 SQLSTATE（例如 XX000）；連線失敗時 code 一律是 P2010，
+ * 要靠 kind 與 causeCode 才分得出原因。
  */
 export function describeError(exception: unknown): string {
   const name = errorName(exception);
@@ -168,6 +176,7 @@ export function describeError(exception: unknown): string {
       code: prop(exception, 'code'),
       modelName: prop(meta, 'modelName'),
       kind: prop(cause, 'kind'),
+      causeCode: prop(cause, 'code'),
       constraint: constraintName(cause),
     });
   }
@@ -178,6 +187,7 @@ export function describeError(exception: unknown): string {
     return JSON.stringify({
       name,
       kind: prop(cause, 'kind'),
+      causeCode: prop(cause, 'code'),
       constraint: constraintName(cause),
     });
   }
