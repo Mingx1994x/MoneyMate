@@ -22,6 +22,425 @@
           "health"
         ]
       }
+    },
+    "/api/v1/loans/payment-preview": {
+      "get": {
+        "description": "本息平均攤還（PRD 15.8）：每期月付四捨五入到元，最後一期吸收尾差。只計算，不讀寫資料庫。\n\n期數從台北本月算到結清日所在月份（含頭尾），至少 1，所以同一組參數的結果會隨月份改變。\n\n前端呼叫條件：餘額 > 0、利率有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。建議 debounce 300ms，並取消前一次請求。",
+        "operationId": "Loans_paymentPreview",
+        "parameters": [
+          {
+            "name": "outstandingBalance",
+            "required": true,
+            "in": "query",
+            "description": "未償餘額，金額字串，> 0",
+            "schema": {
+              "example": "1000000.00",
+              "type": "string"
+            }
+          },
+          {
+            "name": "interestRate",
+            "required": true,
+            "in": "query",
+            "description": "年利率 %，最多 3 位小數；空字串回 400，不會被當成 0%",
+            "schema": {
+              "minimum": 0,
+              "maximum": 100,
+              "example": 3,
+              "type": "number"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "description": "結清日。早於本月時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED",
+            "schema": {
+              "format": "date",
+              "example": "2031-09-30",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanPaymentPreviewResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`AMOUNT_NOT_POSITIVE`：金額必須大於 0",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】試算建議每月還款與預估總利息",
+        "tags": [
+          "loans"
+        ]
+      }
+    },
+    "/api/v1/loans": {
+      "get": {
+        "description": "包含已結清的貸款，不分頁。排序：active 在前，同一組內依 createdAt 由新到舊，相同時再依 id。",
+        "operationId": "Loans_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanListResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】列出貸款",
+        "tags": [
+          "loans"
+        ]
+      },
+      "post": {
+        "description": "沒帶 monthlyPayment 時，後端依年利率自動計算。以下情況回 LOAN_MONTHLY_PAYMENT_REQUIRED：沒帶 monthlyPayment，而且 interestRate 沒帶或為 null；或 outstandingBalance 是 0（算不出大於 0 的月付）。前端表單一律帶 monthlyPayment（用試算結果預填）。\n\n結清日早於台北今天時 status 必須是 closed，否則回 LOAN_END_DATE_IN_PAST；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。",
+        "operationId": "Loans_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLoanDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`AMOUNT_NOT_POSITIVE`：金額必須大於 0\n\n`AMOUNT_NEGATIVE`：金額不可為負數\n\n`NAME_INVALID`：名稱需為 1 到 30 個字\n\n`LOAN_END_DATE_IN_PAST`：結清日已經過了，請修改結清日，或把狀態設為已結清\n\n`LOAN_MONTHLY_PAYMENT_REQUIRED`：沒有填年利率時，請自己填每月還款",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】新增貸款",
+        "tags": [
+          "loans"
+        ]
+      }
+    },
+    "/api/v1/loans/{id}": {
+      "get": {
+        "description": "不存在、屬於他人或 id 不是 UUID，一律回 404。",
+        "operationId": "Loans_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`LOAN_NOT_FOUND`：找不到這筆貸款",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】取得單筆貸款",
+        "tags": [
+          "loans"
+        ]
+      },
+      "patch": {
+        "description": "沒傳的欄位保持原值；interestRate、note 傳 null 代表清空，其他欄位傳 null 回 400。\n\n不自動重算 monthlyPayment：前端改了餘額、利率或結清日時，自己重新試算並帶上新的月付。\n\n用「原值合併請求」後的結果檢查：status 不是 closed 而且結清日早於台北今天，回 LOAN_END_DATE_IN_PAST（包含把 closed 改回 active 但結清日沒改）；結清日晚於台北今天加 50 年回 VALIDATION_FAILED。\n\n請求有帶 outstandingBalance 就更新 balanceUpdatedAt，即使數字相同。",
+        "operationId": "Loans_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLoanDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`AMOUNT_NOT_POSITIVE`：金額必須大於 0\n\n`AMOUNT_NEGATIVE`：金額不可為負數\n\n`NAME_INVALID`：名稱需為 1 到 30 個字\n\n`LOAN_END_DATE_IN_PAST`：結清日已經過了，請修改結清日，或把狀態設為已結清",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`LOAN_NOT_FOUND`：找不到這筆貸款",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】修改貸款",
+        "tags": [
+          "loans"
+        ]
+      },
+      "delete": {
+        "description": "active 的貸款也可以刪。貸款和帳單、交易沒有關聯，刪除不影響它們。",
+        "operationId": "Loans_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`LOAN_NOT_FOUND`：找不到這筆貸款",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】刪除貸款（不會刪除帳單）",
+        "tags": [
+          "loans"
+        ]
+      }
     }
   },
   "info": {
@@ -174,6 +593,299 @@
           "details",
           "requestId"
         ]
+      },
+      "LoanPaymentPreviewResponseDto": {
+        "type": "object",
+        "properties": {
+          "monthlyPayment": {
+            "type": "string",
+            "description": "建議每月還款，到元",
+            "example": "17969.00"
+          },
+          "totalInterest": {
+            "type": "string",
+            "description": "預估總利息",
+            "example": "78120.00"
+          },
+          "installments": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "剩餘期數：台北本月到結清日所在月份（含頭尾），至少 1",
+            "example": 60
+          }
+        },
+        "required": [
+          "monthlyPayment",
+          "totalInterest",
+          "installments"
+        ]
+      },
+      "LoanType": {
+        "type": "string",
+        "enum": [
+          "mortgage",
+          "car",
+          "personal",
+          "student",
+          "other"
+        ]
+      },
+      "LoanStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "closed"
+        ]
+      },
+      "LoanResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "3f0c9a52-6f1e-4d0a-9a51-2a4c1b7e8d10"
+          },
+          "name": {
+            "type": "string",
+            "example": "房貸"
+          },
+          "loanType": {
+            "example": "mortgage",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoanType"
+              }
+            ]
+          },
+          "outstandingBalance": {
+            "type": "string",
+            "description": "未償餘額，金額字串",
+            "example": "1000000.00"
+          },
+          "monthlyPayment": {
+            "type": "string",
+            "description": "每月還款，金額字串",
+            "example": "17969.00"
+          },
+          "paymentDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "example": 5
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "example": "2031-09-30"
+          },
+          "interestRate": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "年利率 %，沒填時是 null",
+            "example": 3
+          },
+          "status": {
+            "example": "active",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoanStatus"
+              }
+            ]
+          },
+          "balanceUpdatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "最後一次更新未償餘額的時間（請求有帶 outstandingBalance 就更新，即使數字相同）",
+            "example": "2026-10-24T02:30:00.000Z"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "example": "每月 5 日自動扣款"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-24T02:30:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-24T02:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "loanType",
+          "outstandingBalance",
+          "monthlyPayment",
+          "paymentDay",
+          "endDate",
+          "interestRate",
+          "status",
+          "balanceUpdatedAt",
+          "note",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "LoanListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LoanResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CreateLoanDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "貸款名稱，去除前後空白後 1–30 字",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "房貸"
+          },
+          "loanType": {
+            "example": "mortgage",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoanType"
+              }
+            ]
+          },
+          "outstandingBalance": {
+            "type": "string",
+            "description": "未償餘額，金額字串，≥ 0（0 代表已還完）",
+            "example": "1000000.00"
+          },
+          "monthlyPayment": {
+            "type": "string",
+            "description": "每月還款，金額字串，> 0。沒帶時後端依年利率自動計算；前端表單一律帶（用試算結果預填）",
+            "example": "17969.00"
+          },
+          "paymentDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "description": "每月繳款日；29–31 遇短月用當月最後一天",
+            "example": 5
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "description": "結清日。早於台北今天時 status 必須是 closed；不可晚於台北今天加 50 年",
+            "example": "2031-09-30"
+          },
+          "interestRate": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "年利率 %，例如 3 代表 3%；最多 3 位小數。不知道可以不填",
+            "example": 3
+          },
+          "status": {
+            "default": "active",
+            "example": "active",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoanStatus"
+              }
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "每月 5 日自動扣款"
+          }
+        },
+        "required": [
+          "name",
+          "loanType",
+          "outstandingBalance",
+          "paymentDay",
+          "endDate"
+        ]
+      },
+      "UpdateLoanDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "貸款名稱，去除前後空白後 1–30 字",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "房貸"
+          },
+          "loanType": {
+            "example": "mortgage",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoanType"
+              }
+            ]
+          },
+          "outstandingBalance": {
+            "type": "string",
+            "description": "未償餘額，金額字串，≥ 0（0 代表已還完）",
+            "example": "1000000.00"
+          },
+          "monthlyPayment": {
+            "type": "string",
+            "description": "每月還款，金額字串，> 0。沒帶時後端依年利率自動計算；前端表單一律帶（用試算結果預填）",
+            "example": "17969.00"
+          },
+          "paymentDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "description": "每月繳款日；29–31 遇短月用當月最後一天",
+            "example": 5
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "description": "結清日。早於台北今天時 status 必須是 closed；不可晚於台北今天加 50 年",
+            "example": "2031-09-30"
+          },
+          "interestRate": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "年利率 %，例如 3 代表 3%；最多 3 位小數。不知道可以不填",
+            "example": 3
+          },
+          "status": {
+            "default": "active",
+            "example": "active",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoanStatus"
+              }
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "每月 5 日自動扣款"
+          }
+        }
       }
     }
   }
