@@ -113,6 +113,51 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
 
 轉換類（`@Trim`、`@EmptyToNull`、`@ToNumber`、`@IsBooleanQuery`）要等 INF-4 的全域 ValidationPipe（`transform: true`）才會在請求中生效；DTO 現在就掛上，service 不另外處理。
 
+## 空殼慣例
+
+**完整範例是 `src/modules/loans/`**（6 個端點、建立／修改／回應／列表／query 的 DTO），照著寫就好，這裡只列重點。
+
+**檔案與命名**
+
+- `src/modules/<name>/`：`<name>.module.ts`、`<name>.controller.ts`、`dto/<動作>-<name>.dto.ts`；非 Prisma 的 enum 放 `dto/<name>.enum.ts`（寫成 `as const` 物件，例如 `loan-type.enum.ts`）。模組用 `nest g module modules/<name>` 產生，會自動註冊到 `AppModule`。
+- 方法名稱用 `findAll`、`findOne`、`create`、`update`、`remove`，動作型端點用 camelCase（`pay`、`stopRecurrence`）。Swagger 的 operationId 會是 `Loans_findAll` 這種形式，同一個 controller 裡方法名稱不可重複。
+- 單數資源（`/goal`）沒有 `:id`、不用 `ParseIdPipe`，方法用 `findOne`、`update`；`/auth/me` 的方法叫 `me`。
+
+**controller**
+
+- 整個 controller 都要登入就在類別上加 `@ApiAuth()`；每個端點都要有 `@ApiOperation({ summary })`（一句繁中）、成功回應（`@ApiOkResponse`／`@ApiCreatedResponse`／`@ApiNoContentResponse`，帶 `type`）、`@ApiNotImplemented()`；有可能的錯誤代碼時加一個 `@ApiErrors(...)`。
+- 實作時要遵守的行為（排序、何時回哪個錯誤…）寫在 `@ApiOperation` 的 `description`，前端在 Swagger UI 看得到。
+- handler 只寫 `throw new NotImplementedException();`，**不寫 `async`**（沒有 `await` 時 lint 會擋）。回傳型別照實際要回的 DTO 宣告。
+- **沒用到的參數加 `_` 前綴**（`_id`、`_dto`），否則 lint 會擋；實作時拿掉。
+- **固定路徑要宣告在 `:id` 之前**（例如 `payment-preview`），否則會被 `:id` 接走。
+- `:id` 用 `@Param('id', new ParseIdPipe('<資源>_NOT_FOUND'))`，加 `@ApiParam({ name: 'id', format: 'uuid' })`。
+- `DELETE` 加 `@HttpCode(204)`；動作型 `POST`（`pay`、`login`…）加 `@HttpCode(200)`。
+
+**DTO**
+
+- 每個欄位都手寫 `@ApiProperty`／`@ApiPropertyOptional`，至少有 `description` 或 `example`；**回應 DTO 每個欄位都要有 `example`**（前端在空殼階段拿來當 mock）。驗證規則和 Swagger 標註放在同一個欄位上，兩者要一致。
+- `number | null`、`string | null` 這類欄位要明確寫 `type: Number`／`type: String` 和 `nullable: true`。回應中一定會出現的欄位即使可能是 null，也用 `@ApiProperty`（required）。
+- enum 一律加 `enumName`；陣列寫 `type: [XxxDto]`。
+- 選填但不可為 null 的欄位用 `@ValidateIf((_, v) => v !== undefined)`；可為 null 的欄位才用 `@IsOptional()`。
+- `PATCH` 的 DTO：`PartialType(CreateDto, { skipNullProperties: false })`（從 `@nestjs/swagger` 匯入），可為 null 的欄位在子類別另外加 `@IsOptional()`（見 `update-loan.dto.ts`）。
+- 不分頁的列表也包一層 `{ items: [...] }`（`XxxListResponseDto`）；分頁列表用 `PageMetaDto` 加 `items`。
+- 時間戳的型別是 `string`、`format: 'date-time'`；日期 `format: 'date'`；金額是字串。回應不放 `userId`。
+- DTO 的單元測試用 `plainToInstance` 加 `validate()`（見 `loan-dtos.spec.ts`）。
+
+**開空殼 PR 前自己檢查**
+
+- [ ] `npm run start:dev` 後打開 `/api/docs`，看得到自己全部的端點，而且都標【未實作】。
+- [ ] 每個端點都有 `summary`、成功回應、`@ApiNotImplemented()`；有錯誤代碼的端點都有 `@ApiErrors`。
+- [ ] 新的錯誤代碼已加進 `error-codes.ts` 與 `docs/error-codes.md` 自己模組的段落（含 `details.field`）。
+- [ ] 重新執行 `npm run openapi:export`，`openapi.json` 一起提交。
+- [ ] `npm run lint`、`npm run typecheck`、`npm test` 通過；e2e 至少確認每個端點回 501。
+
+**之後的實作 PR**
+
+- [ ] 拿掉 `@ApiNotImplemented()`，e2e 不再出現 501。
+- [ ] 拿掉參數的 `_` 前綴，加上 `@CurrentUser()`（AUTH-1 提供）。
+- [ ] 每個錯誤代碼都有測試，並在 `docs/error-codes.md` 填上測試位置。
+
 ## 開發慣例（摘要）
 
 - **ESM**：相對 import 要寫 `.js` 副檔名，例如 `import { AppModule } from './app.module.js'`。
