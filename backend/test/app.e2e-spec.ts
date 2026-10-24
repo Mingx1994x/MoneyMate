@@ -3,12 +3,13 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/index.js';
 import { createTestApp } from './utils/create-test-app.js';
+import { IpTestController } from './utils/ip-test.controller.js';
 
 describe('骨架（e2e）', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
-    app = await createTestApp();
+    app = await createTestApp({ controllers: [IpTestController] });
   });
 
   afterAll(async () => {
@@ -58,6 +59,17 @@ describe('骨架（e2e）', () => {
     );
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['x-powered-by']).toBeUndefined();
+  });
+
+  // TRUST_PROXY_HOPS=1 的案例在 trust-proxy.e2e-spec.ts
+  it('TRUST_PROXY_HOPS=0（預設）：不採用 X-Forwarded-For', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/__ip-test')
+      .set('X-Forwarded-For', '1.2.3.4')
+      .expect(200);
+    const { ip } = res.body as { ip: string };
+    expect(ip).toBeDefined();
+    expect(ip).not.toBe('1.2.3.4');
   });
 
   it('測試程序的時區是 UTC', () => {
