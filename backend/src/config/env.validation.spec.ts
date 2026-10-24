@@ -1,4 +1,8 @@
-import { parseCorsOrigins, validateEnv } from './env.validation.js';
+import {
+  isSwaggerEnabled,
+  parseCorsOrigins,
+  validateEnv,
+} from './env.validation.js';
 
 const valid = {
   NODE_ENV: 'development',
@@ -92,5 +96,37 @@ describe('validateEnv', () => {
     expect(message).toMatch(/DATABASE_URL/);
     expect(message).toMatch(/CORS_ORIGIN/);
     expect(message).not.toContain(secret);
+  });
+});
+
+describe('SWAGGER_ENABLED', () => {
+  it.each([
+    ['true', true],
+    ['false', false],
+  ])(
+    '%j 轉成 %s（讀原始值，不受 implicit conversion 影響）',
+    (raw, expected) => {
+      expect(
+        validateEnv({ ...valid, SWAGGER_ENABLED: raw }).SWAGGER_ENABLED,
+      ).toBe(expected);
+    },
+  );
+
+  it.each(['abc', '', '1', 'TRUE'])('%j 驗證失敗', (raw) => {
+    expect(() => validateEnv({ ...valid, SWAGGER_ENABLED: raw })).toThrow(
+      /SWAGGER_ENABLED/,
+    );
+  });
+
+  it('沒設時依 NODE_ENV：production 關、其他開；有設時照設定', () => {
+    expect(isSwaggerEnabled({ NODE_ENV: 'production' })).toBe(false);
+    expect(isSwaggerEnabled({ NODE_ENV: 'development' })).toBe(true);
+    expect(isSwaggerEnabled({ NODE_ENV: 'test' })).toBe(true);
+    expect(
+      isSwaggerEnabled({ NODE_ENV: 'production', SWAGGER_ENABLED: true }),
+    ).toBe(true);
+    expect(
+      isSwaggerEnabled({ NODE_ENV: 'development', SWAGGER_ENABLED: false }),
+    ).toBe(false);
   });
 });

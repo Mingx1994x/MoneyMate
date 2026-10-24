@@ -1,7 +1,9 @@
 // enableImplicitConversion 要讀 design:type metadata；單獨 import 這個檔案（例如單元測試）時 Nest 還沒載入它
 import 'reflect-metadata';
-import { plainToInstance } from 'class-transformer';
+import { plainToInstance, Transform } from 'class-transformer';
+import { parseBooleanString } from '../common/boolean-string.js';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -93,6 +95,24 @@ export class EnvVars {
 
   @Validate(CorsOriginsConstraint)
   CORS_ORIGIN!: string;
+
+  /**
+   * 只接受 'true'／'false'；沒設時依 NODE_ENV 決定（見 isSwaggerEnabled）。
+   * 一定要讀原始的 obj[key]：enableImplicitConversion 已經把 value 轉成 Boolean('false') === true。
+   */
+  @IsOptional()
+  @Transform(({ obj, key }) =>
+    parseBooleanString((obj as Record<string, unknown>)[key]),
+  )
+  @IsBoolean()
+  SWAGGER_ENABLED?: boolean;
+}
+
+/** Swagger UI 是否掛載：有設 SWAGGER_ENABLED 就照設定，沒設時 production 關、其他開 */
+export function isSwaggerEnabled(
+  env: Pick<EnvVars, 'NODE_ENV' | 'SWAGGER_ENABLED'>,
+): boolean {
+  return env.SWAGGER_ENABLED ?? env.NODE_ENV !== 'production';
 }
 
 /**
