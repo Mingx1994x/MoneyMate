@@ -1,6 +1,7 @@
-import type { INestApplication } from '@nestjs/common';
+import { type INestApplication, Logger } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { PrismaService } from '../src/prisma/index.js';
 import { createTestApp } from './utils/create-test-app.js';
 
 describe('骨架（e2e）', () => {
@@ -15,11 +16,11 @@ describe('骨架（e2e）', () => {
     await app?.close();
   });
 
-  it('GET /health 回 200，且不加 /api/v1 前綴', async () => {
+  it('GET /health 連得到資料庫時回 200，且不加 /api/v1 前綴', async () => {
     await request(app.getHttpServer())
       .get('/health')
       .expect(200)
-      .expect({ status: 'ok' });
+      .expect({ status: 'ok', db: 'ok' });
     await request(app.getHttpServer()).get('/api/v1/health').expect(404);
   });
 
@@ -62,5 +63,35 @@ describe('骨架（e2e）', () => {
   it('測試程序的時區是 UTC', () => {
     expect(new Date().getTimezoneOffset()).toBe(0);
     expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('UTC');
+  });
+});
+
+describe('/health 資料庫連不到（e2e）', () => {
+  let app: INestApplication<App>;
+
+  beforeAll(async () => {
+    app = await createTestApp({
+      override: (builder) =>
+        builder.overrideProvider(PrismaService).useValue({
+          $queryRaw: () => Promise.reject(new Error('connect ECONNREFUSED')),
+        }),
+    });
+  });
+
+  beforeEach(() => {
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('回 503，body 剛好是 { status, db }（沒有 requestId，沒經過全域 filter）', async () => {
+    const res = await request(app.getHttpServer()).get('/health').expect(503);
+    expect(res.body).toEqual({ status: 'error', db: 'down' });
   });
 });
