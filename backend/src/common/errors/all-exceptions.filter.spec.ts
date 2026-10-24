@@ -10,7 +10,11 @@ import {
   NotImplementedException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AllExceptionsFilter, describeError } from './all-exceptions.filter.js';
+import {
+  AllExceptionsFilter,
+  describeError,
+  isDatabaseError,
+} from './all-exceptions.filter.js';
 import { AppException } from './app.exception.js';
 import { detail } from './error-codes.js';
 
@@ -292,6 +296,40 @@ describe('describeError（500 的日誌內容）', () => {
       constraint: { foreignKey: {} },
     });
     expect(text).not.toContain('secret-original');
+  });
+
+  it('連線失敗（P2010）記 kind 與 causeCode，不記 message 裡的使用者名稱', () => {
+    const err = Object.assign(new Error('x'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2010',
+      meta: {
+        driverAdapterError: {
+          cause: {
+            kind: 'postgres',
+            code: 'XX000',
+            message: 'tenant/user postgres.secret-tenant not found',
+          },
+        },
+      },
+    });
+    const text = describeError(err);
+    expect(JSON.parse(text)).toEqual({
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2010',
+      kind: 'postgres',
+      causeCode: 'XX000',
+    });
+    expect(text).not.toContain('secret-tenant');
+  });
+});
+
+describe('isDatabaseError', () => {
+  it('Prisma 與 DriverAdapterError 是，一般的 Error 不是', () => {
+    const named = (name: string) => Object.assign(new Error('x'), { name });
+    expect(isDatabaseError(named('PrismaClientKnownRequestError'))).toBe(true);
+    expect(isDatabaseError(named('DriverAdapterError'))).toBe(true);
+    expect(isDatabaseError(new Error('x'))).toBe(false);
+    expect(isDatabaseError('x')).toBe(false);
   });
 });
 
