@@ -1,5 +1,5 @@
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
-import type { INestApplication } from '@nestjs/common';
+import type { INestApplication, Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
@@ -8,14 +8,19 @@ import { configureApp } from '../../src/app.setup.js';
 /**
  * 所有 e2e 一律透過這個函式建 app，確保和正式環境走同一個 configureApp。
  * - override：替換 provider，例如固定 ClockService 的今天（INF-6）。
+ * - controllers：只給測試用的 controller（例如丟出特定例外，測 filter 的行為）。
  * - C 在 W2 於同一個資料夾加 reset-db.ts（清資料）與 auth.ts（登入 helper）。
  */
 export async function createTestApp(opts?: {
   override?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
+  controllers?: Type[];
 }): Promise<INestApplication<App>> {
   assertTestDatabase();
 
-  let builder = Test.createTestingModule({ imports: [AppModule] });
+  let builder = Test.createTestingModule({
+    imports: [AppModule],
+    controllers: opts?.controllers ?? [],
+  });
   if (opts?.override) builder = opts.override(builder);
 
   const moduleRef = await builder.compile();
