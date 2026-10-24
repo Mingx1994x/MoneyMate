@@ -165,6 +165,7 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
 - **Prisma 型別**：一律從 `src/prisma/index.js` 匯入，不要直接 import `src/generated/`（lint 會擋）。
 - **資料庫交易**：由 controller 直接呼叫的 service 方法開 `this.prisma.$transaction(async (tx) => …)`；跨模組的寫入方法第一個參數是 `tx: PrismaTx`，參數有 `tx` 的方法內不得再開交易。
 - **關聯寫入一律用純量欄位**：`data: { userId, accountId, … }`，不用 `account: { connect: { id } }`。
+- **部署環境的 `DATABASE_URL` 是 Supabase 的 transaction 模式**：同一個請求的下一個查詢可能換到另一條連線，所以**不可以**用 `SET`／`SET SESSION`、session 層級的 advisory lock（`pg_advisory_lock`）、`LISTEN`／`NOTIFY`、暫存表，也不要設定 adapter 的 `statementNameGenerator`。包在 `$transaction` 裡的查詢整段用同一條連線，互動式交易、`SELECT … FOR UPDATE`、`SET LOCAL`、`pg_advisory_xact_lock` 都可以用。本機 Docker 沒有連線池，寫錯也測不出來，code review 時檢查。
 - **時間**：程序時區固定 UTC；台北的「今天」之後由 `ClockService` 提供，不要自己 `new Date()` 算日期。
 - **金額**（`src/common/money.ts`）：
   - service 之間一律用 `Prisma.Decimal`，不轉成 `number`。
@@ -186,6 +187,8 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
   - 全域 ValidationPipe 在 INF-4（W2）才加入，在那之前 DTO 先用單元測試的 `plainToInstance` 加 `validate()` 驗證；service 的業務錯誤丟 `AppException`（見「錯誤處理」）。
 - **e2e**：一律用 `test/utils/create-test-app.ts` 的 `createTestApp()` 建 app，它和正式環境走同一個 `configureApp`。
 - **新增必填環境變數**：同一個 PR 要一起更新 `src/config/env.validation.ts`、`.env.example`、`.env.test.example`、`src/openapi/export-env.constants.ts` 與 CI 的 env（`backend` job，以及 `docker` job 的 `-e`）。
+  - **只在 `production` 必填、其他環境有預設值**的變數（例如 `DATABASE_SSL`、`TRUST_PROXY_HOPS`）**不可以**寫屬性初始值：`plainToInstance` 會先 `new EnvVars()`，`production` 沒設時會直接拿到初始值而通過驗證。改用 `@ValidateIf` 只在 `production` 或有設值時驗證，預設值在 `validateEnv` 最後補上。
+  - 測試不同環境變數的 e2e 要**另開一個檔案**，`vi.stubEnv` 之後再動態 import `createTestApp`（`@nestjs/config` 在 import 時就存下環境變數），參考 `test/trust-proxy.e2e-spec.ts`。
 
 ## Windows 注意事項
 
