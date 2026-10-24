@@ -1,0 +1,180 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "Health_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "確認服務正常",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Money Mate API",
+    "description": "金額為字串（例如 \"1234.00\"）、日期為 YYYY-MM-DD、時間戳為 ISO 8601 UTC。\n\n標示【未實作】的端點目前回 501。\n\n錯誤代碼見 repo 的 docs/error-codes.md。",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "HealthResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ],
+            "example": "ok"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "AUTH_UNAUTHENTICATED",
+          "BAD_REQUEST",
+          "CONFLICT",
+          "FORBIDDEN",
+          "INTERNAL_ERROR",
+          "NOT_FOUND",
+          "NOT_IMPLEMENTED",
+          "PAYLOAD_TOO_LARGE",
+          "TOO_MANY_REQUESTS",
+          "UNSUPPORTED_MEDIA_TYPE",
+          "VALIDATION_FAILED",
+          "AMOUNT_INVALID",
+          "AMOUNT_NEGATIVE",
+          "AMOUNT_NOT_POSITIVE",
+          "NAME_INVALID",
+          "AUTH_EMAIL_TAKEN",
+          "AUTH_INVALID_CREDENTIALS",
+          "ONBOARDING_ALREADY_DONE",
+          "ONBOARDING_REQUIRED",
+          "ACCOUNT_DEACTIVATE_BLOCKED",
+          "ACCOUNT_IN_USE",
+          "ACCOUNT_INACTIVE",
+          "ACCOUNT_NOT_FOUND",
+          "OPENING_BALANCE_NEGATIVE",
+          "CATEGORY_NOT_FOUND",
+          "CATEGORY_TYPE_MISMATCH",
+          "BILL_LINKED_TRANSACTION",
+          "TRANSACTION_FIELDS_MISMATCH",
+          "TRANSACTION_NOT_FOUND",
+          "TRANSFER_SAME_ACCOUNT",
+          "BILL_ALREADY_PAID",
+          "BILL_NOT_FOUND",
+          "NEXT_BILL_ALREADY_PAID",
+          "PAID_DATE_IN_FUTURE",
+          "LOAN_END_DATE_IN_PAST",
+          "LOAN_MONTHLY_PAYMENT_REQUIRED",
+          "LOAN_NOT_FOUND"
+        ],
+        "description": "前端只用這個判斷；遇到不認得的代碼時顯示 message"
+      },
+      "ErrorDetailDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "請求中的屬性路徑，與送出的 camelCase 名稱相同",
+            "example": "endDate"
+          },
+          "code": {
+            "example": "LOAN_END_DATE_IN_PAST",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "該代碼在代碼表裡的訊息",
+            "example": "結清日已經過了，請修改結清日，或把狀態設為已結清"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ]
+      },
+      "ErrorResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "example": 404
+          },
+          "code": {
+            "description": "前端只用這個判斷；遇到不認得的代碼時顯示 message",
+            "example": "LOAN_NOT_FOUND",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "可直接顯示的繁中句子",
+            "example": "找不到這筆貸款"
+          },
+          "details": {
+            "description": "跟欄位有關的錯誤才有內容，否則是空陣列",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetailDto"
+            }
+          },
+          "requestId": {
+            "type": "string",
+            "description": "與回應標頭 X-Request-Id 相同（INF-5 之後）",
+            "example": "3f0c9a52-6f1e-4d0a-9a51-2a4c1b7e8d10"
+          },
+          "retryAfterSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "只有 429 才有：幾秒後可以再試",
+            "example": 60
+          }
+        },
+        "required": [
+          "statusCode",
+          "code",
+          "message",
+          "details",
+          "requestId"
+        ]
+      }
+    }
+  }
+}
