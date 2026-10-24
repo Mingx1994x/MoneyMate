@@ -10,10 +10,12 @@ import {
   Max,
   Min,
   Validate,
+  ValidateIf,
   ValidatorConstraint,
   type ValidatorConstraintInterface,
   validateSync,
 } from 'class-validator';
+import { parseCaCert } from './database-ssl.js';
 
 export const NODE_ENVS = ['development', 'test', 'production'] as const;
 export type NodeEnv = (typeof NODE_ENVS)[number];
@@ -70,6 +72,24 @@ class PostgresUrlConstraint implements ValidatorConstraintInterface {
   }
 }
 
+@ValidatorConstraint({ name: 'caCert' })
+class CaCertConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return typeof value === 'string' && parseCaCert(value) !== null;
+  }
+
+  defaultMessage(): string {
+    return 'DATABASE_CA_CERT 必須是 PEM（可用字面的 \\n 代替換行）或 base64 編碼的 PEM；production 且 DATABASE_SSL=true 時必填';
+  }
+}
+
+const TRUST_PROXY_HOPS_VALUES = Array.from({ length: 11 }, (_, i) => i);
+
+/** 只把純數字字串轉成數字；''、'1.5'、'true' 原樣保留交給 @IsIn() 擋下（Number('') 會是 0） */
+function parseIntString(raw: unknown): unknown {
+  return typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : raw;
+}
+
 /**
  * 唯一的環境變數驗證 class。新增必填變數時，同一個 PR 要一併更新
  * .env.example、.env.test.example、CI workflow 的 env（骨架規格 5.4）。
@@ -106,6 +126,44 @@ export class EnvVars {
   )
   @IsBoolean()
   SWAGGER_ENABLED?: boolean;
+
+  // DATABASE_SSL、TRUST_PROXY_HOPS 不可以寫初始值：plainToInstance 會先 new EnvVars()，
+  // production 沒設時會直接拿到初始值而通過驗證。非 production 的預設值在 validateEnv 補上。
+
+  /** 只接受 'true'／'false'；production 必填（Render 上設 true），其他環境沒設時為 false */
+  @ValidateIf(
+    (env: EnvVars) =>
+      env.NODE_ENV === 'production' || env.DATABASE_SSL !== undefined,
+  )
+  @Transform(({ obj, key }) =>
+    parseBooleanString((obj as Record<string, unknown>)[key]),
+  )
+  @IsBoolean({
+    message: 'DATABASE_SSL 只接受 true／false；production 必填',
+  })
+  DATABASE_SSL!: boolean;
+
+  /** production 且 DATABASE_SSL=true 時必填；有設就驗證格式。存原始值，用 parseCaCert 轉換 */
+  @ValidateIf(
+    (env: EnvVars) =>
+      (env.NODE_ENV === 'production' && env.DATABASE_SSL === true) ||
+      env.DATABASE_CA_CERT !== undefined,
+  )
+  @Validate(CaCertConstraint)
+  DATABASE_CA_CERT?: string;
+
+  /** 前面有幾層反向代理（trust proxy 用數字）。production 必填、沒有預設值；其他環境沒設時為 0 */
+  @ValidateIf(
+    (env: EnvVars) =>
+      env.NODE_ENV === 'production' || env.TRUST_PROXY_HOPS !== undefined,
+  )
+  @Transform(({ obj, key }) =>
+    parseIntString((obj as Record<string, unknown>)[key]),
+  )
+  @IsIn(TRUST_PROXY_HOPS_VALUES, {
+    message: 'TRUST_PROXY_HOPS 必須是 0–10 的整數；production 必填',
+  })
+  TRUST_PROXY_HOPS!: number;
 }
 
 /** Swagger UI 是否掛載：有設 SWAGGER_ENABLED 就照設定，沒設時 production 關、其他開 */
@@ -133,5 +191,8 @@ export function validateEnv(config: Record<string, unknown>): EnvVars {
     );
     throw new Error(`環境變數設定錯誤：\n${lines.join('\n')}`);
   }
+  // 只有非 production 會走到這裡還是 undefined（production 已被上面的驗證擋下）
+  env.DATABASE_SSL ??= false;
+  env.TRUST_PROXY_HOPS ??= 0;
   return env;
 }

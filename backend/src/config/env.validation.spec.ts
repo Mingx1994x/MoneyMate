@@ -99,6 +99,99 @@ describe('validateEnv', () => {
   });
 });
 
+describe('DATABASE_SSL、DATABASE_CA_CERT、TRUST_PROXY_HOPS', () => {
+  const PEM =
+    '-----BEGIN CERTIFICATE-----\nMIIDxTCCAq2gAwIBAgIUTEST\n-----END CERTIFICATE-----';
+  const production = {
+    ...valid,
+    NODE_ENV: 'production',
+    DATABASE_SSL: 'true',
+    DATABASE_CA_CERT: Buffer.from(PEM).toString('base64'),
+    TRUST_PROXY_HOPS: '1',
+  };
+
+  it('production 全部設好時通過，型別已轉換', () => {
+    const env = validateEnv(production);
+    expect(env.DATABASE_SSL).toBe(true);
+    expect(env.TRUST_PROXY_HOPS).toBe(1);
+  });
+
+  it('development 都沒設：DATABASE_SSL 為 false、TRUST_PROXY_HOPS 為 0', () => {
+    const env = validateEnv(valid);
+    expect(env.DATABASE_SSL).toBe(false);
+    expect(env.TRUST_PROXY_HOPS).toBe(0);
+    expect(env.DATABASE_CA_CERT).toBeUndefined();
+  });
+
+  it('production 沒設 DATABASE_SSL、TRUST_PROXY_HOPS：錯誤列出兩個變數', () => {
+    expect(() => validateEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
+      /DATABASE_SSL[\s\S]*TRUST_PROXY_HOPS/,
+    );
+  });
+
+  it('production＋DATABASE_SSL=true 沒設 CA：失敗', () => {
+    const { DATABASE_CA_CERT: _, ...rest } = production;
+    expect(() => validateEnv(rest)).toThrow(/DATABASE_CA_CERT/);
+  });
+
+  it('production＋DATABASE_SSL=false 不需要 CA', () => {
+    const { DATABASE_CA_CERT: _, ...rest } = production;
+    expect(validateEnv({ ...rest, DATABASE_SSL: 'false' }).DATABASE_SSL).toBe(
+      false,
+    );
+  });
+
+  it('CA 接受字面 \\n 的單行 PEM', () => {
+    expect(() =>
+      validateEnv({
+        ...production,
+        DATABASE_CA_CERT: PEM.replace(/\n/g, '\\n'),
+      }),
+    ).not.toThrow();
+  });
+
+  it.each(['not-a-cert', ''])('CA=%j 失敗（任何環境有設就驗證）', (ca) => {
+    expect(() => validateEnv({ ...valid, DATABASE_CA_CERT: ca })).toThrow(
+      /DATABASE_CA_CERT/,
+    );
+  });
+
+  it.each(['yes', '1', 'TRUE', ''])('DATABASE_SSL=%j 失敗', (raw) => {
+    expect(() => validateEnv({ ...valid, DATABASE_SSL: raw })).toThrow(
+      /DATABASE_SSL/,
+    );
+  });
+
+  it.each(['-1', '11', 'abc', 'true', '1.5', ''])(
+    'TRUST_PROXY_HOPS=%j 失敗',
+    (raw) => {
+      expect(() => validateEnv({ ...valid, TRUST_PROXY_HOPS: raw })).toThrow(
+        /TRUST_PROXY_HOPS/,
+      );
+    },
+  );
+
+  it.each([
+    ['0', 0],
+    ['10', 10],
+  ])('TRUST_PROXY_HOPS=%j 轉成 %s', (raw, expected) => {
+    expect(
+      validateEnv({ ...valid, TRUST_PROXY_HOPS: raw }).TRUST_PROXY_HOPS,
+    ).toBe(expected);
+  });
+
+  it('錯誤訊息不含 CA 的內容', () => {
+    let message = '';
+    try {
+      validateEnv({ ...production, DATABASE_CA_CERT: 'secret-ca-content' });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/DATABASE_CA_CERT/);
+    expect(message).not.toContain('secret-ca-content');
+  });
+});
+
 describe('SWAGGER_ENABLED', () => {
   it.each([
     ['true', true],
