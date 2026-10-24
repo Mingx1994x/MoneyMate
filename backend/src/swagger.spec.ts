@@ -161,6 +161,85 @@ describe('Swagger 文件', () => {
     }
   });
 
+  describe('貸款端點（LOAN-1，C、D 照這個範例寫）', () => {
+    type Schema = {
+      required?: string[];
+      properties: Record<string, Record<string, unknown>>;
+    };
+    const schema = (name: string) => doc.components?.schemas?.[name] as Schema;
+
+    it('6 個端點都在、都標【未實作】、都要登入', () => {
+      const ops = [
+        doc.paths['/api/v1/loans/payment-preview']?.get,
+        doc.paths['/api/v1/loans']?.get,
+        doc.paths['/api/v1/loans']?.post,
+        doc.paths['/api/v1/loans/{id}']?.get,
+        doc.paths['/api/v1/loans/{id}']?.patch,
+        doc.paths['/api/v1/loans/{id}']?.delete,
+      ];
+      for (const op of ops) {
+        if (op === undefined) throw new Error('缺少貸款端點');
+        expect(op.summary).toMatch(/^【未實作】/);
+        expect(op.security).toEqual([{ bearer: [] }]);
+        expect(op.responses['401']).toBeDefined();
+        expect(op.responses['501']).toBeDefined();
+      }
+    });
+
+    it('DELETE 回 204 沒有 content；PATCH 的 400 不含 LOAN_MONTHLY_PAYMENT_REQUIRED', () => {
+      const del = doc.paths['/api/v1/loans/{id}']?.delete;
+      if (del === undefined) throw new Error('缺少 DELETE /api/v1/loans/{id}');
+      expect(del.responses['204']).toBeDefined();
+      expect(
+        (del.responses['204'] as { content?: unknown }).content,
+      ).toBeUndefined();
+      const patch400 = doc.paths['/api/v1/loans/{id}']?.patch?.responses[
+        '400'
+      ] as { description: string };
+      expect(patch400.description).toContain('LOAN_END_DATE_IN_PAST');
+      expect(patch400.description).not.toContain(
+        'LOAN_MONTHLY_PAYMENT_REQUIRED',
+      );
+    });
+
+    it('LoanStatus、LoanType 是獨立的 enum schema', () => {
+      expect(schema('LoanStatus')).toMatchObject({
+        enum: ['active', 'closed'],
+      });
+      expect(schema('LoanType')).toMatchObject({
+        enum: ['mortgage', 'car', 'personal', 'student', 'other'],
+      });
+    });
+
+    it('LoanResponseDto：可為 null 的欄位也在 required；每個欄位都有 example', () => {
+      const loan = schema('LoanResponseDto');
+      expect(loan.required).toEqual(
+        expect.arrayContaining(['interestRate', 'note']),
+      );
+      expect(loan.properties.interestRate).toMatchObject({ nullable: true });
+      expect(loan.properties.note).toMatchObject({ nullable: true });
+      expect(loan.properties).not.toHaveProperty('userId');
+      for (const [field, prop] of Object.entries(loan.properties)) {
+        // enum 欄位是 allOf 包 $ref，example 在外層
+        expect(prop.example, field).toBeDefined();
+      }
+    });
+
+    it('試算的範例前後一致：結清日 2031-09-30 對應 60 期、月付 17969.00', () => {
+      const params =
+        doc.paths['/api/v1/loans/payment-preview']?.get?.parameters ?? [];
+      const endDate = params.find(
+        (p) => 'name' in p && p.name === 'endDate',
+      ) as { schema?: { example?: unknown }; example?: unknown } | undefined;
+      expect(endDate?.example ?? endDate?.schema?.example).toBe('2031-09-30');
+      expect(schema('LoanPaymentPreviewResponseDto').properties).toMatchObject({
+        monthlyPayment: { example: '17969.00' },
+        totalInterest: { example: '78120.00' },
+        installments: { example: 60 },
+      });
+    });
+  });
+
   it('SWAGGER_ENABLED 沒設（development）時掛載：JSON 在 /api/docs-json，不提供 YAML', async () => {
     await request(app.getHttpServer()).get('/api/docs-json').expect(200);
     await request(app.getHttpServer()).get('/api/docs-yaml').expect(404);
