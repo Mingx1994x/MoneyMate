@@ -3,8 +3,12 @@
 name: CI
 
 on:
-  # 不限定目標分支：疊在其他功能分支上的 PR 也要跑。禁止改成 pull_request_target。
+  # 只跑目標是 dev、main 的 PR。禁止改成 pull_request_target。
+  # edited：把 PR 的目標從功能分支改成 dev（手動或原分支被刪除後自動改）不在預設事件裡，
+  # 不加的話 ci-ok 不會跑、PR 合併不了；代價是改 PR 標題或說明也會重跑一次。
   pull_request:
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
