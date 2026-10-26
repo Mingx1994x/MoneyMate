@@ -281,7 +281,7 @@ describe('describeError（500 的日誌內容）', () => {
       name: 'DriverAdapterError',
       cause: {
         kind: 'ForeignKeyConstraintViolation',
-        constraint: { foreignKey: {} },
+        constraint: { index: 'transactions_account_id_user_id_fkey' },
         originalMessage: 'secret-original',
       },
     });
@@ -289,7 +289,7 @@ describe('describeError（500 的日誌內容）', () => {
     expect(JSON.parse(text)).toEqual({
       name: 'DriverAdapterError',
       kind: 'ForeignKeyConstraintViolation',
-      constraint: { foreignKey: {} },
+      constraint: { index: 'transactions_account_id_user_id_fkey' },
     });
     expect(text).not.toContain('secret-original');
   });
