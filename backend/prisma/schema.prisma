@@ -59,6 +59,7 @@ model Account {
   incomingTransfers Transaction[] @relation("TransactionToAccount")
   bills             Bill[]
 
+  @@unique([id, userId]) // target of the composite FKs below: a transaction/bill can only use its own user's accounts
   @@index([userId])
   @@map("accounts")
 }
@@ -110,8 +111,8 @@ model Transaction {
   updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account   Account   @relation("TransactionAccount", fields: [accountId], references: [id], onDelete: Restrict)
-  toAccount Account?  @relation("TransactionToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+  account   Account   @relation("TransactionAccount", fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  toAccount Account?  @relation("TransactionToAccount", fields: [toAccountId, userId], references: [id, userId], onDelete: Restrict)
   category  Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   bill      Bill?     @relation(fields: [billId], references: [id], onDelete: Restrict)
 
@@ -176,7 +177,7 @@ model Bill {
   dueDate    DateTime   @map("due_date") @db.Date
   dueDay     Int        @map("due_day") // original day (e.g. 31), for short months
   dueMonth   Int?       @map("due_month") // original month for yearly bills (e.g. 2), for leap years
-  seriesId   String     @map("series_id") @db.Uuid // shared by every bill in one repeating series
+  seriesId   String     @default(dbgenerated("gen_random_uuid()")) @map("series_id") @db.Uuid // shared by every bill in one repeating series; the next bill copies it
   recurrence Recurrence @default(none)
   status     BillStatus @default(pending)
   paidAmount Decimal?   @map("paid_amount") @db.Decimal(14, 2) // actual amount paid
@@ -187,7 +188,7 @@ model Bill {
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   category    Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  account     Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account     Account      @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
   transaction Transaction?
 
   @@index([userId, dueDate])
@@ -216,18 +217,43 @@ model Goal {
 // ─────────────────────────────────────────────────────────────
 // TODO: add by hand to the FIRST migration's SQL (Prisma can't write these)
 //
+// users
+//   CHECK: email = lower(email)                    -- PRD: email always lowercase
 // accounts
-//   CHECK: account_type = 'credit_card' OR opening_balance >= 0
+//   CHECK: account_type = 'credit_card' OR is_estimate OR opening_balance >= 0
+//          (estimate account excluded: §15.9 deduction can make its opening_balance negative;
+//           its current balance stays >= 0 by the min() rule — confirm with C)
 //   UNIQUE (user_id) WHERE is_estimate = true      -- max 1 estimate account per user
 // transactions
 //   CHECK: amount > 0
 //   CHECK: transfer → to_account_id NOT NULL, category_id NULL, account_id <> to_account_id
 //          income/expense → category_id NOT NULL, to_account_id NULL
+// loans
+//   CHECK: outstanding_balance >= 0 AND monthly_payment > 0 AND payment_day BETWEEN 1 AND 31
+//          AND (interest_rate IS NULL OR interest_rate BETWEEN 0 AND 100)
 // bills
 //   CHECK: status = 'paid' → paid_amount, paid_date NOT NULL; 'pending' → both NULL
+//   CHECK: amount > 0 AND (paid_amount IS NULL OR paid_amount > 0)
+//          AND due_day BETWEEN 1 AND 31 AND (due_month IS NULL OR due_month BETWEEN 1 AND 12)
+//          AND (recurrence <> 'yearly' OR due_month IS NOT NULL)
+//          (not "both ways": stop-recurrence turns yearly into none and keeps due_month)
 //   UNIQUE (series_id) WHERE status = 'pending'    -- max 1 pending bill per series
 // goals
-//   CHECK: monthly_spending BETWEEN 1000 AND 333000
+//   CHECK: monthly_spending BETWEEN 1000 AND 333000 AND monthly_spending = trunc(monthly_spending)
+//          (PRD §13: monthlySpending is an integer)
 //
-// Later (D decides): composite FK (account_id, user_id) → accounts(id, user_id)
+// NOT as CHECK — rules about "today" (paid_date <= today, end_date < today → closed,
+// birth_year <= this year): DB current_date is UTC but our "today" is Asia/Taipei → services.
+//
+// ⚠️ After creating the first migration: run `prisma migrate dev` again and
+//    `prisma migrate diff --from-migrations ... --to-schema ...`. Both must show no changes.
+//    Prisma tracks indexes, so it may try to DROP the hand-written partial unique indexes.
+//
+// ⚠️ Partial unique indexes can't be DEFERRABLE, so bill writes must keep this order (PRD §16):
+//    pay:   UPDATE this bill to 'paid'  →  then INSERT the next 'pending' bill
+//    unpay: DELETE the next 'pending' bill  →  then set this bill back to 'pending'
+//
+// Optional (D decides): accounts CHECK currency = 'TWD'
+//
+// P1: user categories → categories.code can't stay globally unique; change to (user_id, code)
 // ─────────────────────────────────────────────────────────────
