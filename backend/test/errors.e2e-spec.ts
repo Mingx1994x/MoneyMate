@@ -137,6 +137,6 @@ describe('錯誤格式（e2e）', () => {
     await request(app.getHttpServer())
       .get('/health')
       .expect(200)
-      .expect({ status: 'ok' });
+      .expect({ status: 'ok', db: 'ok' });
   });
 });
