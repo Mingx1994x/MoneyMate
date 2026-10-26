@@ -22,6 +22,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthResponseDto"
+                },
+                "example": {
+                  "status": "error",
+                  "db": "down"
                 }
               }
             }
