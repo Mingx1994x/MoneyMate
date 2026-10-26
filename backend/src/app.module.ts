@@ -9,6 +9,8 @@ import { PrismaModule } from './prisma/index.js';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: process.env.NODE_ENV === 'test' ? '.env.test' : '.env',
+      // openapi:export 只用固定的假變數，不受個人 .env 影響（src/openapi/export-env.ts）
+      ignoreEnvFile: process.env.OPENAPI_EXPORT === '1',
       validate: validateEnv,
     }),
     PrismaModule,

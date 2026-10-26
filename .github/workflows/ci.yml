@@ -35,9 +35,11 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
+              - 'docs/error-codes.md' # 跟錯誤代碼表的同步測試
               - '.github/workflows/**'
             frontend:
               - 'frontend/**'
+              - 'backend/openapi.json' # 前端型別從這裡產生
               - '.github/workflows/**'
       # 該側的 lockfile 不存在就不跑（前端骨架合併前 frontend/ 只有 .gitkeep）。
       # hashFiles() 不能用在 job 層級的 if:，所以在這裡判斷。
@@ -79,6 +81,14 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run build
+      # 改了 API 卻沒重新匯出時失敗（前端型別從 openapi.json 產生）
+      - name: 確認 openapi.json 是最新的
+        run: |
+          node dist/openapi/export.js
+          if ! git diff --exit-code -- openapi.json; then
+            echo "::error file=backend/openapi.json::openapi.json 不是最新的，請執行 npm run openapi:export 後 commit"
+            exit 1
+          fi
       - run: npm test
 
   # Render 在合併後才 build 映像檔；這裡先確認 Dockerfile 能 build、容器能啟動
