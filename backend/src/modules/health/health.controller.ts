@@ -35,9 +35,11 @@ export class HealthController {
   @Get()
   @ApiOperation({ summary: '確認服務與資料庫正常' })
   @ApiOkResponse({ type: HealthResponseDto })
+  // 與 200 共用 DTO，DTO 欄位的 example 是 ok，503 要另外指定範例，否則 Swagger 會顯示 ok／ok
   @ApiServiceUnavailableResponse({
     type: HealthResponseDto,
     description: '資料庫連不到或逾時',
+    example: { status: 'error', db: 'down' },
   })
   async check(
     @Res({ passthrough: true }) res: Response,

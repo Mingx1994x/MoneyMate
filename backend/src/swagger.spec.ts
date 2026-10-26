@@ -95,6 +95,17 @@ describe('Swagger 文件', () => {
     });
   });
 
+  it('/health 的 503 範例是 error／down（不是沿用 DTO 的 ok）', () => {
+    const responses = doc.paths['/health']?.get?.responses ?? {};
+    const unavailable = responses['503'] as {
+      content?: Record<string, { example?: unknown }>;
+    };
+    expect(unavailable.content?.['application/json']?.example).toEqual({
+      status: 'error',
+      db: 'down',
+    });
+  });
+
   it('ErrorResponseDto.code 指向 ErrorCode enum', () => {
     const schemas = doc.components?.schemas ?? {};
     expect(schemas.ErrorCode).toMatchObject({ type: 'string' });
