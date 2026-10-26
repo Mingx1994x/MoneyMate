@@ -1,6 +1,7 @@
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { buildSslOption } from '../config/database-ssl.js';
 import type { EnvVars } from '../config/env.validation.js';
 import { PrismaClient } from '../generated/prisma/client.js';
 
@@ -9,7 +10,8 @@ import { PrismaClient } from '../generated/prisma/client.js';
  *   Prisma.TransactionClient，全組的 `tx: PrismaTx` 簽名會編譯失敗。
  * - 不在 onModuleInit 呼叫 $connect()：第一次查詢時才連線，資料庫斷線時 app 仍能啟動，
  *   /health 才能回 503，INF-2 也能在沒有資料庫時匯出 openapi.json。
- * - SSL 設定在 DEP-2 加入（骨架規格 4.4）。
+ * - SSL 由 DATABASE_SSL、DATABASE_CA_CERT 控制（buildSslOption），連線字串不寫 sslmode。
+ *   DIRECT_URL（migrate）不經過這裡，它的加密靠 Supabase 的 Enforce SSL。
  */
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
@@ -19,6 +21,10 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
         connectionString: config.get('DATABASE_URL', { infer: true }),
         max: config.get('DATABASE_POOL_MAX', { infer: true }),
         connectionTimeoutMillis: 5000,
+        ssl: buildSslOption({
+          DATABASE_SSL: config.get('DATABASE_SSL', { infer: true }),
+          DATABASE_CA_CERT: config.get('DATABASE_CA_CERT', { infer: true }),
+        }),
       }),
       // 只留 warn：query 與 error 都會把查詢參數（Email、密碼雜湊）原文印到 stdout。
       // 錯誤本來就會丟給呼叫端，記錄方式交給 INF-3 的 filter。
