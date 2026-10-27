@@ -8,5 +8,6 @@ export const OPENAPI_EXPORT_ENV = {
   PORT: '3001',
   DATABASE_URL: 'postgresql://openapi:openapi@127.0.0.1:1/openapi_export',
   CORS_ORIGIN: 'http://localhost:3000',
+  JWT_SECRET: 'openapi-insecure-jwt-secret',
   OPENAPI_EXPORT: '1',
 } as const;

@@ -109,6 +109,7 @@ jobs:
       # 只 build 抓不到「runtime 套件被放進 devDependencies」：要真的啟動才會 ERR_MODULE_NOT_FOUND。
       # 資料庫是假的（連不到的主機）；app 不在啟動時連線，/health 仍回 200。
       # DATABASE_SSL、TRUST_PROXY_HOPS 在 DEP-2 之後是 production 必填，先帶上，兩條 PR 誰先合併都不會壞。
+      # JWT_SECRET 在 AUTH-1 之後必填；production 要 32 字元以上、不含 insecure，這個值只給這個容器用。
       - name: 啟動容器並確認 /health
         run: |
           docker run -d --name api -p 3001:3001 \
@@ -116,6 +117,7 @@ jobs:
             -e CORS_ORIGIN=http://localhost:3000 \
             -e DATABASE_SSL=false \
             -e TRUST_PROXY_HOPS=0 \
+            -e JWT_SECRET=ci-docker-only-jwt-secret-0123456789abcdef \
             moneymate-api:ci
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/health || true)

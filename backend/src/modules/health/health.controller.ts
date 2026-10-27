@@ -12,6 +12,7 @@ import {
   isDatabaseError,
 } from '../../common/errors/all-exceptions.filter.js';
 import { PrismaService } from '../../prisma/index.js';
+import { Public } from '../auth/index.js';
 
 // Render 每次健康檢查的逾時是 5 秒，2 秒夠用
 const DB_CHECK_TIMEOUT_MS = 2000;
@@ -26,6 +27,7 @@ export class HealthResponseDto {
 
 // 不加 /api/v1 前綴、不需登入。每次請求都真的查一次資料庫，不快取結果。
 @ApiTags('health')
+@Public()
 @Controller('health')
 export class HealthController {
   private readonly logger = new Logger('HealthController');
