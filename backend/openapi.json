@@ -534,6 +534,7 @@
           "TRANSFER_SAME_ACCOUNT",
           "BILL_ALREADY_PAID",
           "BILL_NOT_FOUND",
+          "BILL_NOT_PAID",
           "NEXT_BILL_ALREADY_PAID",
           "PAID_DATE_IN_FUTURE",
           "LOAN_END_DATE_IN_PAST",
