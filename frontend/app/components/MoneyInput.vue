@@ -9,7 +9,7 @@ withDefaults(
 function onInput(e: Event) {
   // 只留數字、小數點、負號
   const el = e.target as HTMLInputElement
-  model.value = el.value.replace(/[^\d.\-]/g, '')
+  model.value = el.value.replace(/[^\d.-]/g, '')
 }
 </script>
 
