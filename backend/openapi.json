@@ -455,6 +455,984 @@
           "loans"
         ]
       }
+    },
+    "/api/v1/categories": {
+      "get": {
+        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：sortOrder 由小到大，相同時依 id（「其他」的 sortOrder 最大，排最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
+        "operationId": "Categories_findAll",
+        "parameters": [
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "description": "只取收入或支出分類；不帶就回全部",
+            "schema": {
+              "example": "expense",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/CategoryType"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】列出分類",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/v1/accounts": {
+      "get": {
+        "description": "不分頁。預設只列啟用中的帳戶；帶 includeInactive=true 才一併列出停用的帳戶。\n\n排序：啟用中在前，同一組內依 createdAt 由舊到新，相同時再依 id。\n\n每筆含 currentBalance（只計入日期 ≤ 台北今天的交易）與 hasTransactions。",
+        "operationId": "Accounts_findAll",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "required": false,
+            "in": "query",
+            "description": "true 時一併列出停用的帳戶",
+            "schema": {
+              "default": false,
+              "example": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】列出帳戶",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "post": {
+        "description": "currency 固定 TWD。只有 credit_card 的 openingBalance 可以是負數，其他類型為負數時回 OPENING_BALANCE_NEGATIVE。\n\ndeductFromEstimate = true 時，同一個資料庫交易內從估計帳戶扣掉 min(openingBalance, 估計帳戶目前餘額)，並記在新帳戶的 deductedFromEstimate；估計帳戶目前餘額扣到 0 時自動停用。新增失敗時估計帳戶不會被扣（PRD 15.9）。\n\n實際扣除金額 ≤ 0 時不扣，忽略 deductFromEstimate，deductedFromEstimate 存 null（不存 0）：包含 openingBalance ≤ 0、估計帳戶目前餘額 ≤ 0（例如估計帳戶有支出交易）、沒有估計帳戶，或估計帳戶已停用。這些情況不是錯誤，照常建立帳戶。",
+        "operationId": "Accounts_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`NAME_INVALID`：名稱需為 1 到 30 個字\n\n`OPENING_BALANCE_NEGATIVE`：非信用卡帳戶的初始餘額不可為負數",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】新增帳戶",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{id}": {
+      "get": {
+        "description": "停用的帳戶也查得到。不存在、屬於他人或 id 不是 UUID，一律回 404。",
+        "operationId": "Accounts_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ACCOUNT_NOT_FOUND`：找不到這個帳戶",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】取得單筆帳戶",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "patch": {
+        "description": "沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。accountType 不能改。\n\n停用的帳戶只能重新啟用：請求只帶 isActive = true 時通過；帶了其他欄位回 ACCOUNT_INACTIVE（先重新啟用，再修改）。\n\n停用（isActive = false）：目前餘額必須為 0，而且沒有未來日期的交易，否則回 ACCOUNT_DEACTIVATE_BLOCKED。停用不會把扣掉的估計值加回（PRD 15.9）。\n\n修改 openingBalance 後目前餘額跟著變動；非 credit_card 改成負數回 OPENING_BALANCE_NEGATIVE。",
+        "operationId": "Accounts_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAccountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`NAME_INVALID`：名稱需為 1 到 30 個字\n\n`OPENING_BALANCE_NEGATIVE`：非信用卡帳戶的初始餘額不可為負數",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ACCOUNT_NOT_FOUND`：找不到這個帳戶",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ACCOUNT_DEACTIVATE_BLOCKED`：帳戶還有餘額或未來的交易，不能停用\n\n`ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】修改、停用或重新啟用帳戶",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "delete": {
+        "description": "只限沒有任何交易（轉出或轉入）、也沒有被帳單使用的帳戶，否則回 ACCOUNT_IN_USE，請改用停用。\n\n帶 addBackToEstimate=true 而且帳戶有 deductedFromEstimate 時，在同一個資料庫交易內把金額加回估計帳戶；估計帳戶已停用就重新啟用（PRD 15.9）。沒帶或 false 時不加回。",
+        "operationId": "Accounts_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "addBackToEstimate",
+            "required": false,
+            "in": "query",
+            "description": "true 時，把這個帳戶建立時從估計帳戶扣掉的金額（deductedFromEstimate）加回估計帳戶（PRD 15.9）；估計帳戶已停用時會重新啟用。沒有扣除紀錄時忽略。前端的確認視窗預設勾選「加回」，勾選時才帶 true",
+            "schema": {
+              "default": false,
+              "example": true,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ACCOUNT_NOT_FOUND`：找不到這個帳戶",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ACCOUNT_IN_USE`：這個帳戶已有交易或帳單，不能刪除，可以改成停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】刪除帳戶",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/transactions": {
+      "get": {
+        "description": "篩選條件都是選填，同時帶多個時取交集。分頁：page 預設 1、pageSize 預設 20、上限 100。\n\n排序：transactionDate 由新到舊，相同時依 createdAt 由新到舊，再依 id。包含未來日期的交易。\n\ncategoryId、accountId 不是 UUID，或不屬於登入者（系統分類算存在）時回 400 CATEGORY_NOT_FOUND／ACCOUNT_NOT_FOUND；dateTo 早於 dateFrom 回 400 VALIDATION_FAILED（field: dateTo）。",
+        "operationId": "Transactions_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "交易日期起（含）",
+            "schema": {
+              "format": "date",
+              "example": "2026-10-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "description": "交易日期迄（含）；早於 dateFrom 時回 400 VALIDATION_FAILED",
+            "schema": {
+              "format": "date",
+              "example": "2026-10-31",
+              "type": "string"
+            }
+          },
+          {
+            "name": "transactionType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "expense",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/TransactionType"
+                }
+              ]
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "description": "分類（轉帳沒有分類，所以帶這個條件時不會出現轉帳）",
+            "schema": {
+              "format": "uuid",
+              "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d",
+              "type": "string"
+            }
+          },
+          {
+            "name": "accountId",
+            "required": false,
+            "in": "query",
+            "description": "帳戶：accountId 或 toAccountId 是這個帳戶的交易都會列出（含停用帳戶）",
+            "schema": {
+              "format": "uuid",
+              "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`ACCOUNT_NOT_FOUND`：找不到這個帳戶\n\n`CATEGORY_NOT_FOUND`：找不到這個分類",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】列出交易（篩選＋分頁）",
+        "tags": [
+          "transactions"
+        ]
+      },
+      "post": {
+        "description": "收入／支出：必須有 categoryId，類型要相同（否則 CATEGORY_TYPE_MISMATCH），不可帶 toAccountId。轉帳：必須有 toAccountId、不可帶 categoryId，兩個帳戶不同（否則 TRANSFER_SAME_ACCOUNT）。類型與欄位不符回 TRANSACTION_FIELDS_MISMATCH（field 為不符合的欄位）。\n\naccountId、toAccountId、categoryId 必須屬於登入者（分類可以是系統分類），否則回 400 ACCOUNT_NOT_FOUND／CATEGORY_NOT_FOUND；任一帳戶停用時回 ACCOUNT_INACTIVE。\n\ntransactionDate 不帶時是台北今天。繳卡費＝銀行 → 信用卡的 transfer，不計入收支（PRD 15.10）。",
+        "operationId": "Transactions_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTransactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`AMOUNT_NOT_POSITIVE`：金額必須大於 0\n\n`TRANSACTION_FIELDS_MISMATCH`：這種交易類型不能帶這個欄位\n\n`TRANSFER_SAME_ACCOUNT`：不能轉帳給同一個帳戶\n\n`CATEGORY_TYPE_MISMATCH`：分類的類型不符\n\n`CATEGORY_NOT_FOUND`：找不到這個分類\n\n`ACCOUNT_NOT_FOUND`：找不到這個帳戶",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】新增交易（快速記帳、繳卡費也走這支）",
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/api/v1/transactions/{id}": {
+      "get": {
+        "description": "不存在、屬於他人或 id 不是 UUID，一律回 404。",
+        "operationId": "Transactions_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`TRANSACTION_NOT_FOUND`：找不到這筆交易",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】取得單筆交易",
+        "tags": [
+          "transactions"
+        ]
+      },
+      "patch": {
+        "description": "沒傳的欄位保持原值；categoryId、toAccountId、note 傳 null 代表清空，其他欄位傳 null 回 400。\n\n可以改交易類型：用「原值合併請求」後的結果檢查欄位規則（同新增），例如支出改轉帳時要帶 toAccountId，並把 categoryId 設成 null。\n\n帳單產生的交易回 BILL_LINKED_TRANSACTION。原本或修改後的帳戶（轉出、轉入任一方）是停用帳戶時回 ACCOUNT_INACTIVE（PRD 15.11）。",
+        "operationId": "Transactions_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTransactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`AMOUNT_NOT_POSITIVE`：金額必須大於 0\n\n`TRANSACTION_FIELDS_MISMATCH`：這種交易類型不能帶這個欄位\n\n`TRANSFER_SAME_ACCOUNT`：不能轉帳給同一個帳戶\n\n`CATEGORY_TYPE_MISMATCH`：分類的類型不符\n\n`CATEGORY_NOT_FOUND`：找不到這個分類\n\n`ACCOUNT_NOT_FOUND`：找不到這個帳戶",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`TRANSACTION_NOT_FOUND`：找不到這筆交易",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用\n\n`BILL_LINKED_TRANSACTION`：這筆交易由帳單產生，請到帳單修改",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】修改交易",
+        "tags": [
+          "transactions"
+        ]
+      },
+      "delete": {
+        "description": "帳單產生的交易回 BILL_LINKED_TRANSACTION（請到帳單取消繳費）；轉出或轉入帳戶停用時回 ACCOUNT_INACTIVE。",
+        "operationId": "Transactions_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`TRANSACTION_NOT_FOUND`：找不到這筆交易",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用\n\n`BILL_LINKED_TRANSACTION`：這筆交易由帳單產生，請到帳單修改",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】刪除交易",
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/api/v1/dashboard/summary": {
+      "get": {
+        "description": "一支 API 回傳所有區塊（PRD 17）。「今天」一律用台北時間（ClockService）。month 只影響 income、expense、savingsRate，其他區塊都用台北今天。\n\nnextStep 依序判斷（PRD 15.5）：① 有逾期未繳帳單 → overdue_bills ② 有啟用的現金／銀行帳戶、14 天內有待繳帳單且缺口 > 0 → funding_gap ③ 有目標 → next_milestone（已達成時 goal_achieved）④ 沒有目標 → onboarding。永遠只有一句。\n\n還沒完成的區塊回 null 並列在 unavailable。依賴未完成區塊的數字也回 null，不回傳看起來正常但不正確的值：loans 未完成時 netWorth 是 null；bills 或 goal 未完成時 nextStep 是 null。任一 service 出錯整支回 500，不回傳部分數字。",
+        "operationId": "Dashboard_summary",
+        "parameters": [
+          {
+            "name": "month",
+            "required": false,
+            "in": "query",
+            "description": "月份 YYYY-MM，只影響本月收支區塊（income、expense、savingsRate）；不帶時是台北本月",
+            "schema": {
+              "example": "2026-10",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummaryResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】Dashboard 全部區塊＋一句下一步",
+        "tags": [
+          "dashboard"
+        ]
+      }
     }
   },
   "info": {
@@ -910,6 +1888,844 @@
             "example": "每月 5 日自動扣款"
           }
         }
+      },
+      "CategoryType": {
+        "type": "string",
+        "enum": [
+          "income",
+          "expense"
+        ]
+      },
+      "CategoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
+          },
+          "code": {
+            "type": "string",
+            "description": "系統分類代碼，唯一，seed 用它 upsert",
+            "example": "food"
+          },
+          "name": {
+            "type": "string",
+            "example": "飲食"
+          },
+          "type": {
+            "example": "expense",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CategoryType"
+              }
+            ]
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "下拉選單順序，由小到大",
+            "example": 10
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "type",
+          "sortOrder"
+        ]
+      },
+      "CategoryListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AccountType": {
+        "type": "string",
+        "enum": [
+          "cash",
+          "bank",
+          "investment",
+          "credit_card"
+        ]
+      },
+      "AccountResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+          },
+          "name": {
+            "type": "string",
+            "example": "台新銀行"
+          },
+          "accountType": {
+            "example": "bank",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AccountType"
+              }
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "description": "固定 TWD，不開放輸入",
+            "example": "TWD"
+          },
+          "openingBalance": {
+            "type": "string",
+            "description": "初始餘額，金額字串",
+            "example": "100000.00"
+          },
+          "currentBalance": {
+            "type": "string",
+            "description": "目前餘額：初始餘額＋收入−支出＋轉入−轉出，只計入日期 ≤ 台北今天的交易。信用卡為負數代表欠款，正數代表溢繳",
+            "example": "85000.00"
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          },
+          "isEstimate": {
+            "type": "boolean",
+            "description": "問卷建立的「現有資產（估計）」帳戶為 true；畫面標示「估計」，不算進可用現金",
+            "example": false
+          },
+          "deductedFromEstimate": {
+            "type": "string",
+            "nullable": true,
+            "description": "建立這個帳戶時從估計帳戶扣掉的金額；沒有扣除時是 null",
+            "example": "100000.00"
+          },
+          "hasTransactions": {
+            "type": "boolean",
+            "description": "有沒有任何交易（轉出或轉入，含未來日期）。true 時前端只顯示「停用」，false 才顯示「刪除」",
+            "example": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "example": "薪轉戶"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-25T02:30:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-25T02:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "accountType",
+          "currency",
+          "openingBalance",
+          "currentBalance",
+          "isActive",
+          "isEstimate",
+          "deductedFromEstimate",
+          "hasTransactions",
+          "note",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "AccountListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CreateAccountDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "帳戶名稱，去除前後空白後 1–30 字",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "台新銀行"
+          },
+          "accountType": {
+            "description": "建立後不能修改",
+            "example": "bank",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AccountType"
+              }
+            ]
+          },
+          "openingBalance": {
+            "type": "string",
+            "description": "初始餘額，金額字串。只有 credit_card 可以是負數（代表欠款），其他類型為負數時回 OPENING_BALANCE_NEGATIVE",
+            "example": "100000.00"
+          },
+          "deductFromEstimate": {
+            "type": "boolean",
+            "default": false,
+            "description": "是否從「現有資產（估計）」扣掉這個帳戶的初始餘額（PRD 15.9）。實際扣除 = min(初始餘額, 估計帳戶目前餘額)；這個金額 ≤ 0 時不扣、不報錯，deductedFromEstimate 存 null（初始餘額 ≤ 0、估計帳戶目前餘額 ≤ 0、沒有估計帳戶或估計帳戶已停用）",
+            "example": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "薪轉戶"
+          }
+        },
+        "required": [
+          "name",
+          "accountType",
+          "openingBalance"
+        ]
+      },
+      "UpdateAccountDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "帳戶名稱，去除前後空白後 1–30 字",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "台新銀行"
+          },
+          "openingBalance": {
+            "type": "string",
+            "description": "初始餘額，金額字串。只有 credit_card 可以是負數（代表欠款），其他類型為負數時回 OPENING_BALANCE_NEGATIVE",
+            "example": "100000.00"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "薪轉戶"
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "false = 停用（目前餘額必須為 0，而且沒有未來日期的交易）；true = 重新啟用",
+            "example": false
+          }
+        }
+      },
+      "TransactionType": {
+        "type": "string",
+        "enum": [
+          "income",
+          "expense",
+          "transfer"
+        ]
+      },
+      "TransactionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "5c4b3a29-1807-4f6e-8d5c-4b3a29180765"
+          },
+          "transactionType": {
+            "example": "expense",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionType"
+              }
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "description": "金額字串，> 0",
+            "example": "120.00"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "收入／支出的帳戶；轉帳的轉出帳戶",
+            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+          },
+          "toAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "轉入帳戶；只有轉帳有值",
+            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "分類；轉帳是 null",
+            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-10-25"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "example": "午餐"
+          },
+          "billId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "產生這筆交易的帳單；不是帳單產生的是 null",
+            "example": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+          },
+          "isBillGenerated": {
+            "type": "boolean",
+            "description": "由帳單繳費產生的交易為 true；前端隱藏修改、刪除（後端回 BILL_LINKED_TRANSACTION）",
+            "example": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-25T04:30:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-25T04:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "transactionType",
+          "amount",
+          "accountId",
+          "toAccountId",
+          "categoryId",
+          "transactionDate",
+          "note",
+          "billId",
+          "isBillGenerated",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "TransactionListResponseDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "example": 20
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 42
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransactionResponseDto"
+            }
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "total",
+          "items"
+        ]
+      },
+      "CreateTransactionDto": {
+        "type": "object",
+        "properties": {
+          "transactionType": {
+            "description": "繳卡費＝銀行 → 信用卡的 transfer，不是 expense",
+            "example": "expense",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionType"
+              }
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "description": "金額字串，> 0",
+            "example": "120.00"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶",
+            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）",
+            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
+          },
+          "toAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）",
+            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date",
+            "description": "交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支",
+            "example": "2026-10-25"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "午餐"
+          }
+        },
+        "required": [
+          "transactionType",
+          "amount",
+          "accountId"
+        ]
+      },
+      "UpdateTransactionDto": {
+        "type": "object",
+        "properties": {
+          "transactionType": {
+            "description": "繳卡費＝銀行 → 信用卡的 transfer，不是 expense",
+            "example": "expense",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionType"
+              }
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "description": "金額字串，> 0",
+            "example": "120.00"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶",
+            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）",
+            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
+          },
+          "toAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）",
+            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date",
+            "description": "交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支",
+            "example": "2026-10-25"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "午餐"
+          }
+        }
+      },
+      "DashboardBillBriefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "4d3c2b1a-0f9e-4d8c-b7a6-958473625140"
+          },
+          "name": {
+            "type": "string",
+            "example": "房租"
+          },
+          "amount": {
+            "type": "string",
+            "description": "預定金額，金額字串",
+            "example": "18000.00"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-10-28"
+          },
+          "daysUntilDue": {
+            "type": "integer",
+            "description": "到期日 − 台北今天的天數；逾期是負數、今天到期是 0",
+            "example": 3
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "amount",
+          "dueDate",
+          "daysUntilDue"
+        ]
+      },
+      "DashboardLoanPaymentDto": {
+        "type": "object",
+        "properties": {
+          "loanId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "3f0c9a52-6f1e-4d0a-9a51-2a4c1b7e8d10"
+          },
+          "name": {
+            "type": "string",
+            "example": "房貸"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "還款日（paymentDay 遇短月用當月最後一天）",
+            "example": "2026-11-05"
+          },
+          "monthlyPayment": {
+            "type": "string",
+            "description": "每月還款，金額字串",
+            "example": "17969.00"
+          }
+        },
+        "required": [
+          "loanId",
+          "name",
+          "date",
+          "monthlyPayment"
+        ]
+      },
+      "DashboardLoansDto": {
+        "type": "object",
+        "properties": {
+          "outstandingTotal": {
+            "type": "string",
+            "description": "active 貸款的未償餘額合計",
+            "example": "1000000.00"
+          },
+          "activeCount": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 1
+          },
+          "upcomingPayments": {
+            "description": "台北今天到今天＋14 天（含頭尾）的還款日，和帳單同一個範圍",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardLoanPaymentDto"
+            }
+          }
+        },
+        "required": [
+          "outstandingTotal",
+          "activeCount",
+          "upcomingPayments"
+        ]
+      },
+      "DashboardMilestoneDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "第幾站（1 起算）",
+            "example": 2
+          },
+          "amount": {
+            "type": "string",
+            "description": "這一站的金額",
+            "example": "1000000.00"
+          },
+          "label": {
+            "type": "string",
+            "example": "第一桶金"
+          },
+          "remaining": {
+            "type": "string",
+            "description": "還差多少到這一站",
+            "example": "760000.00"
+          }
+        },
+        "required": [
+          "index",
+          "amount",
+          "label",
+          "remaining"
+        ]
+      },
+      "DashboardGoalDto": {
+        "type": "object",
+        "properties": {
+          "targetAmount": {
+            "type": "string",
+            "example": "12000000.00"
+          },
+          "currentAmount": {
+            "type": "string",
+            "description": "目前金額＝帳戶合計（PRD 15.3）",
+            "example": "240000.00"
+          },
+          "percent": {
+            "type": "number",
+            "description": "達成百分比，小數一位；≤ 0 是 0，達成是 100",
+            "example": 2
+          },
+          "achieved": {
+            "type": "boolean",
+            "example": false
+          },
+          "nextMilestone": {
+            "nullable": true,
+            "description": "下一站；已達成目標時是 null",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardMilestoneDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "targetAmount",
+          "currentAmount",
+          "percent",
+          "achieved",
+          "nextMilestone"
+        ]
+      },
+      "NextStepType": {
+        "type": "string",
+        "enum": [
+          "overdue_bills",
+          "funding_gap",
+          "next_milestone",
+          "goal_achieved",
+          "onboarding"
+        ],
+        "description": "依序判斷（PRD 15.5）：overdue_bills → funding_gap → next_milestone（已達成時 goal_achieved）→ onboarding"
+      },
+      "DashboardNextStepDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "依序判斷（PRD 15.5）：overdue_bills → funding_gap → next_milestone（已達成時 goal_achieved）→ onboarding",
+            "example": "next_milestone",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NextStepType"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "畫面直接顯示的一句話",
+            "example": "再存 760,000 元就到第 2 站"
+          },
+          "amount": {
+            "type": "string",
+            "nullable": true,
+            "description": "句子裡的大數字（缺口、還差多少）；overdue_bills、goal_achieved、onboarding 是 null",
+            "example": "760000.00"
+          }
+        },
+        "required": [
+          "type",
+          "message",
+          "amount"
+        ]
+      },
+      "DashboardSection": {
+        "type": "string",
+        "enum": [
+          "bills",
+          "loans",
+          "goal"
+        ],
+        "description": "還沒完成的區塊，前端顯示「準備中」；全部完成時是 []。bills 未完成 → 帳單欄位、fundingGap、nextStep 是 null；loans 未完成 → loans、netWorth 是 null；goal 未完成 → goal、nextStep 是 null"
+      },
+      "DashboardSummaryResponseDto": {
+        "type": "object",
+        "properties": {
+          "today": {
+            "type": "string",
+            "format": "date",
+            "description": "計算用的台北今天",
+            "example": "2026-10-25"
+          },
+          "month": {
+            "type": "string",
+            "description": "本月收支區塊的月份 YYYY-MM",
+            "example": "2026-10"
+          },
+          "income": {
+            "type": "string",
+            "description": "該月收入合計（不含轉帳、不含未來日期）",
+            "example": "50000.00"
+          },
+          "expense": {
+            "type": "string",
+            "description": "該月支出合計（不含轉帳、不含未來日期）",
+            "example": "30000.00"
+          },
+          "savingsRate": {
+            "type": "number",
+            "nullable": true,
+            "description": "儲蓄率 %，小數一位，可為負；收入為 0 時是 null（畫面顯示「—」）",
+            "example": 40
+          },
+          "accountsTotal": {
+            "type": "string",
+            "description": "帳戶合計：啟用帳戶目前餘額加總（含信用卡負值、投資、估計帳戶）",
+            "example": "240000.00"
+          },
+          "netWorth": {
+            "type": "string",
+            "nullable": true,
+            "description": "淨資產：所有帳戶目前餘額 − active 貸款未償餘額。loans 區塊未完成時是 null（不扣貸款的數字看起來正常但會偏高，所以不回傳），前端顯示「準備中」",
+            "example": "-760000.00"
+          },
+          "availableCash": {
+            "type": "string",
+            "description": "可用現金：啟用中 cash＋bank 帳戶（不含估計帳戶）",
+            "example": "260000.00"
+          },
+          "hasCashAccounts": {
+            "type": "boolean",
+            "description": "有沒有啟用中的現金／銀行帳戶（不含估計帳戶）；false 時不計算資金缺口",
+            "example": true
+          },
+          "billsOverdue": {
+            "nullable": true,
+            "description": "逾期未繳帳單，依到期日由舊到新，最多 5 筆；bills 區塊未完成時是 null",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardBillBriefDto"
+            }
+          },
+          "billsOverdueCount": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "description": "逾期未繳帳單的總張數（不受 5 筆上限影響）；bills 區塊未完成時是 null",
+            "example": 0
+          },
+          "billsDueSoon": {
+            "nullable": true,
+            "description": "台北今天到今天＋14 天（含頭尾）到期的待繳帳單，依到期日排序，最多 5 筆；bills 區塊未完成時是 null",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardBillBriefDto"
+            }
+          },
+          "fundingGap": {
+            "type": "string",
+            "nullable": true,
+            "description": "14 天資金缺口：14 天內待繳帳單合計 − 可用現金，> 0 時才有值；沒有缺口、沒有現金／銀行帳戶，或 bills 區塊未完成時是 null（PRD 15.5）",
+            "example": "15000.00"
+          },
+          "loans": {
+            "nullable": true,
+            "description": "貸款摘要；loans 區塊未完成時是 null",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardLoansDto"
+              }
+            ]
+          },
+          "goal": {
+            "nullable": true,
+            "description": "目標進度摘要；還沒完成問卷，或 goal 區塊未完成時是 null",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardGoalDto"
+              }
+            ]
+          },
+          "nextStep": {
+            "nullable": true,
+            "description": "一句下一步。判斷需要 bills 與 goal 區塊；任一個未完成時是 null（資料不完整時不給可能錯誤的建議），前端顯示「準備中」",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardNextStepDto"
+              }
+            ]
+          },
+          "unavailable": {
+            "type": "array",
+            "description": "還沒完成的區塊，前端顯示「準備中」；全部完成時是 []。bills 未完成 → 帳單欄位、fundingGap、nextStep 是 null；loans 未完成 → loans、netWorth 是 null；goal 未完成 → goal、nextStep 是 null",
+            "example": [
+              "loans"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DashboardSection"
+            }
+          }
+        },
+        "required": [
+          "today",
+          "month",
+          "income",
+          "expense",
+          "savingsRate",
+          "accountsTotal",
+          "netWorth",
+          "availableCash",
+          "hasCashAccounts",
+          "billsOverdue",
+          "billsOverdueCount",
+          "billsDueSoon",
+          "fundingGap",
+          "loans",
+          "goal",
+          "nextStep",
+          "unavailable"
+        ]
       }
     }
   }

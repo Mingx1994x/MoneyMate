@@ -2,8 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ClockModule } from './clock/clock.module.js';
 import { validateEnv } from './config/env.validation.js';
+import { AccountsModule } from './modules/accounts/accounts.module.js';
+import { CategoriesModule } from './modules/categories/categories.module.js';
+import { DashboardModule } from './modules/dashboard/dashboard.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { LoansModule } from './modules/loans/loans.module.js';
+import { TransactionsModule } from './modules/transactions/transactions.module.js';
 import { PrismaModule } from './prisma/index.js';
 
 @Module({
@@ -19,6 +23,10 @@ import { PrismaModule } from './prisma/index.js';
     ClockModule,
     HealthModule,
     LoansModule,
+    CategoriesModule,
+    AccountsModule,
+    TransactionsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}
