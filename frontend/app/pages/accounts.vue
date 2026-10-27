@@ -36,7 +36,7 @@ onMounted(() => {
   }
 })
 
-async function save(values: { name: string; accountType: Account['accountType']; openingBalance: string; note: string | null }) {
+async function save(values: { name: string; accountType: Account['accountType']; openingBalance: string; note?: string | null }) {
   if (editing.value === 'new') {
     // 15.9：初始餘額 > 0 且有估計帳戶時，詢問要不要從估計值扣掉
     let deductFromEstimate = false
