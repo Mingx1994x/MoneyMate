@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ClockModule } from './clock/clock.module.js';
 import { validateEnv } from './config/env.validation.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { LoansModule } from './modules/loans/loans.module.js';
@@ -15,6 +16,7 @@ import { PrismaModule } from './prisma/index.js';
       validate: validateEnv,
     }),
     PrismaModule,
+    ClockModule,
     HealthModule,
     LoansModule,
   ],
