@@ -16,7 +16,7 @@
 | `created_at` | 新增時自動填入 |
 | `updated_at` | 預設 `now()`，Prisma 每次修改時更新；**用 raw SQL UPDATE 時要自己寫 `updated_at = now()`** |
 | `user_id` | 所有業務資料表都有；所有查詢都要帶入登入者 |
-| 複合外鍵 | 交易的 `account_id`、`to_account_id` 和帳單的 `account_id` 用 `(帳戶 id, user_id)` 一起對應到 accounts。**資料庫會擋下「用別人的帳戶」**（Prisma 錯誤 P2003），是 service 檢查之外的最後一道防線 |
+| 複合外鍵 | 交易的 `account_id`、`to_account_id` 和帳單的 `account_id` 用 `(帳戶 id, user_id)` 一起對應到 accounts。**資料庫會擋下「用別人的帳戶」**（Prisma 錯誤 P2003），是 service 檢查之外的最後一道防線。`onUpdate` 是 Restrict：有交易或帳單的帳戶不能改 `user_id`，不會把資料搬給別人 |
 | `null` | **代表「沒有資料」，不等於 0 或空字串**。每個可為 null 的欄位都在下面寫出 null 的意思 |
 | `note` 備註 | 所有表的 `note` 都一樣：選填、最多 200 字；**空字串存成 null** |
 | 刪除規則 | 刪除使用者 → 他的所有資料一起刪除（Cascade）；業務資料之間不能直接刪（Restrict），例如帳戶還有交易就不能刪 |
@@ -46,7 +46,7 @@
 | `currency` | text | 否 | — | 固定 `TWD`，不開放輸入 |
 | `opening_balance` | numeric(14,2) | 否 | — | 初始餘額；只有信用卡和**估計帳戶**可以是負數（估計帳戶被扣除後，初始餘額可能變負，但目前餘額不會是負數，見 PRD 15.9） |
 | `is_active` | boolean | 否 | — | 預設 `true`；有交易的帳戶只能停用不能刪 |
-| `is_estimate` | boolean | 否 | — | 問卷建立的「現有資產（估計）」帳戶為 `true`；每人最多 1 個 |
+| `is_estimate` | boolean | 否 | — | 問卷建立的「現有資產（估計）」帳戶為 `true`；每人最多 1 個；類型一定是 `bank` |
 | `deducted_from_estimate` | numeric(14,2) | 是 | 建立這個帳戶時**沒有**從估計帳戶扣錢（使用者選「否」、扣除金額為 0、信用卡等初始餘額 ≤ 0 不詢問的帳戶、估計帳戶本身）。**不存 0，一律存 null** | 有值（> 0）= 扣了多少；刪除帳戶時可加回 |
 | `note` | text | 是 | 沒有備註 | 最多 200 字 |
 | `created_at`、`updated_at` | timestamptz | 否 | — | |
@@ -177,14 +177,17 @@
 
 ---
 
-## 待補：第一份 migration 手動加的規則
+## 手動加在 migration 的規則
 
-Prisma 寫不出來，要在第一份 migration 的 SQL 手動加：
+Prisma 寫不出來，已手動加在第一份 migration（`backend/prisma/migrations/20261027034404_init/migration.sql` 最下面）。之後要改這些規則，要另外手寫一份新的 migration，並同步更新這張表：
 
 | 資料表 | 規則 |
 |---|---|
 | users | CHECK：`email` 必須是小寫 |
+| accounts | CHECK：`currency` 必須是 `TWD` |
 | accounts | CHECK：`opening_balance` ≥ 0，**信用卡和估計帳戶除外**（要跟 C 確認估計帳戶轉換） |
+| accounts | CHECK：估計帳戶（`is_estimate = true`）的類型必須是 `bank` |
+| accounts | CHECK：`deducted_from_estimate` 是 null 或 > 0（**沒扣就存 null，不存 0**） |
 | accounts | 部分唯一索引：每位使用者最多 1 個 `is_estimate = true` |
 | transactions | CHECK：`amount` > 0 |
 | transactions | CHECK：轉帳要有 `to_account_id`、沒有 `category_id`、兩個帳戶不同；收入／支出要有 `category_id`、沒有 `to_account_id` |
@@ -193,9 +196,20 @@ Prisma 寫不出來，要在第一份 migration 的 SQL 手動加：
 | bills | CHECK：`amount` > 0、`paid_amount` 是 null 或 > 0、`due_day` 在 1–31、`due_month` 是 null 或在 1–12、**`yearly` 一定要有 `due_month`**（反過來不檢查，因為停止重複後 `none` 也可能有 `due_month`） |
 | bills | 部分唯一索引：同一個 `series_id` 最多 1 張 `pending` |
 | goals | CHECK：`monthly_spending` 在 1,000–333,000 之間，而且是**整數** |
+| goals | CHECK：`target_amount` = `monthly_spending` × 300 |
 
 **不寫成 CHECK、留給 service 檢查：** 跟「今天」有關的規則（`paid_date` 不能晚於今天、`end_date` 早於今天時必須是 `closed`、`birth_year` 不能超過今年）。原因：資料庫的「今天」是 UTC，我們的「今天」是台北時間。
 
-⚠️ 建好第一份 migration 後，再跑一次 `prisma migrate dev` 和 `prisma migrate diff`，**兩個都要顯示沒有變更**。Prisma 會追蹤索引，可能會想把手動加的部分唯一索引刪掉。
+**自動測試：** `backend/test/db-constraints.e2e-spec.ts`（`npm run test:e2e -- test/db-constraints.e2e-spec.ts`）。改規則時要同步改測試。
 
-**可選（D 寫 migration 時決定）：** `currency = 'TWD'`。
+**drift 檢查**（Prisma 會不會想刪掉手動加的部分唯一索引）：✅ 2026/10/27 檢查過，兩個都是空的。之後改到這些表的 migration，都要在 `backend/` 再跑一次：
+
+```bash
+# 1. 應該只產生「This is an empty migration.」，看完把這個資料夾刪掉
+npx prisma migrate dev --create-only --name drift_check
+
+# 2. 需要一個空的 shadow 資料庫（先建立，用完刪掉）；結果應該是「This is an empty migration.」
+docker exec moneymate-db psql -U postgres -c "CREATE DATABASE shadow_check;"
+SHADOW_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/shadow_check npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script
+docker exec moneymate-db psql -U postgres -c "DROP DATABASE shadow_check;"
+```
