@@ -28,6 +28,7 @@ import {
   IsNote,
   Trim,
 } from '../../src/common/validators.js';
+import { Public } from '../../src/modules/auth/index.js';
 
 // 只給 validation 的 e2e 用：handler 把驗證、轉換後的 DTO 原樣回傳
 
@@ -91,6 +92,8 @@ class ValidationListQueryDto extends PaginationQueryDto {
   includeInactive?: boolean;
 }
 
+// 不是在測登入，所以公開（全域 guard 在 pipe 之前執行，沒帶 token 會先回 401）
+@Public()
 @Controller('__validation-test')
 export class ValidationTestController {
   @Post()

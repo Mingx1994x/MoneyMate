@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { createTestApp } from './utils/create-test-app.js';
+import { bearer } from './utils/test-token.js';
 
 const ID = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
 
@@ -14,13 +15,15 @@ const CREATE_BODY = {
 
 /**
  * accounts 空殼：全部端點回 501。
- * AUTH-1 加上 guard 後，沒帶 token 會先回 401，這裡要改成帶 token（C 的 test/utils/auth.ts）。
+ * AUTH-1 之後要帶 token，否則 guard 先回 401（沒帶 token 的情況在 auth.e2e-spec.ts）。
  */
 describe('帳戶空殼（e2e）', () => {
   let app: INestApplication<App>;
+  let auth: string;
 
   beforeAll(async () => {
     app = await createTestApp();
+    auth = await bearer(app);
   });
 
   afterAll(async () => {
@@ -36,6 +39,7 @@ describe('帳戶空殼（e2e）', () => {
   ] as const)('%s %s 回 501 NOT_IMPLEMENTED', async (method, path, body) => {
     const res = await request(app.getHttpServer())
       [method](path)
+      .set('Authorization', auth)
       .send(body)
       .expect(501);
     expect(res.body).toMatchObject({
@@ -50,6 +54,7 @@ describe('帳戶空殼（e2e）', () => {
     async (method) => {
       const res = await request(app.getHttpServer())
         [method]('/api/v1/accounts/not-a-uuid')
+        .set('Authorization', auth)
         .expect(404);
       expect(res.body).toMatchObject({
         code: 'ACCOUNT_NOT_FOUND',

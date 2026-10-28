@@ -12,6 +12,7 @@ import {
   Validate,
   ValidateIf,
   ValidatorConstraint,
+  type ValidationArguments,
   type ValidatorConstraintInterface,
   validateSync,
 } from 'class-validator';
@@ -83,6 +84,23 @@ class CaCertConstraint implements ValidatorConstraintInterface {
   }
 }
 
+/**
+ * JWT 簽章金鑰。每個環境都必填；production 至少 32 字元而且不可含 insecure
+ * （.env.test.example 的假值刻意短於 32 字元並含 insecure，誤用到正式環境時啟動就會失敗）。
+ */
+@ValidatorConstraint({ name: 'jwtSecret' })
+class JwtSecretConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown, args: ValidationArguments): boolean {
+    if (typeof value !== 'string' || value.trim() === '') return false;
+    if ((args.object as EnvVars).NODE_ENV !== 'production') return true;
+    return value.length >= 32 && !value.toLowerCase().includes('insecure');
+  }
+
+  defaultMessage(): string {
+    return 'JWT_SECRET 必填；production 至少 32 字元而且不可含 insecure（可用 openssl rand -base64 48 產生）';
+  }
+}
+
 const TRUST_PROXY_HOPS_VALUES = Array.from({ length: 11 }, (_, i) => i);
 
 /** 只把純數字字串轉成數字；''、'1.5'、'true' 原樣保留交給 @IsIn() 擋下（Number('') 會是 0） */
@@ -115,6 +133,9 @@ export class EnvVars {
 
   @Validate(CorsOriginsConstraint)
   CORS_ORIGIN!: string;
+
+  @Validate(JwtSecretConstraint)
+  JWT_SECRET!: string;
 
   /**
    * 只接受 'true'／'false'；沒設時依 NODE_ENV 決定（見 isSwaggerEnabled）。

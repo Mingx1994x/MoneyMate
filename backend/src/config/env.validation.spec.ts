@@ -8,7 +8,11 @@ const valid = {
   NODE_ENV: 'development',
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/app_dev',
   CORS_ORIGIN: 'http://localhost:3000',
+  JWT_SECRET: 'dev-insecure-jwt-secret',
 };
+
+// production 用的金鑰：至少 32 字元、不含 insecure
+const PRODUCTION_JWT_SECRET = 'q7Vb2kLx9TzR4mNw8PdY3sHc6FgJ1aUe5XoK0iBt';
 
 describe('parseCorsOrigins', () => {
   it('去掉空白與結尾的 /，切成多個 origin', () => {
@@ -108,6 +112,7 @@ describe('DATABASE_SSL、DATABASE_CA_CERT、TRUST_PROXY_HOPS', () => {
     DATABASE_SSL: 'true',
     DATABASE_CA_CERT: Buffer.from(PEM).toString('base64'),
     TRUST_PROXY_HOPS: '1',
+    JWT_SECRET: PRODUCTION_JWT_SECRET,
   };
 
   it('production 全部設好時通過，型別已轉換', () => {
@@ -221,5 +226,56 @@ describe('SWAGGER_ENABLED', () => {
     expect(
       isSwaggerEnabled({ NODE_ENV: 'development', SWAGGER_ENABLED: false }),
     ).toBe(false);
+  });
+});
+
+describe('JWT_SECRET', () => {
+  const production = {
+    ...valid,
+    NODE_ENV: 'production',
+    DATABASE_SSL: 'false',
+    TRUST_PROXY_HOPS: '1',
+  };
+
+  it.each([undefined, '', '   '])('沒設或空白（%j）時失敗', (secret) => {
+    expect(() => validateEnv({ ...valid, JWT_SECRET: secret })).toThrow(
+      /JWT_SECRET/,
+    );
+  });
+
+  it('development 可以用短的假值', () => {
+    expect(validateEnv(valid).JWT_SECRET).toBe('dev-insecure-jwt-secret');
+  });
+
+  it('production 至少 32 字元而且不含 insecure 才通過', () => {
+    expect(
+      validateEnv({ ...production, JWT_SECRET: PRODUCTION_JWT_SECRET })
+        .JWT_SECRET,
+    ).toBe(PRODUCTION_JWT_SECRET);
+  });
+
+  it.each([
+    ['短於 32 字元', 'short-secret'],
+    [
+      '含 insecure（.env.example 的假值）',
+      'dev-insecure-jwt-secret-padding-to-40',
+    ],
+    ['大寫的 INSECURE 也擋', 'x'.repeat(32) + 'INSECURE'],
+  ])('production %s 時失敗', (_, secret) => {
+    expect(() => validateEnv({ ...production, JWT_SECRET: secret })).toThrow(
+      /JWT_SECRET/,
+    );
+  });
+
+  it('錯誤訊息不含金鑰本身', () => {
+    const secret = 'leaked-insecure-value';
+    let message = '';
+    try {
+      validateEnv({ ...production, JWT_SECRET: secret });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/JWT_SECRET/);
+    expect(message).not.toContain(secret);
   });
 });
