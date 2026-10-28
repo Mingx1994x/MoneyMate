@@ -1,7 +1,7 @@
 import { NotImplementedException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { LoansModule } from './loans.module.js';
-import { LoansService } from './loans.service.js';
+// 從 index 匯入，確認 C 用的入口匯出了模組與 service
+import { LoansModule, LoansService } from './index.js';
 
 describe('LoansService（LOAN-1 空殼）', () => {
   it('LoansModule 匯出 LoansService，其他模組 import 後拿得到', async () => {
