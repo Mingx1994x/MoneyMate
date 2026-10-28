@@ -12,6 +12,14 @@ const UNAUTHENTICATED = {
   details: [],
 };
 
+// 全域 ValidationPipe（INF-4）之後，不合法的 body 會先回 400，要送合法的值才會走到 501
+const REGISTER_BODY = {
+  email: 'shin@example.com',
+  password: 'correct-horse-battery',
+};
+const LOGIN_BODY = REGISTER_BODY;
+const ONBOARDING_BODY = { monthlySpending: 40000 };
+
 const NOT_IMPLEMENTED = {
   statusCode: 501,
   code: 'NOT_IMPLEMENTED',
@@ -37,10 +45,13 @@ describe('登入驗證與 D 的空殼（e2e）', () => {
 
   describe('公開端點：不帶 token 也能呼叫', () => {
     it.each([
-      ['post', '/api/v1/auth/register'],
-      ['post', '/api/v1/auth/login'],
-    ] as const)('%s %s 回 501（不是 401）', async (method, path) => {
-      const res = await request(app.getHttpServer())[method](path).expect(501);
+      ['post', '/api/v1/auth/register', REGISTER_BODY],
+      ['post', '/api/v1/auth/login', LOGIN_BODY],
+    ] as const)('%s %s 回 501（不是 401）', async (method, path, body) => {
+      const res = await request(app.getHttpServer())
+        [method](path)
+        .send(body)
+        .expect(501);
       expect(res.body).toMatchObject(NOT_IMPLEMENTED);
     });
 
@@ -52,12 +63,12 @@ describe('登入驗證與 D 的空殼（e2e）', () => {
 
   describe('需要登入的端點', () => {
     const protectedRoutes = [
-      ['get', '/api/v1/auth/me'],
-      ['post', '/api/v1/onboarding'],
-      ['get', '/api/v1/goal'],
-      ['patch', '/api/v1/goal'],
-      ['get', '/api/v1/goal/progress'],
-      ['get', '/api/v1/loans'],
+      ['get', '/api/v1/auth/me', undefined],
+      ['post', '/api/v1/onboarding', ONBOARDING_BODY],
+      ['get', '/api/v1/goal', undefined],
+      ['patch', '/api/v1/goal', undefined],
+      ['get', '/api/v1/goal/progress', undefined],
+      ['get', '/api/v1/loans', undefined],
     ] as const;
 
     it.each(protectedRoutes)(
@@ -72,10 +83,11 @@ describe('登入驗證與 D 的空殼（e2e）', () => {
 
     it.each(protectedRoutes.slice(0, 5))(
       '%s %s 帶 token 回 501',
-      async (method, path) => {
+      async (method, path, body) => {
         const res = await request(app.getHttpServer())
           [method](path)
           .set('Authorization', auth)
+          .send(body)
           .expect(501);
         expect(res.body).toMatchObject(NOT_IMPLEMENTED);
       },
