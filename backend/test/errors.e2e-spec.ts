@@ -10,9 +10,11 @@ import {
 } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { Public } from '../src/modules/auth/index.js';
 import { createTestApp } from './utils/create-test-app.js';
 
-// 只給這個測試用：正式的空殼端點要到 LOAN-1 才有
+// 只給這個測試用：測的是錯誤格式，不是登入，所以設成公開
+@Public()
 @Controller('__errors-test')
 class ErrorsTestController {
   @Get('not-implemented')

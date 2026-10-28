@@ -2,18 +2,21 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { createTestApp } from './utils/create-test-app.js';
+import { bearer } from './utils/test-token.js';
 
 const ID = '5c3a1e8f-7d2b-4f6a-b9e0-1d4c7a2f8b36';
 
 /**
  * BILL-1 空殼：全部端點回 501。
- * AUTH-1 加上 guard 後，沒帶 token 會先回 401，這裡要改成帶 token（C 的 test/utils/auth.ts）。
+ * AUTH-1 之後要帶 token，否則 guard 先回 401（沒帶 token 的情況在 auth.e2e-spec.ts）。
  */
 describe('帳單空殼（e2e）', () => {
   let app: INestApplication<App>;
+  let auth: string;
 
   beforeAll(async () => {
     app = await createTestApp();
+    auth = await bearer(app);
   });
 
   afterAll(async () => {
@@ -30,7 +33,10 @@ describe('帳單空殼（e2e）', () => {
     ['post', `/api/v1/bills/${ID}/unpay`],
     ['post', `/api/v1/bills/${ID}/stop-recurrence`],
   ] as const)('%s %s 回 501 NOT_IMPLEMENTED', async (method, path) => {
-    const res = await request(app.getHttpServer())[method](path).expect(501);
+    const res = await request(app.getHttpServer())
+      [method](path)
+      .set('Authorization', auth)
+      .expect(501);
     expect(res.body).toMatchObject({
       statusCode: 501,
       code: 'NOT_IMPLEMENTED',
@@ -48,7 +54,10 @@ describe('帳單空殼（e2e）', () => {
   ] as const)(
     '%s %s 回 404 BILL_NOT_FOUND（:id 不是 UUID）',
     async (method, path) => {
-      const res = await request(app.getHttpServer())[method](path).expect(404);
+      const res = await request(app.getHttpServer())
+        [method](path)
+        .set('Authorization', auth)
+        .expect(404);
       expect(res.body).toMatchObject({
         code: 'BILL_NOT_FOUND',
         message: '找不到這張帳單',

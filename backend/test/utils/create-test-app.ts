@@ -9,7 +9,8 @@ import { configureApp } from '../../src/app.setup.js';
  * 所有 e2e 一律透過這個函式建 app，確保和正式環境走同一個 configureApp。
  * - override：替換 provider，例如固定 ClockService 的今天（INF-6）。
  * - controllers：只給測試用的 controller（例如丟出特定例外，測 filter 的行為）。
- * - C 在 W2 於同一個資料夾加 reset-db.ts（清資料）與 auth.ts（登入 helper）。
+ * - 需要登入的端點用 test-token.ts 的 bearer(app) 帶 token。
+ * - C 在 W2 於同一個資料夾加 reset-db.ts（清資料）與 auth.ts（真的註冊、登入的 helper）。
  */
 export async function createTestApp(opts?: {
   override?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
