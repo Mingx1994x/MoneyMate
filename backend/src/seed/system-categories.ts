@@ -1,4 +1,4 @@
-import { CategoryType, type PrismaTx } from '../prisma/index.js';
+import { CategoryType, Prisma, type PrismaTx } from '../prisma/index.js';
 
 /**
  * 12 個系統分類（PRD FR-12、docs/data-dictionary.md「系統分類」）。
@@ -46,29 +46,42 @@ export const SYSTEM_CATEGORIES = [
 ] as const;
 
 /**
- * 建立或更新系統分類，可以重複執行（用 code 當 upsert 的鍵）。
+ * 建立或更新系統分類，可以重複執行（用 code 當衝突的鍵）。
  * - 新增：user_id 是 null（系統分類），is_active 為 true。
  * - 已存在：只更新 name、type、sort_order，不動 is_active（之後如果有人停用某個分類，重跑 seed 不會又打開）。
- * - 不會刪除任何分類，也不會動使用者自己的分類（P1）：code 已被某位使用者的分類用掉時直接丟錯，
- *   不會悄悄改到他的資料。
+ * - 不會刪除任何分類，也不會動使用者自己的分類（P1）：code 已被某位使用者的分類用掉時，
+ *   那一列不會被更新，函式丟錯（呼叫的交易跟著回滾），不會悄悄改到他的資料。
+ *
+ * 12 筆用一個 INSERT … ON CONFLICT 寫入，而不是逐筆 findUnique＋upsert：
+ * - 一次來回：從遠端（Supabase）執行時，24 次連續查詢可能超過互動式交易的 10 秒上限。
+ * - 不可分割：「user_id IS NULL 才更新」由資料庫在同一個動作內判斷，兩個 seed 同時跑、
+ *   或有人同時新增分類，都不會讓檢查與寫入之間被插隊。
  * 由 seed 腳本或測試呼叫；有 tx 參數，呼叫的人負責開交易。回傳系統分類的數量。
  */
 export async function seedSystemCategories(tx: PrismaTx): Promise<number> {
-  for (const { code, name, type, sortOrder } of SYSTEM_CATEGORIES) {
-    const existing = await tx.category.findUnique({
-      where: { code },
-      select: { userId: true },
-    });
-    if (existing?.userId) {
-      throw new Error(
-        `seedSystemCategories: code「${code}」已經是使用者的分類，不能當系統分類`,
-      );
-    }
-    await tx.category.upsert({
-      where: { code },
-      create: { code, name, type, sortOrder },
-      update: { name, type, sortOrder },
-    });
+  const values = Prisma.join(
+    SYSTEM_CATEGORIES.map(
+      (c) =>
+        Prisma.sql`(${c.code}, ${c.name}, ${c.type}::"category_type", ${c.sortOrder})`,
+    ),
+  );
+  // 衝突的那一列若是使用者的分類，WHERE 不成立，不會更新也不會出現在 RETURNING
+  const written = await tx.$queryRaw<{ code: string }[]>`
+    INSERT INTO categories (code, name, type, sort_order)
+    VALUES ${values}
+    ON CONFLICT (code) DO UPDATE
+      SET name = EXCLUDED.name, type = EXCLUDED.type, sort_order = EXCLUDED.sort_order
+      WHERE categories.user_id IS NULL
+    RETURNING code`;
+
+  if (written.length !== SYSTEM_CATEGORIES.length) {
+    const done = new Set(written.map((r) => r.code));
+    const clashes = SYSTEM_CATEGORIES.filter((c) => !done.has(c.code)).map(
+      (c) => c.code,
+    );
+    throw new Error(
+      `seedSystemCategories: code「${clashes.join('、')}」已經是使用者的分類，不能當系統分類`,
+    );
   }
   return SYSTEM_CATEGORIES.length;
 }

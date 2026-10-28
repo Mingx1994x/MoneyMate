@@ -66,6 +66,23 @@ describe('系統分類 seed（e2e）', () => {
     });
   });
 
+  it('類型被改掉後，重跑會改回來（update 也寫 type）', async () => {
+    await run();
+    await prisma.category.update({
+      where: { code: 'salary' },
+      data: { type: 'expense' },
+    });
+    await run();
+    expect(
+      (await prisma.category.findUnique({ where: { code: 'salary' } }))?.type,
+    ).toBe('income');
+  });
+
+  it('兩個 seed 同時執行：都成功，還是 12 個（沒有 unique 衝突）', async () => {
+    await Promise.all([run(), run(), run()]);
+    expect(await prisma.category.count()).toBe(12);
+  });
+
   it('被停用的分類，重跑不會又打開', async () => {
     await run();
     await prisma.category.update({
@@ -112,6 +129,8 @@ describe('系統分類 seed（e2e）', () => {
       },
     });
     await expect(run()).rejects.toThrow(/transport/);
+    // 錯誤訊息只列出衝突的代碼，不會把沒衝突的也列進去
+    await expect(run()).rejects.not.toThrow(/salary|food/);
     const rows = await prisma.category.findMany();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ code: 'transport', name: '使用者的' });
