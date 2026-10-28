@@ -91,6 +91,9 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
 
 | 工具                                | 位置                               | 用法                                                                                                                                                                                                                                               |
 | ----------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@Public()`                         | `modules/auth/index.ts`            | 不需要登入的端點（register、login、`/health`）。JWT guard 是全域的，**沒加的端點一律要帶 token**，否則回 401 `AUTH_UNAUTHENTICATED`。可加在方法或類別上                                                                                            |
+| `@CurrentUser()`                    | 同上                               | 取得登入者：`findAll(@CurrentUser() user: AuthUser)`，用 `user.id` 查詢。只有 `id`（guard 不查資料庫）。實作 PR 才加，空殼不用                                                                                                                     |
+| `bearer(app, userId?)`              | `test/utils/test-token.ts`         | e2e 直接簽 token：`.set('Authorization', await bearer(app))`。要查資料庫的測試，`userId` 傳資料庫裡真的有的使用者                                                                                                                                  |
 | `@ApiAuth()`                        | `common/swagger/api-decorators.ts` | 需要登入：Bearer＋401。整個 controller 都要登入時加在類別上；公開與需登入的端點混在一起時，加在需要登入的方法上                                                                                                                                    |
 | `@ApiErrors(...)`                   | 同上                               | 列出端點可能的錯誤代碼（`'CODE'` 或 `['ACCOUNT_NOT_FOUND', 400]`）。每個方法最多一個；沒有可能的代碼就不寫；需要登入的端點不列 401。類別上有 `@ApiAuth()`、方法又要列別的 401 代碼時，要一起列 `'AUTH_UNAUTHENTICATED'`（方法的 401 會蓋掉類別的） |
 | `@ApiNotImplemented()`              | 同上                               | 空殼端點：加上 501，文件的 summary 會標「【未實作】」。實作 PR 要拿掉                                                                                                                                                                              |
@@ -194,7 +197,8 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
   - `PATCH` 裡不可為空的欄位用 `@ValidateIf((_, v) => v !== undefined)`；`@IsOptional()` 會放過 `null`，只用在可為空的欄位。
   - 用 `PartialType` 產生 UpdateDto 時一律寫 `PartialType(CreateDto, { skipNullProperties: false })`：預設會對每個欄位套 `@IsOptional()`，`{ amount: null }` 會通過驗證、到 service 才變成 500。可為 null 的欄位在子類別另外加 `@IsOptional()`。
   - 全域 ValidationPipe 在 INF-4（W2）才加入，在那之前 DTO 先用單元測試的 `plainToInstance` 加 `validate()` 驗證；service 的業務錯誤丟 `AppException`（見「錯誤處理」）。
-- **e2e**：一律用 `test/utils/create-test-app.ts` 的 `createTestApp()` 建 app，它和正式環境走同一個 `configureApp`。
+- **e2e**：一律用 `test/utils/create-test-app.ts` 的 `createTestApp()` 建 app，它和正式環境走同一個 `configureApp`。需要登入的端點用 `bearer(app)` 帶 token；測試用的 controller（例如測錯誤格式）不是在測登入，就加 `@Public()`。
+- **登入（AUTH-1）**：token 用 HS256、有效 24 小時、只帶 `sub`（使用者 id），金鑰是 `JWT_SECRET`。發 token 用 `TokenService.signAccessToken(user)`，只在註冊、登入（AUTH-2）呼叫。
 - **新增必填環境變數**：同一個 PR 要一起更新 `src/config/env.validation.ts`、`.env.example`、`.env.test.example`、`src/openapi/export-env.constants.ts` 與 CI 的 env（`backend` job，以及 `docker` job 的 `-e`）。
   - **只在 `production` 必填、其他環境有預設值**的變數（例如 `DATABASE_SSL`、`TRUST_PROXY_HOPS`）**不可以**寫屬性初始值：`plainToInstance` 會先 `new EnvVars()`，`production` 沒設時會直接拿到初始值而通過驗證。改用 `@ValidateIf` 只在 `production` 或有設值時驗證，預設值在 `validateEnv` 最後補上。
   - 測試不同環境變數的 e2e 要**另開一個檔案**，`vi.stubEnv` 之後再動態 import `createTestApp`（`@nestjs/config` 在 import 時就存下環境變數），參考 `test/trust-proxy.e2e-spec.ts`。

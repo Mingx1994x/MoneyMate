@@ -1,6 +1,200 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/auth/register": {
+      "post": {
+        "description": "Email 去除前後空白並轉成小寫後儲存；已經註冊過回 AUTH_EMAIL_TAKEN（比對也用小寫，大小寫不同視為同一個 Email）。\n\n密碼用 bcrypt 雜湊後儲存，回應不含任何密碼資訊。註冊成功直接登入，回傳 token，hasCompletedOnboarding 一定是 false。\n\n次數限制（PRD FR-03，AUTH-2 實作）：每個 IP 每分鐘最多 10 次，超過回 429 TOO_MANY_REQUESTS。上限由環境變數設定，測試環境調高（變數名稱在 AUTH-2 定義，並寫進 .env.example、.env.test.example 與 CI）。",
+        "operationId": "Auth_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`NAME_INVALID`：名稱需為 1 到 30 個字",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`AUTH_EMAIL_TAKEN`：這個 Email 已經註冊過了",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`TOO_MANY_REQUESTS`：操作太頻繁，請稍後再試",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "【未實作】註冊",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "description": "Email 轉成小寫後比對。Email 不存在、密碼錯誤都回 AUTH_INVALID_CREDENTIALS，不透露是哪一個錯。\n\nEmail 不存在時也要跑一次 bcrypt 比對，讓兩種情況的回應時間差不多。\n\n次數限制（PRD FR-03，AUTH-2 實作），兩條都要：\n1. 每個 IP 每分鐘最多 10 次（成功、失敗都算）。\n2. 每個 Email（轉成小寫後）每 15 分鐘最多失敗 5 次；超過後這個 Email 在剩下的時間內回 429，即使密碼正確也一樣。Email 不存在的失敗也要計算，才不會從回應看出這個 Email 有沒有註冊。\n\n超過任一條都回 429 TOO_MANY_REQUESTS。上限由環境變數設定，測試環境調高（變數名稱在 AUTH-2 定義，並寫進 .env.example、.env.test.example 與 CI）。MVP 只部署單一後端實例，記憶體計數才有效（PRD 第十九節）。",
+        "operationId": "Auth_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_INVALID_CREDENTIALS`：Email 或密碼錯誤",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`TOO_MANY_REQUESTS`：操作太頻繁，請稍後再試",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "【未實作】登入",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "description": "未完成問卷也可以呼叫。token 對應的使用者不存在時（例如資料庫被重設）回 401 AUTH_UNAUTHENTICATED。",
+        "operationId": "Auth_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】取得登入者資料",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "Health_check",
@@ -453,6 +647,275 @@
         "summary": "【未實作】刪除貸款（不會刪除帳單）",
         "tags": [
           "loans"
+        ]
+      }
+    },
+    "/api/v1/onboarding": {
+      "post": {
+        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
+        "operationId": "Onboarding_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOnboardingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalProgressDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_ALREADY_DONE`：已經完成問卷了",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】送出問卷（建立目標與估計帳戶）",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/api/v1/goal": {
+      "get": {
+        "operationId": "Goals_findOne",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】取得目標設定",
+        "tags": [
+          "goal"
+        ]
+      },
+      "patch": {
+        "description": "沒傳的欄位保持原值；birthYear、estMonthlySaving 傳 null 代表清空，monthlySpending 傳 null 回 400。\n\n改了 monthlySpending 時，targetAmount 由後端重算為 × 300（前端不能直接改目標金額）。\n\nbirthYear 晚於台北的今年回 VALIDATION_FAILED（field: birthYear）。",
+        "operationId": "Goals_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGoalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】修改目標（每月花費、出生年、自估每月儲蓄）",
+        "tags": [
+          "goal"
+        ]
+      }
+    },
+    "/api/v1/goal/progress": {
+      "get": {
+        "description": "目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。\n\n里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。\n\n年儲蓄：有 3 個以上完整月的記帳時，用最近最多 6 個完整月的平均（savingSource: actual）；否則用 estMonthlySaving（estimate）；都沒有時 fireAgeStatus 是 need_saving。\n\n狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。",
+        "operationId": "Goals_progress",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalProgressDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】目標進度與財富自由年齡",
+        "tags": [
+          "goal"
         ]
       }
     },
@@ -1452,29 +1915,82 @@
       }
     },
     "schemas": {
-      "HealthResponseDto": {
+      "RegisterDto": {
         "type": "object",
         "properties": {
-          "status": {
+          "email": {
             "type": "string",
-            "enum": [
-              "ok",
-              "error"
-            ],
-            "example": "ok"
+            "description": "Email，後端去除前後空白並轉成小寫後儲存與比對",
+            "maxLength": 254,
+            "example": "shin@example.com"
           },
-          "db": {
+          "password": {
             "type": "string",
-            "enum": [
-              "ok",
-              "down"
-            ],
-            "example": "ok"
+            "description": "密碼，8–72 字元，而且 UTF-8 編碼不超過 72 bytes（bcrypt 的上限；中文一個字約 3 bytes）",
+            "minLength": 8,
+            "maxLength": 72,
+            "example": "correct-horse-battery"
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true,
+            "description": "顯示名稱，選填，去除前後空白後 1–30 字；空字串當作沒填（null）",
+            "maxLength": 30,
+            "example": "Shin"
           }
         },
         "required": [
-          "status",
-          "db"
+          "email",
+          "password"
+        ]
+      },
+      "MeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "3f0c9a52-6f1e-4d0a-9a51-2a4c1b7e8d10"
+          },
+          "email": {
+            "type": "string",
+            "description": "小寫的 Email",
+            "example": "shin@example.com"
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true,
+            "description": "顯示名稱，沒填時是 null",
+            "example": "Shin"
+          },
+          "hasCompletedOnboarding": {
+            "type": "boolean",
+            "description": "是否完成問卷（有目標資料就是 true）。false 時前端一律導向問卷頁",
+            "example": false
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "displayName",
+          "hasCompletedOnboarding"
+        ]
+      },
+      "AuthResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "access token，有效 24 小時，沒有 refresh token。之後的請求放在 `Authorization: Bearer <token>`",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzZjBjOWE1MiJ9.signature"
+          },
+          "user": {
+            "$ref": "#/components/schemas/MeDto"
+          }
+        },
+        "required": [
+          "accessToken",
+          "user"
         ]
       },
       "ErrorCode": {
@@ -1594,6 +2110,49 @@
           "message",
           "details",
           "requestId"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Email，不分大小寫",
+            "example": "shin@example.com"
+          },
+          "password": {
+            "type": "string",
+            "example": "correct-horse-battery"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "HealthResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "example": "ok"
+          },
+          "db": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "down"
+            ],
+            "example": "ok"
+          }
+        },
+        "required": [
+          "status",
+          "db"
         ]
       },
       "LoanPaymentPreviewResponseDto": {
@@ -1886,6 +2445,307 @@
             "maxLength": 200,
             "description": "備註，最多 200 字；空字串存成 null",
             "example": "每月 5 日自動扣款"
+          }
+        }
+      },
+      "CreateOnboardingDto": {
+        "type": "object",
+        "properties": {
+          "monthlySpending": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 333000,
+            "description": "財富自由後每月想花多少，整數 1,000–333,000",
+            "example": 40000
+          },
+          "currentAssets": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100000000,
+            "description": "現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）",
+            "example": 800000
+          }
+        },
+        "required": [
+          "monthlySpending"
+        ]
+      },
+      "MilestoneDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "第幾站，從 1 開始",
+            "example": 1
+          },
+          "amount": {
+            "type": "string",
+            "description": "這一站的金額，金額字串",
+            "example": "100000.00"
+          },
+          "label": {
+            "type": "string",
+            "example": "緊急預備金"
+          },
+          "reached": {
+            "type": "boolean",
+            "description": "目前金額 ≥ 這一站",
+            "example": true
+          }
+        },
+        "required": [
+          "index",
+          "amount",
+          "label",
+          "reached"
+        ]
+      },
+      "NextMilestoneDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "第幾站，從 1 開始",
+            "example": 1
+          },
+          "amount": {
+            "type": "string",
+            "description": "這一站的金額，金額字串",
+            "example": "100000.00"
+          },
+          "label": {
+            "type": "string",
+            "example": "緊急預備金"
+          },
+          "reached": {
+            "type": "boolean",
+            "description": "目前金額 ≥ 這一站",
+            "example": true
+          },
+          "remaining": {
+            "type": "string",
+            "description": "再存多少就到這一站，金額字串，> 0",
+            "example": "200000.00"
+          }
+        },
+        "required": [
+          "index",
+          "amount",
+          "label",
+          "reached",
+          "remaining"
+        ]
+      },
+      "FireAgeStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "achieved",
+          "need_birth_year",
+          "need_saving",
+          "unreachable",
+          "over_100"
+        ]
+      },
+      "SavingSource": {
+        "type": "string",
+        "enum": [
+          "actual",
+          "estimate"
+        ],
+        "description": "年儲蓄的來源；annualSaving 是 null 時也是 null"
+      },
+      "FireAssumptionsDto": {
+        "type": "object",
+        "properties": {
+          "annualSpending": {
+            "type": "string",
+            "description": "年支出 ＝ 每月花費 × 12，金額字串",
+            "example": "480000.00"
+          },
+          "annualSaving": {
+            "type": "string",
+            "nullable": true,
+            "description": "年儲蓄，金額字串；沒有實際記帳也沒有自估值時是 null",
+            "example": "180000.00"
+          },
+          "savingSource": {
+            "nullable": true,
+            "description": "年儲蓄的來源；annualSaving 是 null 時也是 null",
+            "example": "estimate",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SavingSource"
+              }
+            ]
+          },
+          "currentAssets": {
+            "type": "string",
+            "description": "現在資產 ＝ 帳戶合計（未扣除貸款），金額字串",
+            "example": "800000.00"
+          },
+          "age": {
+            "type": "integer",
+            "nullable": true,
+            "description": "年齡 ＝ 台北的今年 − 出生年；沒有出生年時是 null",
+            "example": 36
+          }
+        },
+        "required": [
+          "annualSpending",
+          "annualSaving",
+          "savingSource",
+          "currentAssets",
+          "age"
+        ]
+      },
+      "GoalProgressDto": {
+        "type": "object",
+        "properties": {
+          "targetAmount": {
+            "type": "string",
+            "description": "目標金額，金額字串",
+            "example": "12000000.00"
+          },
+          "currentAmount": {
+            "type": "string",
+            "description": "目前金額 ＝ 帳戶合計（PRD 15.1），可為負，金額字串",
+            "example": "800000.00"
+          },
+          "remaining": {
+            "type": "string",
+            "description": "還差多少 ＝ max(0, 目標 − 目前)，金額字串",
+            "example": "11200000.00"
+          },
+          "percent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "達成百分比，小數一位；≤ 0 時 0，≥ 目標時 100",
+            "example": 6.7
+          },
+          "achieved": {
+            "type": "boolean",
+            "description": "目前金額 ≥ 目標金額",
+            "example": false
+          },
+          "milestones": {
+            "description": "由小到大，最後一站是目標金額",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MilestoneDto"
+            }
+          },
+          "nextMilestone": {
+            "nullable": true,
+            "description": "下一個還沒到的站；全部達成時是 null",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NextMilestoneDto"
+              }
+            ]
+          },
+          "fireAge": {
+            "type": "integer",
+            "nullable": true,
+            "description": "財富自由年齡；fireAgeStatus 不是 ok 時是 null",
+            "example": 51
+          },
+          "fireAgeStatus": {
+            "example": "ok",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FireAgeStatus"
+              }
+            ]
+          },
+          "fireAssumptions": {
+            "$ref": "#/components/schemas/FireAssumptionsDto"
+          },
+          "activeLoanTotal": {
+            "type": "string",
+            "description": "active 貸款的未償餘額合計，金額字串；> 0 時前端顯示「目前資產未扣除貸款 X 元」",
+            "example": "0.00"
+          }
+        },
+        "required": [
+          "targetAmount",
+          "currentAmount",
+          "remaining",
+          "percent",
+          "achieved",
+          "milestones",
+          "nextMilestone",
+          "fireAge",
+          "fireAgeStatus",
+          "fireAssumptions",
+          "activeLoanTotal"
+        ]
+      },
+      "GoalDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "財富自由"
+          },
+          "monthlySpending": {
+            "type": "string",
+            "description": "財富自由後每月想花多少，金額字串（一定是整數元）",
+            "example": "40000.00"
+          },
+          "targetAmount": {
+            "type": "string",
+            "description": "目標金額 ＝ 每月花費 × 300，金額字串，由後端計算",
+            "example": "12000000.00"
+          },
+          "birthYear": {
+            "type": "integer",
+            "nullable": true,
+            "description": "出生年，算財富自由年齡用；沒填時是 null",
+            "example": 1990
+          },
+          "estMonthlySaving": {
+            "type": "string",
+            "nullable": true,
+            "description": "自估的每月儲蓄，金額字串；只有記帳不滿 3 個完整月時才用到。沒填時是 null",
+            "example": "15000.00"
+          }
+        },
+        "required": [
+          "name",
+          "monthlySpending",
+          "targetAmount",
+          "birthYear",
+          "estMonthlySaving"
+        ]
+      },
+      "UpdateGoalDto": {
+        "type": "object",
+        "properties": {
+          "monthlySpending": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 333000,
+            "description": "每月花費，整數 1,000–333,000；目標金額自動重算為 × 300",
+            "example": 40000
+          },
+          "birthYear": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1900,
+            "description": "出生年，1900 到台北的今年（今年的上限由 service 檢查，超過回 VALIDATION_FAILED，field: birthYear）；null 代表清空",
+            "example": 1990
+          },
+          "estMonthlySaving": {
+            "type": "string",
+            "nullable": true,
+            "description": "自估的每月儲蓄，金額字串，可以是 0 或負數（入不敷出）；null 代表清空",
+            "example": "15000.00"
           }
         }
       },

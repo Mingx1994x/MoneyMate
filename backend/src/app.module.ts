@@ -3,10 +3,13 @@ import { ConfigModule } from '@nestjs/config';
 import { ClockModule } from './clock/clock.module.js';
 import { validateEnv } from './config/env.validation.js';
 import { AccountsModule } from './modules/accounts/accounts.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { CategoriesModule } from './modules/categories/categories.module.js';
 import { DashboardModule } from './modules/dashboard/dashboard.module.js';
+import { GoalsModule } from './modules/goals/goals.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { LoansModule } from './modules/loans/loans.module.js';
+import { OnboardingModule } from './modules/onboarding/onboarding.module.js';
 import { TransactionsModule } from './modules/transactions/transactions.module.js';
 import { PrismaModule } from './prisma/index.js';
 
@@ -21,8 +24,11 @@ import { PrismaModule } from './prisma/index.js';
     }),
     PrismaModule,
     ClockModule,
+    AuthModule,
     HealthModule,
     LoansModule,
+    OnboardingModule,
+    GoalsModule,
     CategoriesModule,
     AccountsModule,
     TransactionsModule,

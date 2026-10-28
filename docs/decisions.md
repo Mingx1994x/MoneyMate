@@ -15,6 +15,7 @@
 | D-005 | 2026/10/26 | 自訂分類、每月校正提醒列為 P1 候選 | US-22、US-23、第二十九節第 20 項 |
 | D-006 | 2026/10/26 | 懶人記帳（Apple Pay 捷徑、電子發票匯入）列為 P1 候選 | US-26、US-27、FR-32、FR-33、A12、A13、第二十九節第 20 項 |
 | D-007 | 2026/10/26 | PR 審查分工與標題格式 | 20.7 協作規則 |
+| D-008 | 2026/10/27 | JWT 驗證不用 Passport，改用自己寫的全域 guard | 第七節、16.7 |
 
 ---
 
@@ -98,3 +99,19 @@
   - PR 標題結尾標上組別代號，例如 `✨ feat: GET /health + 資料庫檢查 (E)`。
 - **原因：** 補充 GitHub 協作需求確認
 - **誰同意：** 10/26 開發會議
+
+---
+
+## D-008 JWT 驗證不用 Passport，改用自己寫的全域 guard
+
+- **日期：** 2026/10/27
+- **決定：**
+  - 只用 `@nestjs/jwt` 簽發與驗證 token，guard（`JwtAuthGuard`）自己寫，不裝 `@nestjs/passport`、`passport-jwt`（PRD 第七節原本寫「`@nestjs/jwt`＋Passport」）。
+  - guard 用 `APP_GUARD` 註冊成全域：每個端點預設都要登入，公開端點加 `@Public()`。
+  - token 只帶 `sub`（使用者 id），HS256、有效 24 小時；guard 不查資料庫，`@CurrentUser()` 只有 `id`。
+- **原因：**
+  - 只有一種登入方式（Email＋密碼），Passport 的「多種 strategy」用不到，多 2 個套件與一層設定反而難懂。
+  - 全域 guard 不會漏加：新端點忘了加 `@UseGuards` 也一樣要登入。
+  - P0 沒有刪除帳號的功能，token 對應的使用者不會消失，所以不用每個請求都查一次資料庫。
+- **誰同意：** D 提出（PR AUTH-1），待 E 審查 PR 時確認
+- **影響：** C、E 的端點不用加任何 guard；實作時在參數加 `@CurrentUser() user: AuthUser`。
