@@ -55,7 +55,7 @@ export class GoalsController {
       '目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。',
       '里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。',
       '年儲蓄：有 3 個以上完整月的記帳時，用最近最多 6 個完整月的平均（savingSource: actual）；否則用 estMonthlySaving（estimate）；都沒有時 fireAgeStatus 是 need_saving。',
-      '狀態的判斷順序：need_birth_year → achieved → need_saving → unreachable → over_100 → ok。',
+      '狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。',
     ].join('\n\n'),
   })
   @ApiOkResponse({ type: GoalProgressDto })
