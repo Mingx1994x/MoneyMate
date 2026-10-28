@@ -46,6 +46,9 @@ npm run test:e2e                  # e2e：會先確認連的是 *_test 資料庫
 | `npm run db:migrate`               | 建立並套用 migration（本機，D 負責 schema）  |
 | `npm run db:deploy`                | 只套用既有 migration（部署用）               |
 | `npm run openapi:export`           | 匯出 `openapi.json`（不需要資料庫與 `.env`） |
+| `npm run seed:categories`          | 建立或更新 12 個系統分類（可重複執行）       |
+
+**系統分類 seed**：新資料庫（本機 `app_dev`、Supabase）要先跑一次，分類下拉選單才有選項。連哪個資料庫由 `DATABASE_URL` 決定（本機讀 `.env`）。只會新增或更新自己的 12 個分類（用 `code` 比對），不會刪除任何資料、不會動使用者的分類；之後被停用的分類重跑也不會又打開。分類清單在 `src/seed/system-categories.ts`，要和 `docs/data-dictionary.md` 的「系統分類」表一致（`system-categories.spec.ts` 會檢查）。e2e 需要分類時，在測試裡呼叫 `seedSystemCategories(tx)`。Demo 帳號與 12 個月 Demo 資料（`seed:demo`）要等 C 的 service 與 AUTH-2，之後再加。
 
 Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（沒裝時會自動下載 `latest`，目前是 8 RC），也不要照 Prisma 的更新提示執行 `npm i prisma@latest`。
 
