@@ -339,3 +339,149 @@ describe('describeError（Decimal 的錯誤）', () => {
     expect(describeError(err)).toBe('Error');
   });
 });
+
+const EMAIL = 'secret-email@test.local';
+const OVERFLOW = '9999999999999.99';
+
+function prismaError(options: {
+  code: string;
+  message?: string;
+  index?: string;
+  kind?: string;
+  cause?: string;
+  detail?: string;
+}): Error {
+  const cause: Record<string, unknown> = {};
+  if (options.kind !== undefined) cause.kind = options.kind;
+  if (options.index !== undefined) cause.constraint = { index: options.index };
+  if (options.cause !== undefined) cause.cause = options.cause;
+  if (options.detail !== undefined) cause.detail = options.detail;
+  const meta =
+    options.code === 'P2025'
+      ? { modelName: 'Loan', operation: 'update' }
+      : { driverAdapterError: { cause } };
+  return Object.assign(new Error(options.message ?? 'prisma'), {
+    name: 'PrismaClientKnownRequestError',
+    code: options.code,
+    meta,
+  });
+}
+
+describe('資料庫錯誤轉換', () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('重複 Email 回 409 AUTH_EMAIL_TAKEN，不記日誌', () => {
+    const { status, body } = run(
+      prismaError({
+        code: 'P2002',
+        index: 'users_email_key',
+        message: EMAIL,
+      }),
+    );
+    expect(status).toBe(409);
+    expect(body).toMatchObject({
+      statusCode: 409,
+      code: 'AUTH_EMAIL_TAKEN',
+      message: '這個 Email 已經註冊過了',
+      details: [
+        {
+          field: 'email',
+          code: 'AUTH_EMAIL_TAKEN',
+          message: '這個 Email 已經註冊過了',
+        },
+      ],
+    });
+    expect(JSON.stringify(body)).not.toContain(EMAIL);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('未知索引與帳戶外鍵回 500，body 不含索引名稱', () => {
+    const unknown = run(
+      prismaError({ code: 'P2002', index: 'not_a_real_index', message: EMAIL }),
+    );
+    expect(unknown.status).toBe(500);
+    expect(unknown.body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(unknown.body)).not.toContain('not_a_real_index');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+
+    const fk = run(
+      prismaError({
+        code: 'P2003',
+        index: 'transactions_account_id_user_id_fkey',
+        message: EMAIL,
+      }),
+    );
+    expect(fk.status).toBe(500);
+    expect(fk.body?.code).toBe('INTERNAL_ERROR');
+    expect(JSON.stringify(fk.body)).not.toContain(
+      'transactions_account_id_user_id_fkey',
+    );
+    expect(errorSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('P2025 回 404 NOT_FOUND，不記日誌', () => {
+    const { status, body } = run(
+      prismaError({ code: 'P2025', message: EMAIL }),
+    );
+    expect(status).toBe(404);
+    expect(body).toMatchObject({
+      code: 'NOT_FOUND',
+      message: '找不到要求的資源',
+      details: [],
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('CHECK 違反回 500，body 不含 detail 裡的哨兵', () => {
+    const { status, body } = run(
+      prismaError({
+        code: 'P2039',
+        kind: 'postgres',
+        detail: 'Failing row contains (secret-row).',
+        message: 'violates check constraint "accounts_opening_balance_check"',
+      }),
+    );
+    expect(status).toBe(500);
+    expect(body?.code).toBe('INTERNAL_ERROR');
+    expect(JSON.stringify(body)).not.toContain('secret-row');
+    expect(JSON.stringify(body)).not.toContain(
+      'accounts_opening_balance_check',
+    );
+  });
+
+  it('P2020 回 400 AMOUNT_OVERFLOW，記 warn 且不含哨兵', () => {
+    const { status, body } = run(
+      prismaError({
+        code: 'P2020',
+        kind: 'ValueOutOfRange',
+        cause: OVERFLOW,
+        message: OVERFLOW,
+      }),
+    );
+    expect(status).toBe(400);
+    expect(body).toMatchObject({
+      code: 'AMOUNT_OVERFLOW',
+      message: '金額超出可記錄的範圍',
+      details: [],
+    });
+    expect(JSON.stringify(body)).not.toContain(OVERFLOW);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('AMOUNT_OVERFLOW'),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.not.stringContaining(OVERFLOW));
+  });
+});
