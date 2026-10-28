@@ -1,7 +1,7 @@
 import { NotImplementedException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { BillsModule } from './bills.module.js';
-import { BillsService } from './bills.service.js';
+// 從 index 匯入，確認 C 用的入口匯出了模組與 service
+import { BillsModule, BillsService } from './index.js';
 
 describe('BillsService（BILL-1 空殼）', () => {
   it('BillsModule 匯出 BillsService，其他模組 import 後拿得到', async () => {
