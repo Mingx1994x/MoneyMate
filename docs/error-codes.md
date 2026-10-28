@@ -49,20 +49,21 @@
 | `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`    | 金額欄位      | INF-4    |
 | `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議） | 金額欄位      | INF-4    |
 | `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`            | 金額欄位      | INF-4    |
+| `AMOUNT_OVERFLOW`     | 400  | 金額超出可記錄的範圍  | 寫入時資料庫數值溢位（PostgreSQL 22003、Prisma P2020）。金額超過 `numeric(14,2)` 是其中一種；利率、整數溢位也會看到這句 | `[]`          | `database-exception.spec.ts`、`all-exceptions.filter.spec.ts`、`test/db-errors.e2e-spec.ts` |
 | `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`      | `name`        | INF-4    |
 
 ## auth（D）
 
 | 代碼                       | HTTP | 訊息                    | 何時發生                  | details.field            | 測試位置 |
 | -------------------------- | ---- | ----------------------- | ------------------------- | ------------------------ | -------- |
-| `AUTH_EMAIL_TAKEN`         | 409  | 這個 Email 已經註冊過了 | 註冊時 Email 重複（提議） | `email`                  | AUTH-1   |
+| `AUTH_EMAIL_TAKEN`         | 409  | 這個 Email 已經註冊過了 | 註冊時 Email 重複（已經是小寫且字面相同的競態；含大寫走 CHECK，是 500） | `email`                  | AUTH-1；`database-exception.spec.ts`、`all-exceptions.filter.spec.ts`、`test/db-errors.e2e-spec.ts` |
 | `AUTH_INVALID_CREDENTIALS` | 401  | Email 或密碼錯誤        | 登入失敗                  | `[]`（不指出是哪一個錯） | AUTH-1   |
 
 ## onboarding（D）
 
 | 代碼                      | HTTP | 訊息           | 何時發生                                             | details.field | 測試位置 |
 | ------------------------- | ---- | -------------- | ---------------------------------------------------- | ------------- | -------- |
-| `ONBOARDING_ALREADY_DONE` | 409  | 已經完成問卷了 | 問卷重送                                             | `[]`          | —        |
+| `ONBOARDING_ALREADY_DONE` | 409  | 已經完成問卷了 | 問卷重送；第二個估計帳戶（含把既有帳戶改成估計） | `[]`          | `database-exception.spec.ts`、`test/db-errors.e2e-spec.ts` |
 | `ONBOARDING_REQUIRED`     | 409  | 請先完成問卷   | 還沒完成問卷就呼叫 `/goal`、`/goal/progress`（提議） | `[]`          | —        |
 
 ## accounts（C）
@@ -95,7 +96,7 @@
 
 | 代碼                     | HTTP | 訊息                               | 何時發生                           | details.field | 測試位置 |
 | ------------------------ | ---- | ---------------------------------- | ---------------------------------- | ------------- | -------- |
-| `BILL_ALREADY_PAID`      | 409  | 這張帳單已經繳過了                 | 重複繳費、修改已繳帳單的金額或日期 | `[]`          | —        |
+| `BILL_ALREADY_PAID`      | 409  | 這張帳單已經繳過了                 | 重複繳費、修改已繳帳單的金額或日期；同一張帳單的第二筆交易 | `[]`          | `database-exception.spec.ts` |
 | `BILL_NOT_FOUND`         | 404  | 找不到這張帳單                     |                                    | `[]`          | —        |
 | `NEXT_BILL_ALREADY_PAID` | 409  | 下一期帳單已經繳費，不能取消這一期 |                                    | `[]`          | —        |
 | `PAID_DATE_IN_FUTURE`    | 400  | 繳費日期不可晚於今天               |                                    | `paidDate`    | —        |

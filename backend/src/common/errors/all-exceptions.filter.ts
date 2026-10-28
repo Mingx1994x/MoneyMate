@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { isAppException } from './app.exception.js';
+import { databaseException } from './database-exception.js';
 import { detail, ERROR_CODES, type ErrorCode } from './error-codes.js';
 import type { ErrorResponseDto } from './error-response.dto.js';
 
@@ -29,6 +30,7 @@ const FALLBACK_CODES: Readonly<Record<number, ErrorCode>> = {
  * - /health 的 503 由 controller 直接回傳，不經這裡。
  * - /api/v1 以外的未知路徑由 Express 回 HTML 404，也不經這裡（Nest 的 not-found handler 只掛在前綴底下）。
  * - 4xx 不記日誌：body-parser 的錯誤外部可以任意觸發，記 stack 會被拿來灌日誌。
+ *   例外是 AMOUNT_OVERFLOW，記一筆 warn，內容只用 describeError。
  * - 5xx（501 除外）一律用 describeError 記 error。
  */
 @Catch()
@@ -80,6 +82,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const status = httpErrorStatus(exception);
     if (status !== undefined) {
       return this.fromStatus(status, exception, requestId);
+    }
+
+    const mapped = databaseException(exception);
+    if (mapped) {
+      // warn 要在遞迴之前：遞迴後手上的是 AppException，沒有 Prisma 的 meta
+      if (mapped.code === 'AMOUNT_OVERFLOW') {
+        this.logger.warn(
+          `[${requestId}] AMOUNT_OVERFLOW ${describeError(exception)}`,
+        );
+      }
+      return this.toBody(mapped, requestId);
     }
 
     this.logError(requestId, '未預期的例外', exception);
