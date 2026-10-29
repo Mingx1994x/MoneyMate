@@ -13,7 +13,7 @@ export default defineNuxtConfig({
   },
 
   app: {
-    // GitHub Pages 部署時用環境變數 NUXT_APP_BASE_URL=/frontend-moneymate-demo/（建置時就要讀到，不能寫死）
+    // 部署在網域根目錄（Vercel）不用設定；放在子路徑時用環境變數 NUXT_APP_BASE_URL 指定（建置時就要讀到，不能寫死）
     baseURL: process.env.NUXT_APP_BASE_URL || '/',
     head: {
       title: 'Money Mate',
@@ -36,6 +36,6 @@ export default defineNuxtConfig({
     },
   },
 
-  // Nitro preset 用環境變數 NITRO_PRESET 切換（github_pages／vercel／node_server），程式不綁平台（PRD §19）
+  // Nitro preset 不寫死（PRD §19）：Vercel 上自動偵測成 vercel，其他平台用環境變數 NITRO_PRESET 指定（例如 EC2 用 node_server）
   devtools: { enabled: false },
 })
