@@ -2,7 +2,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { DashboardSummaryQueryDto } from './dashboard-query.dto.js';
 
-// INF-4 之前沒有全域 ValidationPipe，用 plainToInstance 加 validate() 驗
+// 直接用 plainToInstance 加 validate() 驗 DTO；請求中由全域 ValidationPipe 做同樣的事
 async function invalidFields(
   plain: Record<string, unknown>,
 ): Promise<string[]> {
