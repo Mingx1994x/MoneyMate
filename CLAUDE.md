@@ -35,7 +35,7 @@ npm run openapi:export                          # 改了 DTO、controller、錯�
 
 ## 架構重點
 
-- **全域設定只放在 `configureApp()`**（`src/app.setup.ts`）：前綴 `/api/v1`（`/health` 除外）、CORS、安全標頭、trust proxy、全域 filter，之後的 ValidationPipe 與日誌也放這裡。`main.ts`、e2e 的 `createTestApp()`（`test/utils/create-test-app.ts`）、`openapi:export` 都共用它，e2e 一律用 `createTestApp()` 建 app。
+- **全域設定只放在 `configureApp()`**（`src/app.setup.ts`）：前綴 `/api/v1`（`/health` 除外）、CORS、安全標頭、trust proxy、全域 filter、`Cache-Control`、`useLogger`。ValidationPipe 尚未加入。日誌的 `LoggerModule` 註冊在 `AppModule`（nestjs-pino 只能在 root 呼叫一次），選項在 `src/common/logger.ts`。`main.ts`、e2e 的 `createTestApp()`（`test/utils/create-test-app.ts`）、`openapi:export` 都共用 `configureApp()`，e2e 一律用 `createTestApp()` 建 app。
 - **時區**：程序時區固定 UTC，`src/tz.ts` 必須是進入點的第一個 import。台北的「今天」只能用 `ClockService.today()`（`src/clock/`），`src/` 裡不可以寫 `new Date()`、`Date()`、`Date.now`（`no-direct-date.spec.ts` 會擋），也不要在 constructor 裡取今天；測試用 `test/utils/fake-clock.ts` 的 `FakeClock` 固定今天。
 - **Prisma**：client 產生在 `src/generated/`（不進版控），業務程式只能從 `src/prisma/index.js` 匯入（oxlint 會擋）。`PrismaService` 不在啟動時連線，所以資料庫斷線時 app 仍能啟動、`/health` 回 503，`openapi:export` 也不需要資料庫。Prisma 7 不會自動讀 `.env`，migrate 用的是 `prisma.config.ts` 裡的 `DIRECT_URL`。
 - **資料庫交易**：由 controller 直接呼叫的 service 方法開 `$transaction`；跨模組的寫入方法第一個參數是 `tx: PrismaTx`，方法內不得再開交易。部署環境的 `DATABASE_URL` 是 Supabase 的 transaction 模式連線池，不能用 session 層級的功能（`SET`、advisory lock、`LISTEN` 等），本機測不出來。
