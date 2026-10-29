@@ -29,14 +29,22 @@ export async function createUser(
   return user.id;
 }
 
-/** 建一個系統分類（userId 是 null），回傳 id。code 必須唯一 */
+/** 建一個分類，回傳 id。預設是系統分類（userId 是 null）、sortOrder 1、啟用中；code 必須唯一 */
 export async function createCategory(
   prisma: PrismaService,
   code: string,
   type: CategoryType,
+  opts: { sortOrder?: number; isActive?: boolean; userId?: string } = {},
 ): Promise<string> {
   const c = await prisma.category.create({
-    data: { code, name: code, type, sortOrder: 1 },
+    data: {
+      code,
+      name: code,
+      type,
+      sortOrder: opts.sortOrder ?? 1,
+      isActive: opts.isActive ?? true,
+      userId: opts.userId ?? null,
+    },
     select: { id: true },
   });
   return c.id;

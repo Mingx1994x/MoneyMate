@@ -921,7 +921,7 @@
     },
     "/api/v1/categories": {
       "get": {
-        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：sortOrder 由小到大，相同時依 id（「其他」的 sortOrder 最大，排最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
+        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：先類型（income 在前、expense 在後），同類型依 sortOrder 由小到大，再依 id（「其他」的 sortOrder 是 99，排在該類型最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
         "operationId": "Categories_findAll",
         "parameters": [
           {
@@ -969,16 +969,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -986,7 +976,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出分類",
+        "summary": "列出分類",
         "tags": [
           "categories"
         ]
