@@ -18,12 +18,14 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { ClockService } from '../../clock/clock.service.js';
 import { ParseIdPipe } from '../../common/id.js';
 import {
   ApiAuth,
   ApiErrors,
   ApiNotImplemented,
 } from '../../common/swagger/api-decorators.js';
+import { CurrentUser, type AuthUser } from '../auth/index.js';
 import { CreateTransactionDto } from './dto/create-transaction.dto.js';
 import { TransactionListQueryDto } from './dto/transaction-list-query.dto.js';
 import {
@@ -31,18 +33,21 @@ import {
   TransactionResponseDto,
 } from './dto/transaction-response.dto.js';
 import { UpdateTransactionDto } from './dto/update-transaction.dto.js';
+import { TransactionsService } from './transactions.service.js';
 
 /**
- * transactions 空殼（C）：照 loans 範例寫。
- * - handler 只丟 NotImplementedException（501），不寫 async。
- * - 沒用到的參數加 _ 前綴，實作時拿掉；@CurrentUser() 由 AUTH-1 提供，實作時再加。
- * - 實作 PR 要拿掉 @ApiNotImplemented()。
+ * transactions（C）。已實作：列表、新增、單筆；修改、刪除在 W3（暫時回 501）。
  * 快速記帳、繳卡費都走 POST /transactions，沒有另外的端點。
  */
 @ApiTags('transactions')
 @ApiAuth()
 @Controller('transactions')
 export class TransactionsController {
+  constructor(
+    private readonly transactions: TransactionsService,
+    private readonly clock: ClockService,
+  ) {}
+
   @Get()
   @ApiOperation({
     summary: '列出交易（篩選＋分頁）',
@@ -58,11 +63,11 @@ export class TransactionsController {
     ['ACCOUNT_NOT_FOUND', 400],
     'CATEGORY_NOT_FOUND',
   )
-  @ApiNotImplemented()
   findAll(
-    @Query() _query: TransactionListQueryDto,
-  ): TransactionListResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Query() query: TransactionListQueryDto,
+  ): Promise<TransactionListResponseDto> {
+    return this.transactions.findAll(user.id, query);
   }
 
   @Post()
@@ -86,9 +91,11 @@ export class TransactionsController {
     ['ACCOUNT_NOT_FOUND', 400],
     'ACCOUNT_INACTIVE',
   )
-  @ApiNotImplemented()
-  create(@Body() _dto: CreateTransactionDto): TransactionResponseDto {
-    throw new NotImplementedException();
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateTransactionDto,
+  ): Promise<TransactionResponseDto> {
+    return this.transactions.create(user.id, dto, this.clock.today());
   }
 
   @Get(':id')
@@ -99,11 +106,11 @@ export class TransactionsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ type: TransactionResponseDto })
   @ApiErrors('TRANSACTION_NOT_FOUND')
-  @ApiNotImplemented()
   findOne(
-    @Param('id', new ParseIdPipe('TRANSACTION_NOT_FOUND')) _id: string,
-  ): TransactionResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('TRANSACTION_NOT_FOUND')) id: string,
+  ): Promise<TransactionResponseDto> {
+    return this.transactions.findOne(user.id, id);
   }
 
   @Patch(':id')
