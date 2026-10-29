@@ -35,6 +35,23 @@ npm run test:e2e                  # e2e：會先確認連的是 *_test 資料庫
 
 `.env.test` 一定要指向 `app_test`。`db:test:prepare` 與 `createTestApp` 都會檢查資料庫名稱，不是 `*_test` 就直接失敗，避免清掉開發資料。
 
+### schema 與 migration 是否一致
+
+CI 會從空資料庫跑完全部 migration，再用 `prisma migrate diff` 比對 `schema.prisma` 與 migration，改了 schema 卻沒有產生 migration 就會失敗。推上去前可以先在本機檢查：
+
+```bash
+npm run db:create-shadow   # 第一次：建立 shadow_check（已存在會報錯，之後不用再跑）
+npm run db:drift           # 一致時印出 "-- This is an empty migration."；不一致時印出缺少的 SQL，exit code 2
+```
+
+- 兩個指令都讀 `.env.test` 的 `SHADOW_DATABASE_URL`，舊的 `.env.test` 沒有這行，要從 `.env.test.example` 補上。shadow 的資料庫名稱必須是 `shadow_check`、`DIRECT_URL` 必須是 `*_test`，不符合就直接失敗。
+- `db:drift` 每次都會先清空 `shadow_check` 再重放 migration，不會動到 `app_dev`、`app_test`。
+- 被 drift 檢查擋下時：
+  1. 看印出的 SQL，確認是哪些 schema 改動沒有 migration。
+  2. 跑 `npm run db:migrate` 產生新的 migration。Prisma 寫不出來的 CHECK 與部分唯一索引要手動加進 migration SQL（清單在 `docs/data-dictionary.md`）。
+  3. 再跑一次 `npm run db:drift` 確認一致，把 `prisma/migrations/` 的新檔案和 `schema.prisma` 一起提交。
+- 已經合併的 migration 不要改，有錯就另外產生一個新的 migration 修正：改了內容的 migration 在已經套用過的資料庫上會被 Prisma 判定不一致。
+
 ## 常用指令
 
 | 指令                               | 用途                                         |
@@ -45,6 +62,7 @@ npm run test:e2e                  # e2e：會先確認連的是 *_test 資料庫
 | `npm run build`                    | 編譯到 `dist/`                               |
 | `npm run db:migrate`               | 建立並套用 migration（本機，D 負責 schema）  |
 | `npm run db:deploy`                | 只套用既有 migration（部署用）               |
+| `npm run db:drift`                 | 檢查 schema 與 migration 是否一致（見上方）  |
 | `npm run openapi:export`           | 匯出 `openapi.json`（不需要資料庫與 `.env`） |
 
 Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（沒裝時會自動下載 `latest`，目前是 8 RC），也不要照 Prisma 的更新提示執行 `npm i prisma@latest`。

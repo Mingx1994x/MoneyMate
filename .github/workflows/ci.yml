@@ -166,8 +166,6 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    env:
-      SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/shadow_check
     services:
       postgres:
         image: postgres:16

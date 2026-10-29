@@ -1,4 +1,4 @@
-// CI 在空的 PostgreSQL 上建立 shadow_check，只給 prisma migrate diff 重放 migration。
+// 建立 shadow_check，只給 prisma migrate diff 重放 migration。CI 每次都是空的 PostgreSQL；本機建一次即可。
 // 刻意不 import dotenv。名稱規則與 assert-shadow-db.mjs 相同。
 // 錯誤訊息只寫變數名稱或 PostgreSQL 錯誤代碼，不印出連線字串。
 
