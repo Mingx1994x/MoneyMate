@@ -5,7 +5,7 @@ import { isDateOnly, isMonthString } from './date-only.js';
 import { isMoneyString, toMoney } from './money.js';
 
 /**
- * constraint 名稱：INF-4 依名稱對應錯誤代碼（例如 isMoney → AMOUNT_INVALID、
+ * constraint 名稱：全域 ValidationPipe（common/validation.ts）依名稱對應錯誤代碼（例如 isMoney → AMOUNT_INVALID、
  * moneyPositive → AMOUNT_NOT_POSITIVE），各 DTO 不必改。
  */
 export const IS_MONEY = 'isMoney';
@@ -121,7 +121,7 @@ export function IsDateOnly(
   );
 }
 
-/** 名稱（帳戶、貸款、帳單）：字串、去除前後空白後 1–30 字；INF-4 對應到 NAME_INVALID。只檢查不轉換，去空白用 @Trim()。 */
+/** 名稱（帳戶、貸款、帳單）：字串、去除前後空白後 1–30 字；對應到 NAME_INVALID。只檢查不轉換，去空白用 @Trim()。 */
 export function IsName(
   validationOptions?: ValidationOptions,
 ): PropertyDecorator {
@@ -192,7 +192,7 @@ function rawValue(obj: unknown, key: string): unknown {
 
 /**
  * 布林 query（例如 includeInactive）：只接受 'true'／'false'。
- * 不用 @Type(() => Boolean)：'false' 會變成 true。transform 要等 INF-4 的 transform: true 才在請求中生效。
+ * 不用 @Type(() => Boolean)：'false' 會變成 true。transform 由全域 ValidationPipe 的 transform: true 套用。
  */
 export function IsBooleanQuery(
   validationOptions?: ValidationOptions,
@@ -232,7 +232,7 @@ export function ToNumber(): PropertyDecorator {
   });
 }
 
-/** 字串去除前後空白（名稱用）。DTO 現在就掛上，INF-4 的 transform: true 之後生效；service 不另外 trim。 */
+/** 字串去除前後空白（名稱用）。由全域 ValidationPipe 的 transform: true 套用；service 不另外 trim。 */
 export function Trim(): PropertyDecorator {
   return Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,

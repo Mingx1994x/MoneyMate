@@ -28,28 +28,28 @@
 
 ## 共用（E）
 
-| 代碼                     | HTTP | 訊息                             | 何時發生                                                                   | details.field | 測試位置                        |
-| ------------------------ | ---- | -------------------------------- | -------------------------------------------------------------------------- | ------------- | ------------------------------- |
-| `AUTH_UNAUTHENTICATED`   | 401  | 請先登入                         | 沒帶 token、token 無效或過期；沒指定代碼的 401                             | `[]`          | `all-exceptions.filter.spec.ts` |
-| `BAD_REQUEST`            | 400  | 請求格式不正確                   | JSON 解析失敗、body-parser 的 400；沒指定代碼的 400                        | `[]`          | `test/errors.e2e-spec.ts`       |
-| `CONFLICT`               | 409  | 資料狀態已變更，請重新整理後再試 | 沒指定代碼的 409                                                           | `[]`          | `all-exceptions.filter.spec.ts` |
-| `FORBIDDEN`              | 403  | 沒有權限執行這個操作             | guard 回 `false` 時 Nest 丟的 `ForbiddenException`                         | `[]`          | `all-exceptions.filter.spec.ts` |
-| `INTERNAL_ERROR`         | 500  | 系統發生錯誤，請稍後再試         | 所有未預期的例外                                                           | `[]`          | `all-exceptions.filter.spec.ts` |
-| `NOT_FOUND`              | 404  | 找不到要求的資源                 | `/api/v1` 底下的未知路由；沒指定代碼的 404                                 | `[]`          | `test/errors.e2e-spec.ts`       |
-| `NOT_IMPLEMENTED`        | 501  | 這個功能還在開發中               | 空殼                                                                       | `[]`          | `test/errors.e2e-spec.ts`       |
-| `PAYLOAD_TOO_LARGE`      | 413  | 送出的資料太大                   | body 超過上限                                                              | `[]`          | `test/errors.e2e-spec.ts`       |
-| `TOO_MANY_REQUESTS`      | 429  | 操作太頻繁，請稍後再試           | 限流                                                                       | `[]`          | `all-exceptions.filter.spec.ts` |
-| `UNSUPPORTED_MEDIA_TYPE` | 415  | 不支援的資料格式                 | body-parser 的 415（例如 charset 不是 UTF-8、不支援的 `Content-Encoding`） | `[]`          | `test/errors.e2e-spec.ts`       |
-| `VALIDATION_FAILED`      | 400  | 輸入的資料有誤，請檢查標示的欄位 | DTO 驗證失敗，而且欄位沒有專屬代碼（INF-4）；service 檢查的一般欄位錯誤    | 出錯的欄位    | INF-4                           |
+| 代碼                     | HTTP | 訊息                             | 何時發生                                                                   | details.field | 測試位置                                            |
+| ------------------------ | ---- | -------------------------------- | -------------------------------------------------------------------------- | ------------- | --------------------------------------------------- |
+| `AUTH_UNAUTHENTICATED`   | 401  | 請先登入                         | 沒帶 token、token 無效或過期；沒指定代碼的 401                             | `[]`          | `all-exceptions.filter.spec.ts`                     |
+| `BAD_REQUEST`            | 400  | 請求格式不正確                   | JSON 解析失敗、body-parser 的 400；沒指定代碼的 400                        | `[]`          | `test/errors.e2e-spec.ts`                           |
+| `CONFLICT`               | 409  | 資料狀態已變更，請重新整理後再試 | 沒指定代碼的 409                                                           | `[]`          | `all-exceptions.filter.spec.ts`                     |
+| `FORBIDDEN`              | 403  | 沒有權限執行這個操作             | guard 回 `false` 時 Nest 丟的 `ForbiddenException`                         | `[]`          | `all-exceptions.filter.spec.ts`                     |
+| `INTERNAL_ERROR`         | 500  | 系統發生錯誤，請稍後再試         | 所有未預期的例外                                                           | `[]`          | `all-exceptions.filter.spec.ts`                     |
+| `NOT_FOUND`              | 404  | 找不到要求的資源                 | `/api/v1` 底下的未知路由；沒指定代碼的 404                                 | `[]`          | `test/errors.e2e-spec.ts`                           |
+| `NOT_IMPLEMENTED`        | 501  | 這個功能還在開發中               | 空殼                                                                       | `[]`          | `test/errors.e2e-spec.ts`                           |
+| `PAYLOAD_TOO_LARGE`      | 413  | 送出的資料太大                   | body 超過上限                                                              | `[]`          | `test/errors.e2e-spec.ts`                           |
+| `TOO_MANY_REQUESTS`      | 429  | 操作太頻繁，請稍後再試           | 限流                                                                       | `[]`          | `all-exceptions.filter.spec.ts`                     |
+| `UNSUPPORTED_MEDIA_TYPE` | 415  | 不支援的資料格式                 | body-parser 的 415（例如 charset 不是 UTF-8、不支援的 `Content-Encoding`） | `[]`          | `test/errors.e2e-spec.ts`                           |
+| `VALIDATION_FAILED`      | 400  | 輸入的資料有誤，請檢查標示的欄位 | DTO 驗證失敗，而且欄位沒有專屬代碼（INF-4）；service 檢查的一般欄位錯誤    | 出錯的欄位    | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
 
 ## 共用驗證（INF-4）
 
-| 代碼                  | HTTP | 訊息                  | 何時發生                   | details.field | 測試位置 |
-| --------------------- | ---- | --------------------- | -------------------------- | ------------- | -------- |
-| `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`    | 金額欄位      | INF-4    |
-| `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議） | 金額欄位      | INF-4    |
-| `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`            | 金額欄位      | INF-4    |
-| `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`      | `name`        | INF-4    |
+| 代碼                  | HTTP | 訊息                  | 何時發生                   | details.field | 測試位置                                            |
+| --------------------- | ---- | --------------------- | -------------------------- | ------------- | --------------------------------------------------- |
+| `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`    | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
+| `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議） | 金額欄位      | `validation.spec.ts`                                |
+| `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`            | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
+| `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`      | `name`        | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
 
 ## auth（D）
 
