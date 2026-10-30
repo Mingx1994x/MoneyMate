@@ -1,13 +1,8 @@
 import { Module } from '@nestjs/common';
-import { FinanceModule } from '../finance/index.js';
 import { AccountsController } from './accounts.controller.js';
-import { AccountsService } from './accounts.service.js';
 
-// 匯出 AccountsService 給 D 的 OnboardingModule（createAccount）、E 的 BillsModule
+// AccountsService 在實作 PR 加入（含給 D 用的 createAccount(tx, …)）
 @Module({
-  imports: [FinanceModule],
   controllers: [AccountsController],
-  providers: [AccountsService],
-  exports: [AccountsService],
 })
 export class AccountsModule {}
