@@ -1,15 +1,17 @@
 import type { DateOnly } from '../../common/date-only.js';
+import type { Prisma } from '../../prisma/index.js';
 
 /**
  * getBillAlerts 的回傳型別（給 C 的 Dashboard，PRD 15.5、16.7）。不經 HTTP，所以是 interface 不是 DTO。
  * 欄位名稱對齊 Dashboard 的 DashboardBillBriefDto（id、daysUntilDue），C 可以直接對應。
+ * 金額照 service 之間的慣例用 Prisma.Decimal，C 放進 DTO 時再用 toMoneyString()。
  */
 export interface BillAlertItem {
   /** 帳單 ID */
   id: string;
   name: string;
-  /** 預定金額，金額字串 */
-  amount: string;
+  /** 預定金額 */
+  amount: Prisma.Decimal;
   dueDate: DateOnly;
   accountId: string;
   /** 到期日 − 台北今天的天數；逾期是負數、今天到期是 0 */
@@ -28,8 +30,8 @@ export interface BillAlerts {
   dueSoon: BillAlertItem[];
   dueSoonCount: number;
   /**
-   * dueSoon 的預定金額合計（逾期的不算入），金額字串；dueSoon 是空的時是 '0.00'。
+   * dueSoon 的預定金額合計（逾期的不算入）；dueSoon 是空的時是 0。
    * 資金缺口由 C 用它減掉可用現金計算，沒有現金或銀行帳戶時的 null 也由 C 判斷（Q3）。
    */
-  dueTotal: string;
+  dueTotal: Prisma.Decimal;
 }
