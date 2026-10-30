@@ -18,12 +18,14 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { ClockService } from '../../clock/clock.service.js';
 import { ParseIdPipe } from '../../common/id.js';
 import {
   ApiAuth,
   ApiErrors,
   ApiNotImplemented,
 } from '../../common/swagger/api-decorators.js';
+import { CurrentUser, type AuthUser } from '../auth/index.js';
 import {
   AccountDeleteQueryDto,
   AccountListQueryDto,
@@ -32,20 +34,24 @@ import {
   AccountListResponseDto,
   AccountResponseDto,
 } from './dto/account-response.dto.js';
+import { AccountsService } from './accounts.service.js';
 import { CreateAccountDto } from './dto/create-account.dto.js';
 import { UpdateAccountDto } from './dto/update-account.dto.js';
 
 /**
- * accounts 空殼（C）：照 loans 範例寫。
- * - handler 只丟 NotImplementedException（501），不寫 async。
- * - 沒用到的參數加 _ 前綴，實作時拿掉；@CurrentUser() 由 AUTH-1 提供，實作時再加。
- * - 實作 PR 要拿掉 @ApiNotImplemented()。
- * 餘額、合計一律由 FinanceCalcService 計算（PRD 15.1），這裡不另外寫公式。
+ * accounts（C）。已實作：列表、新增、單筆；修改、刪除在 W3（暫時回 501）。
+ * - 「今天」用 ClockService.today()，一個請求只取一次往下傳。
+ * - 餘額、合計一律由 FinanceCalcService 計算（PRD 15.1），這裡不另外寫公式。
  */
 @ApiTags('accounts')
 @ApiAuth()
 @Controller('accounts')
 export class AccountsController {
+  constructor(
+    private readonly accounts: AccountsService,
+    private readonly clock: ClockService,
+  ) {}
+
   @Get()
   @ApiOperation({
     summary: '列出帳戶',
@@ -57,16 +63,23 @@ export class AccountsController {
   })
   @ApiOkResponse({ type: AccountListResponseDto })
   @ApiErrors('VALIDATION_FAILED')
-  @ApiNotImplemented()
-  findAll(@Query() _query: AccountListQueryDto): AccountListResponseDto {
-    throw new NotImplementedException();
+  async findAll(
+    @CurrentUser() user: AuthUser,
+    @Query() query: AccountListQueryDto,
+  ): Promise<AccountListResponseDto> {
+    const items = await this.accounts.findAll(
+      user.id,
+      this.clock.today(),
+      query.includeInactive === true,
+    );
+    return { items };
   }
 
   @Post()
   @ApiOperation({
     summary: '新增帳戶',
     description: [
-      'currency 固定 TWD。只有 credit_card 的 openingBalance 可以是負數，其他類型為負數時回 OPENING_BALANCE_NEGATIVE。',
+      'currency 固定 TWD。只有 credit_card 的 openingBalance 可以是負數，其他類型為負數時回 OPENING_BALANCE_NEGATIVE（估計帳戶只由問卷建立，不能從這裡新增）。',
       'deductFromEstimate = true 時，同一個資料庫交易內從估計帳戶扣掉 min(openingBalance, 估計帳戶目前餘額)，並記在新帳戶的 deductedFromEstimate；估計帳戶目前餘額扣到 0 時自動停用。新增失敗時估計帳戶不會被扣（PRD 15.9）。',
       '實際扣除金額 ≤ 0 時不扣，忽略 deductFromEstimate，deductedFromEstimate 存 null（不存 0）：包含 openingBalance ≤ 0、估計帳戶目前餘額 ≤ 0（例如估計帳戶有支出交易）、沒有估計帳戶，或估計帳戶已停用。這些情況不是錯誤，照常建立帳戶。',
     ].join('\n\n'),
@@ -78,9 +91,11 @@ export class AccountsController {
     'NAME_INVALID',
     'OPENING_BALANCE_NEGATIVE',
   )
-  @ApiNotImplemented()
-  create(@Body() _dto: CreateAccountDto): AccountResponseDto {
-    throw new NotImplementedException();
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateAccountDto,
+  ): Promise<AccountResponseDto> {
+    return this.accounts.create(user.id, dto, this.clock.today());
   }
 
   @Get(':id')
@@ -92,11 +107,11 @@ export class AccountsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ type: AccountResponseDto })
   @ApiErrors('ACCOUNT_NOT_FOUND')
-  @ApiNotImplemented()
   findOne(
-    @Param('id', new ParseIdPipe('ACCOUNT_NOT_FOUND')) _id: string,
-  ): AccountResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('ACCOUNT_NOT_FOUND')) id: string,
+  ): Promise<AccountResponseDto> {
+    return this.accounts.findOne(user.id, id, this.clock.today());
   }
 
   @Patch(':id')
@@ -106,7 +121,7 @@ export class AccountsController {
       '沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。accountType 不能改。',
       '停用的帳戶只能重新啟用：請求只帶 isActive = true 時通過；帶了其他欄位回 ACCOUNT_INACTIVE（先重新啟用，再修改）。',
       '停用（isActive = false）：目前餘額必須為 0，而且沒有未來日期的交易，否則回 ACCOUNT_DEACTIVATE_BLOCKED。停用不會把扣掉的估計值加回（PRD 15.9）。',
-      '修改 openingBalance 後目前餘額跟著變動；非 credit_card 改成負數回 OPENING_BALANCE_NEGATIVE。',
+      '修改 openingBalance 後目前餘額跟著變動；credit_card 與估計帳戶可以是負數，其他類型改成負數回 OPENING_BALANCE_NEGATIVE。',
     ].join('\n\n'),
   })
   @ApiParam({ name: 'id', format: 'uuid' })
