@@ -49,7 +49,7 @@ export class CreateBillDto {
   @ApiProperty({
     format: 'date',
     description:
-      '到期日。可以是過去的日期（建立後就是逾期）；日期是 29–31 時，之後遇到短月用當月最後一天',
+      '到期日。可以是過去的日期（建立後就是逾期），不可晚於台北今天加 50 年（在 service 檢查）；日期是 29–31 時，之後遇到短月用當月最後一天',
     example: '2026-11-01',
   })
   @IsDateOnly()

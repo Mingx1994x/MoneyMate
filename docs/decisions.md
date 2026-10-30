@@ -16,6 +16,8 @@
 | D-006 | 2026/10/26 | 懶人記帳（Apple Pay 捷徑、電子發票匯入）列為 P1 候選 | US-26、US-27、FR-32、FR-33、A12、A13、第二十九節第 20 項 |
 | D-007 | 2026/10/26 | PR 審查分工與標題格式 | 20.7 協作規則 |
 | D-008 | 2026/10/27 | JWT 驗證不用 Passport，改用自己寫的全域 guard | 第七節、16.7 |
+| D-010 | 2026/10/30 | 帳單遇到停用帳戶時回 `ACCOUNT_INACTIVE` | 15.11、16.1、16.2 |
+| D-011 | 2026/10/30 | 14 天資金缺口改由 C 計算，帳單只回待繳金額合計 | 15.5、16.7 |
 
 ---
 
@@ -115,3 +117,33 @@
   - P0 沒有刪除帳號的功能，token 對應的使用者不會消失，所以不用每個請求都查一次資料庫。
 - **誰同意：** D 提出（PR AUTH-1），待 E 審查 PR 時確認
 - **影響：** C、E 的端點不用加任何 guard；實作時在參數加 `@CurrentUser() user: AuthUser`。
+
+---
+
+## D-010 帳單遇到停用帳戶時回 `ACCOUNT_INACTIVE`
+
+- **日期：** 2026/10/30
+- **決定：**
+  - 新增或修改帳單時指定停用的帳戶，回 409 `ACCOUNT_INACTIVE`（`details.field` 是 `accountId`）。修改時帳戶沒有變更就不檢查是否啟用。
+  - 用停用的帳戶繳費、取消繳費，回 409 `ACCOUNT_INACTIVE`，請使用者先重新啟用帳戶。這兩個情況的扣款帳戶不是 body 的欄位，`details` 是 `[]`。
+- **原因：**
+  - PRD 15.11：停用的帳戶不能新增、刪除與它有關的交易。繳費會新增支出、取消繳費會刪除支出，所以兩個都要擋。
+  - 新增、修改帳單時就擋下，使用者不會到繳費時才發現帳戶不能用。
+- **誰同意：** E 提出（PR #21 的 Q2、Q15）；取消繳費要擋，C 已同意（C 的 `deleteBillTransaction` 照這個寫）；新增、修改帳單與 `details: []` 待 C 在 PR #47 確認
+- **影響：** C 的 `AccountsService.assertAccountAndCategoryOwned` 用在新增、修改帳單；繳費、取消繳費由 C 的 `createBillTransaction`、`deleteBillTransaction` 檢查。
+
+---
+
+## D-011 14 天資金缺口改由 C 計算，帳單只回待繳金額合計
+
+- **日期：** 2026/10/30
+- **決定：**
+  - E 的 `getBillAlerts` 回 `dueTotal`：台北今天到今天＋14 天（含頭尾）到期的待繳帳單預定金額合計，逾期的不算入，沒有帳單時是 0。
+  - C 在 Dashboard 計算缺口：`dueTotal − 可用現金`，> 0 時才有值；沒有缺口、沒有啟用的現金或銀行帳戶（不含估計帳戶）時是 `null`。
+  - PRD 第 830 行原本寫 `getAvailableCash` 給「E：資金缺口」使用，改成 C 自己使用。
+- **原因：**
+  - 可用現金與 Dashboard 都是 C 負責，缺口在 C 那邊算，帳單模組就不用依賴 C 的計算服務。
+  - 「沒有缺口」與「無法計算」前端用 `hasCashAccounts` 區分，`fundingGap` 只在真的有缺口時有值。
+- **誰同意：** E、C 在 PR #21 討論（Q3）；沒有缺口時是 `null` 照 C 已合併的 `DashboardSummaryDto`，待 C 在 PR #47 確認
+- **影響：** `getBillAlerts` 不呼叫 C 的 service。
+
