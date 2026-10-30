@@ -65,7 +65,7 @@ describe('@IsId', () => {
   });
 
   it.each([...INVALID, 123, null])(
-    '%j 失敗，context 帶代碼給 INF-4',
+    '%j 失敗，context 帶代碼給全域 ValidationPipe',
     async (value) => {
       const dto = new Dto();
       dto.accountId = value;

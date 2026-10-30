@@ -30,7 +30,7 @@ export class ParseIdPipe implements PipeTransform<string, string> {
 
 /**
  * body、query 裡的 ID（accountId、categoryId…）：不是 UUID 時失敗。
- * 代碼放在 context，INF-4 依它轉成 400（例如 ACCOUNT_NOT_FOUND），與「格式不合法就當作不存在」一致。
+ * 代碼放在 context，全域 ValidationPipe 依它轉成 400（例如 ACCOUNT_NOT_FOUND），與「格式不合法就當作不存在」一致。
  * 代碼只能是允許 400 的代碼（例如 ACCOUNT_NOT_FOUND 的 alsoAllowed），傳錯會編譯失敗。
  */
 export function IsId(

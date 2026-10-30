@@ -7,7 +7,7 @@ import { bearer } from './utils/test-token.js';
 /**
  * categories 空殼：全部端點回 501。
  * AUTH-1 之後要帶 token，否則 guard 先回 401（沒帶 token 的情況在 auth.e2e-spec.ts）。
- * 全域 ValidationPipe 在 INF-4 才加入，之前不測 query 驗證（DTO 驗證見 category-dtos.spec.ts）。
+ * query 驗證由全域 ValidationPipe 負責，這裡不另外測（DTO 驗證見 category-dtos.spec.ts）。
  */
 describe('分類空殼（e2e）', () => {
   let app: INestApplication<App>;
