@@ -891,7 +891,7 @@
     },
     "/api/v1/categories": {
       "get": {
-        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：sortOrder 由小到大，相同時依 id（「其他」的 sortOrder 最大，排最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
+        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：先類型（income 在前、expense 在後），同類型依 sortOrder 由小到大，再依 id（「其他」的 sortOrder 是 99，排在該類型最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
         "operationId": "Categories_findAll",
         "parameters": [
           {
@@ -939,16 +939,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -956,7 +946,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出分類",
+        "summary": "列出分類",
         "tags": [
           "categories"
         ]
@@ -1009,16 +999,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1026,13 +1006,13 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出帳戶",
+        "summary": "列出帳戶",
         "tags": [
           "accounts"
         ]
       },
       "post": {
-        "description": "currency 固定 TWD。只有 credit_card 的 openingBalance 可以是負數，其他類型為負數時回 OPENING_BALANCE_NEGATIVE。\n\ndeductFromEstimate = true 時，同一個資料庫交易內從估計帳戶扣掉 min(openingBalance, 估計帳戶目前餘額)，並記在新帳戶的 deductedFromEstimate；估計帳戶目前餘額扣到 0 時自動停用。新增失敗時估計帳戶不會被扣（PRD 15.9）。\n\n實際扣除金額 ≤ 0 時不扣，忽略 deductFromEstimate，deductedFromEstimate 存 null（不存 0）：包含 openingBalance ≤ 0、估計帳戶目前餘額 ≤ 0（例如估計帳戶有支出交易）、沒有估計帳戶，或估計帳戶已停用。這些情況不是錯誤，照常建立帳戶。",
+        "description": "currency 固定 TWD。只有 credit_card 的 openingBalance 可以是負數，其他類型為負數時回 OPENING_BALANCE_NEGATIVE（估計帳戶只由問卷建立，不能從這裡新增）。\n\ndeductFromEstimate = true 時，同一個資料庫交易內從估計帳戶扣掉 min(openingBalance, 估計帳戶目前餘額)，並記在新帳戶的 deductedFromEstimate；估計帳戶目前餘額扣到 0 時自動停用。新增失敗時估計帳戶不會被扣（PRD 15.9）。\n\n實際扣除金額 ≤ 0 時不扣，忽略 deductFromEstimate，deductedFromEstimate 存 null（不存 0）：包含 openingBalance ≤ 0、估計帳戶目前餘額 ≤ 0（例如估計帳戶有支出交易）、沒有估計帳戶，或估計帳戶已停用。這些情況不是錯誤，照常建立帳戶。",
         "operationId": "Accounts_create",
         "parameters": [],
         "requestBody": {
@@ -1075,16 +1055,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1092,7 +1062,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】新增帳戶",
+        "summary": "新增帳戶",
         "tags": [
           "accounts"
         ]
@@ -1143,16 +1113,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1160,13 +1120,13 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得單筆帳戶",
+        "summary": "取得單筆帳戶",
         "tags": [
           "accounts"
         ]
       },
       "patch": {
-        "description": "沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。accountType 不能改。\n\n停用的帳戶只能重新啟用：請求只帶 isActive = true 時通過；帶了其他欄位回 ACCOUNT_INACTIVE（先重新啟用，再修改）。\n\n停用（isActive = false）：目前餘額必須為 0，而且沒有未來日期的交易，否則回 ACCOUNT_DEACTIVATE_BLOCKED。停用不會把扣掉的估計值加回（PRD 15.9）。\n\n修改 openingBalance 後目前餘額跟著變動；非 credit_card 改成負數回 OPENING_BALANCE_NEGATIVE。",
+        "description": "沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。accountType 不能改。\n\n停用的帳戶只能重新啟用：請求只帶 isActive = true 時通過；帶了其他欄位回 ACCOUNT_INACTIVE（先重新啟用，再修改）。\n\n停用（isActive = false）：目前餘額必須為 0，而且沒有未來日期的交易，否則回 ACCOUNT_DEACTIVATE_BLOCKED。停用不會把扣掉的估計值加回（PRD 15.9）。\n\n修改 openingBalance 後目前餘額跟著變動；credit_card 與估計帳戶可以是負數，其他類型改成負數回 OPENING_BALANCE_NEGATIVE。",
         "operationId": "Accounts_update",
         "parameters": [
           {

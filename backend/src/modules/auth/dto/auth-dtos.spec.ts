@@ -3,7 +3,7 @@ import { validate } from 'class-validator';
 import { LoginDto } from './login.dto.js';
 import { RegisterDto } from './register.dto.js';
 
-// INF-4 之前沒有全域 ValidationPipe，用 plainToInstance 加 validate() 驗（transform 也會套用）
+// 直接用 plainToInstance 加 validate() 驗 DTO（transform 也會套用）；請求中由全域 ValidationPipe 做同樣的事
 async function invalidFields(
   cls: new () => object,
   plain: Record<string, unknown>,

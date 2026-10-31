@@ -12,6 +12,9 @@ const UNAUTHENTICATED = {
   details: [],
 };
 
+// 全域 ValidationPipe（INF-4）之後，不合法的 body 會先回 400，要送合法的值才會走到 501
+const ONBOARDING_BODY = { monthlySpending: 40000 };
+
 const NOT_IMPLEMENTED = {
   statusCode: 501,
   code: 'NOT_IMPLEMENTED',
@@ -54,9 +57,9 @@ describe('登入驗證與問卷、目標空殼（e2e）', () => {
     // body 都送合法的內容：有全域 ValidationPipe（INF-4）之後，不合法的 body 會先回 400
     const protectedRoutes = [
       ['get', '/api/v1/auth/me', undefined],
-      ['post', '/api/v1/onboarding', { monthlySpending: 40000 }],
+      ['post', '/api/v1/onboarding', ONBOARDING_BODY],
       ['get', '/api/v1/goal', undefined],
-      ['patch', '/api/v1/goal', {}],
+      ['patch', '/api/v1/goal', undefined],
       ['get', '/api/v1/goal/progress', undefined],
       ['get', '/api/v1/loans', undefined],
     ] as const;
