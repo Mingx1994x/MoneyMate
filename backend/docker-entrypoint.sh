@@ -13,4 +13,13 @@ if [ "${RUN_MIGRATIONS:-}" = "true" ]; then
 else
   echo "[entrypoint] RUN_MIGRATIONS is not exactly true: skipping migrations"
 fi
+# 系統分類是每個資料庫都要有的資料（PRD FR-12）。可以重複執行、不會動使用者的資料，
+# 所以每次啟動都跑也沒關係；要在 migrate 之後（資料表要先存在）。連線用 DATABASE_URL。
+if [ "${RUN_SEED:-}" = "true" ]; then
+  echo "[entrypoint] RUN_SEED=true: seeding system categories"
+  # seed 失敗時交易會回滾，現有分類不受影響；部署失敗不會自動回退，所以只警告、照樣啟動 app
+  node dist/seed/seed-categories.js || echo "[entrypoint] seed failed: starting app anyway" >&2
+else
+  echo "[entrypoint] RUN_SEED is not exactly true: skipping seed"
+fi
 exec node dist/main.js

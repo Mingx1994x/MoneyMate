@@ -35,7 +35,8 @@
     "db:test:prepare": "dotenv run -q -f .env.test -- node scripts/assert-test-db.mjs && dotenv run -q -f .env.test -- prisma migrate deploy",
     "db:create-shadow": "dotenv run -q -f .env.test -- node scripts/create-shadow-db.mjs",
     "db:drift": "dotenv run -q -f .env.test -- node scripts/assert-shadow-db.mjs && dotenv run -q -f .env.test -- prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script --exit-code",
-    "openapi:export": "npm run build && node dist/openapi/export.js"
+    "openapi:export": "npm run build && node dist/openapi/export.js",
+    "seed:categories": "npm run build && node dist/seed/seed-categories.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
