@@ -114,6 +114,19 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
   5. 實作 PR 補測試，並填 md 的「測試位置」。
 - 前端遇到不認得的代碼時直接顯示 `message`。`/api/v1` 以外的路徑（回 Express 的 HTML 404）與 `/health` 的 503 不是這個格式。
 
+## 日誌
+
+每個請求（`GET /health` 除外）會有一筆 JSON 的請求完成日誌，頂層有 `requestId`。錯誤回應的 `requestId`、標頭 `X-Request-Id`、這筆日誌是同一個值。本機 stdout 就是這種 JSON。部署環境到 Render 的 Logs 搜這個值（完整部署說明見 DEP-5）。
+
+可選送 `X-Request-Id`（`A–Z`、`a–z`、`0–9`、`-`，1–64 字）。不符、空白、或重複標頭就換一個新的。
+
+**不要記**密碼、token、完整 body、headers。請求完成那一行只有 method、path（不含 query）、status、ip、耗時。
+
+- 業務程式繼續用 `new Logger(ClassName)`（`@nestjs/common`）。結構化欄位只放 ID、狀態、金額。不要 `logger.log(dto)`、`logger.log({ body, headers })`、`logger.error(exception)`、`logger.error(exception.message)`。
+- 不要在 feature module `imports: [LoggerModule]`。它是全域的，再 import 會讓每個請求寫兩筆完成日誌。
+- 4xx 不會寫例外的 stack，但會有請求完成那一行。5xx 另外有一行 `describeError`（Prisma 只記名稱、代碼與約束名稱）。
+- `GET /health` 不寫請求完成日誌（Render 幾秒打一次）。資料庫失敗時的 warn 仍帶同一個 request ID。
+
 ## 共用工具
 
 | 工具                                | 位置                               | 用法                                                                                                                                                                                                                                               |
