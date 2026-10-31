@@ -35,6 +35,31 @@ npm run test:e2e                  # e2e：會先確認連的是 *_test 資料庫
 
 `.env.test` 一定要指向 `app_test`。`db:test:prepare` 與 `createTestApp` 都會檢查資料庫名稱，不是 `*_test` 就直接失敗，避免清掉開發資料。
 
+### e2e 共用工具（`test/utils/`）
+
+所有 e2e 共用同一個 `app_test`（不並行），每個測試檔在 `beforeEach` 自己清資料、自己建需要的資料，不要依賴別的檔案留下的資料。
+
+| 工具                                                | 位置                 | 用途                                                                                                           |
+| --------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `createTestApp()`                                   | `create-test-app.ts` | 建 app，和正式環境走同一個 `configureApp`                                                                      |
+| `bearer(app, userId?)`                              | `test-token.ts`      | 直接簽 token（不查資料庫）。只要「有登入」就好的測試用這個，比較快                                             |
+| `registerUser(app, opts?)`                          | `auth.ts`            | **真的**呼叫註冊 API，回傳 `{ id, email, password, auth }`；`auth` 直接放進 `.set('Authorization', user.auth)` |
+| `loginUser(app, email, password?)`                  | `auth.ts`            | **真的**呼叫登入 API，回傳新的 Authorization 標頭（測重新登入後資料仍在）                                      |
+| `resetDb(prisma)`                                   | `db.ts`              | 清空所有業務資料與分類（`TRUNCATE users, categories CASCADE`）                                                 |
+| `seedCategories(prisma)`                            | `db.ts`              | 用正式的 seed 建 12 個系統分類，回傳 `code → id`，例如 `categories.food`                                       |
+| `createUser`、`createCategory`、`createTransaction` | `db.ts`              | 不走 API、直接在資料庫建資料（準備測試前提用）                                                                 |
+| `FakeClock`                                         | `fake-clock.ts`      | 固定「今天」（見「開發慣例」的時間規則）                                                                       |
+
+```ts
+beforeEach(async () => {
+  await resetDb(prisma);
+  user = await registerUser(app);
+  categories = await seedCategories(prisma);
+});
+```
+
+`registerUser`、`loginUser` 會經過登入次數限制，`.env.test` 要有 `AUTH_IP_LIMIT_PER_MINUTE=1000`（見 `.env.test.example`）。
+
 ### schema 與 migration 是否一致
 
 CI 會從空資料庫跑完全部 migration，再用 `prisma migrate diff` 比對 `schema.prisma` 與 migration，改了 schema 卻沒有產生 migration 就會失敗。推上去前可以先在本機檢查：
