@@ -35,6 +35,23 @@ npm run test:e2e                  # e2e：會先確認連的是 *_test 資料庫
 
 `.env.test` 一定要指向 `app_test`。`db:test:prepare` 與 `createTestApp` 都會檢查資料庫名稱，不是 `*_test` 就直接失敗，避免清掉開發資料。
 
+### schema 與 migration 是否一致
+
+CI 會從空資料庫跑完全部 migration，再用 `prisma migrate diff` 比對 `schema.prisma` 與 migration，改了 schema 卻沒有產生 migration 就會失敗。推上去前可以先在本機檢查：
+
+```bash
+npm run db:create-shadow   # 第一次：建立 shadow_check（已存在會報錯，之後不用再跑）
+npm run db:drift           # 一致時印出 "-- This is an empty migration."；不一致時印出缺少的 SQL，exit code 2
+```
+
+- 兩個指令都讀 `.env.test` 的 `SHADOW_DATABASE_URL`，舊的 `.env.test` 沒有這行，要從 `.env.test.example` 補上。shadow 的資料庫名稱必須是 `shadow_check`、`DIRECT_URL` 必須是 `*_test`，不符合就直接失敗。
+- `db:drift` 每次都會先清空 `shadow_check` 再重放 migration，不會動到 `app_dev`、`app_test`。
+- 被 drift 檢查擋下時：
+  1. 看印出的 SQL，確認是哪些 schema 改動沒有 migration。
+  2. 跑 `npm run db:migrate` 產生新的 migration。Prisma 寫不出來的 CHECK 與部分唯一索引要手動加進 migration SQL（清單在 `docs/data-dictionary.md`）。
+  3. 再跑一次 `npm run db:drift` 確認一致，把 `prisma/migrations/` 的新檔案和 `schema.prisma` 一起提交。
+- 已經合併的 migration 不要改，有錯就另外產生一個新的 migration 修正：改了內容的 migration 在已經套用過的資料庫上會被 Prisma 判定不一致。
+
 ## 常用指令
 
 | 指令                               | 用途                                         |
@@ -45,7 +62,17 @@ npm run test:e2e                  # e2e：會先確認連的是 *_test 資料庫
 | `npm run build`                    | 編譯到 `dist/`                               |
 | `npm run db:migrate`               | 建立並套用 migration（本機，D 負責 schema）  |
 | `npm run db:deploy`                | 只套用既有 migration（部署用）               |
+| `npm run db:drift`                 | 檢查 schema 與 migration 是否一致（見上方）  |
 | `npm run openapi:export`           | 匯出 `openapi.json`（不需要資料庫與 `.env`） |
+| `npm run seed:categories`          | 建立或更新 12 個系統分類（可重複執行）       |
+
+**系統分類 seed**：新資料庫要先有 12 個系統分類，分類下拉選單才有選項、交易才能記帳（收入、支出一定要有分類）。
+
+- **本機**：`npm run seed:categories`，連哪個資料庫由 `DATABASE_URL` 決定（讀 `.env`，是 `app_dev`）。
+- **部署（Render＋Supabase）**：在 Render 設 `RUN_SEED=true`，容器啟動時（migration 之後）會自動執行 `node dist/seed/seed-categories.js`，和 `RUN_MIGRATIONS=true` 同一套做法；新資料庫兩個都要設。可以重複執行，所以每次啟動都跑也沒關係。seed 失敗時只印警告、照樣啟動 app（交易會回滾，現有分類不受影響）；migration 失敗則會直接結束。映像檔裡沒有 `nest`，不能在容器裡跑 `npm run seed:categories`。
+- 只會新增或更新自己的 12 個分類（用 `code` 比對），不會刪除任何資料、不會動使用者的分類（衝突時丟錯並回滾）；之後被停用的分類重跑也不會又打開。12 筆用一個 SQL 寫入，所以遠端資料庫也不會逾時。
+- 分類清單在 `src/seed/system-categories.ts`，要和 `docs/data-dictionary.md` 的「系統分類」表一致（`system-categories.spec.ts` 會檢查）。e2e 需要分類時，在測試的 `beforeAll` 呼叫 `seedSystemCategories(tx)`，不要依賴別的測試檔留下的資料（共用的 `app_test` 會被各檔 TRUNCATE）。
+- Demo 帳號與 12 個月 Demo 資料（`seed:demo`）要等 C 的 service 與 AUTH-2，之後再加；`seed:demo` 要先呼叫 `seedSystemCategories`，一行指令才能在新資料庫重建。
 
 Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（沒裝時會自動下載 `latest`，目前是 8 RC），也不要照 Prisma 的更新提示執行 `npm i prisma@latest`。
 
@@ -75,7 +102,7 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
   - 狀態碼寫錯會編譯失敗；`code` 是變數時型別擋不住，執行期會丟錯變成 500。
   - 不要丟 `BadRequestException`、`NotFoundException` 這類例外來表示業務錯誤：filter 不讀它們帶的 `code`，只會回通用的 `BAD_REQUEST`、`NOT_FOUND`。
   - 每個代碼的 `details.field` 寫在 `docs/error-codes.md`；跟欄位無關的錯誤 `details` 是 `[]`。
-  - 多個欄位的錯誤（INF-4）用 `detail(field, code)` 組 `details`，訊息一律取自代碼表，不要手寫。
+  - DTO 驗證失敗由全域 ValidationPipe 自動轉換（見「驗證管線」）；service 自己檢查多個欄位時，用 `detail(field, code)` 組 `details`，訊息一律取自代碼表，不要手寫。
 
 - **500 不會回傳錯誤訊息**，只寫日誌；Prisma 的錯誤只記名稱、代碼與約束名稱（message 可能含使用者輸入）。
 - **檢查資料是不是登入者的**：用 `findFirst({ where: { id, userId } })`，找不到就丟該資源的 `*_NOT_FOUND`；或用 `updateMany`／`deleteMany` 帶 `userId` 再檢查 `count`。不要靠 `update` 找不到時的 P2025（只能轉成通用的 `NOT_FOUND`）。
@@ -111,7 +138,7 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
 | `@ApiErrors(...)`                   | 同上                               | 列出端點可能的錯誤代碼（`'CODE'` 或 `['ACCOUNT_NOT_FOUND', 400]`）。每個方法最多一個；沒有可能的代碼就不寫；需要登入的端點不列 401。類別上有 `@ApiAuth()`、方法又要列別的 401 代碼時，要一起列 `'AUTH_UNAUTHENTICATED'`（方法的 401 會蓋掉類別的） |
 | `@ApiNotImplemented()`              | 同上                               | 空殼端點：加上 501，文件的 summary 會標「【未實作】」。實作 PR 要拿掉                                                                                                                                                                              |
 | `ParseIdPipe`                       | `common/id.ts`                     | `@Param('id', new ParseIdPipe('LOAN_NOT_FOUND')) id: string`：不是 UUID 時回該資源的 404，代碼只能是允許 404 的代碼（傳錯會編譯失敗）。另外加 `@ApiParam({ name: 'id', format: 'uuid' })`                                                          |
-| `@IsId(code)`                       | 同上                               | body、query 裡的 ID（`accountId`…）：不是 UUID 時失敗，INF-4 會轉成 400 `code`；代碼只能是允許 400 的代碼（例如 `ACCOUNT_NOT_FOUND`、`CATEGORY_NOT_FOUND`）                                                                                        |
+| `@IsId(code)`                       | 同上                               | body、query 裡的 ID（`accountId`…）：不是 UUID 時回 400 `code`；代碼只能是允許 400 的代碼（例如 `ACCOUNT_NOT_FOUND`、`CATEGORY_NOT_FOUND`）                                                                                                        |
 | `@IsName()`                         | `common/validators.ts`             | 名稱：去除前後空白後 1–30 字（以 code point 計算，emoji 算 1 個字）。搭配 `@Trim()`                                                                                                                                                                |
 | `@IsNote()`                         | 同上                               | 備註：最多 200 字。搭配 `@IsOptional()`、`@EmptyToNull()`                                                                                                                                                                                          |
 | `@IsRate()`                         | 同上                               | 利率：0–100、最多 3 位小數的數字                                                                                                                                                                                                                   |
@@ -128,7 +155,60 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
 - `@IsNumber({ maxDecimalPlaces })`：`1e-7` 會讓它丟 `TypeError`，變成 500。
 - Nest 的 `ParseUUIDPipe`：回 400，不是該資源的 404。
 
-轉換類（`@Trim`、`@EmptyToNull`、`@ToNumber`、`@IsBooleanQuery`）要等 INF-4 的全域 ValidationPipe（`transform: true`）才會在請求中生效；DTO 現在就掛上，service 不另外處理。
+轉換類（`@Trim`、`@EmptyToNull`、`@ToNumber`、`@IsBooleanQuery`）由全域 ValidationPipe 的 `transform: true` 套用，service 不另外處理。
+
+## 驗證管線
+
+`configureApp` 註冊了全域 `ValidationPipe`（`src/common/validation.ts`）：`whitelist`、`forbidNonWhitelisted`、`transform`，**不開** `enableImplicitConversion`（會把 JSON 的數字 `1234.5` 轉成字串、繞過「金額必須是字串」）。
+
+**錯誤怎麼回**
+
+- 驗證失敗回 400，每個出錯的欄位一筆 `details`（最多 20 筆），`field` 是屬性路徑（巢狀是 `items.1.amount`），頂層 `code` 等於 `details[0].code`。`details` 不保證是 DTO 的宣告順序，測試用 `field` 找。
+- 一個欄位同時違反多個規則時，依這個順序取代碼（不看裝飾器的排列）：
+
+| 順序 | constraint                         | 代碼                                                     |
+| ---- | ---------------------------------- | -------------------------------------------------------- |
+| 1    | `isId`（`@IsId(code)`）            | `@IsId` 指定的代碼，狀態 400（例如 `ACCOUNT_NOT_FOUND`） |
+| 2    | `isMoney`                          | `AMOUNT_INVALID`                                         |
+| 3    | `moneyPositive`                    | `AMOUNT_NOT_POSITIVE`                                    |
+| 4    | `moneyNonNegative`                 | `AMOUNT_NEGATIVE`                                        |
+| 5    | `isName`                           | `NAME_INVALID`                                           |
+| —    | 其他（含未宣告的欄位、巢狀、日期） | `VALIDATION_FAILED`                                      |
+
+- 缺少必填欄位也是由該欄位的驗證器報錯：金額缺少是 `AMOUNT_INVALID`，必填的 ID 沒帶是 `@IsId` 的代碼（例如「找不到這個帳戶」）。
+- 驗證器的 `defaultMessage` 不會送出去，訊息一律取自代碼表。
+- **端點有宣告 body／query DTO 時**，未宣告的欄位回 400 `VALIDATION_FAILED`。沒有宣告 DTO 的參數不檢查（例如 `GET /loans` 帶 `?foo=1` 照常回應），不必為此寫空的 DTO。
+- 有 body 或 query DTO 的端點，`@ApiErrors` 都要列 `VALIDATION_FAILED`，再加上 DTO 用到的專屬代碼。
+
+**DTO 與 controller 的寫法限制**
+
+- 每個請求欄位都要有 class-validator 的裝飾器（`@IsOptional()`、`@ValidateIf()` 也算）。只有 `@ApiProperty` 或 `@Transform` 的欄位會被當成未宣告，**這個端點的每個請求都會回 400**（沒送那個欄位也一樣）。
+- DTO 一定是 class，用一般的 `import`：寫成 interface、type 或用 `import type` 時，pipe 完全不驗證。
+- 數字、布林參數一律放在 query DTO，**不可以寫 `@Query('n') n: number`**：它會被直接轉換、不經過驗證器（`'abc'` → `NaN`、`''` → 0、`'0x10'` → 16；布林收到 `'yes'` 是 `false`）。有 query DTO 時，所有 query 參數都寫在 DTO 裡，另外寫 `@Query('x')` 會被 whitelist 擋成 400。
+- `@Body()` 一定是單一 DTO 類別；需要陣列時包成 `{ items: XDto[] }`，加 `@IsArray()`、`@ValidateNested({ each: true })`、`@Type(() => XDto)`。巢狀物件沒有 `@ValidateNested()` 與 `@Type()` 的話，裡面的欄位不會驗證。
+- **body DTO 不可以寫屬性初始值**，包括 Create DTO：`PartialType` 會把初始值繼承到 PATCH DTO，PATCH 沒傳那個欄位也會帶上初始值、蓋掉原值。body 的預設值在 service 套用（Swagger 照樣標 `default`）；初始值只用在 query DTO（分頁）。
+
+**`PATCH` 的合併**（`src/common/patch.ts`）
+
+DTO 實例上沒傳的欄位**仍是自有屬性、值是 `undefined`**，所以：
+
+- 不可以用 `'x' in dto`、`Object.keys(dto)` 判斷有沒有傳。
+- 不可以 `{ ...current, ...dto }`：沒傳的欄位會被蓋成 `undefined`。
+- 不可以 `dto.x ?? current.x`：會把「傳 `null` 清空」當成沒傳。
+
+要拿合併後的值做檢查時，先把資料庫的列轉成 service 內部的形狀（日期、金額都是字串，mapper 要明確標回傳型別），再用 `mergePatch`：
+
+```ts
+const current: LoanState = toLoanState(row); // endDate: fromDbDate(row.endDate)…
+const next = mergePatch(current, dto);
+if (next.status !== 'closed' && next.endDate < today) {
+  throw AppException.forField('LOAN_END_DATE_IN_PAST', 'endDate');
+}
+```
+
+- 直接把 Prisma 的列傳進 `mergePatch` 會編譯失敗（`Date` 與字串）；DTO 上不是資料欄位的屬性（例如 `keepCurrent`）先拿掉再傳。
+- 寫入資料庫時逐欄對應（日期用 `toDbDate`、金額用 `toMoney`），只寫 `dto.x !== undefined` 的欄位；不要把 `definedOnly(dto)` 直接當成 Prisma 的 `data`。
+- 空的 `PATCH`（`{}`）合法，回 200 與目前的資料。
 
 ## 空殼慣例
 
@@ -167,7 +247,7 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
 - [ ] 每個端點都有 `summary`、成功回應、`@ApiNotImplemented()`；有錯誤代碼的端點都有 `@ApiErrors`。
 - [ ] 新的錯誤代碼已加進 `error-codes.ts` 與 `docs/error-codes.md` 自己模組的段落（含 `details.field`）。
 - [ ] 重新執行 `npm run openapi:export`，`openapi.json` 一起提交。
-- [ ] `npm run lint`、`npm run typecheck`、`npm test` 通過；e2e 至少確認每個端點回 501。
+- [ ] `npm run lint`、`npm run typecheck`、`npm test` 通過；e2e 至少確認每個端點回 501。有 body／query DTO 的端點要送合法的值，否則全域 ValidationPipe 會先回 400（見 `test/loans.e2e-spec.ts`）。
 
 **之後的實作 PR**
 
@@ -209,9 +289,16 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
   - 日期欄位用 `@IsDateOnly()`（`@Matches` 擋不住 2/30）；月份參數（例如 `?month=2026-10`）用 `@IsMonth()`。
   - `PATCH` 裡不可為空的欄位用 `@ValidateIf((_, v) => v !== undefined)`；`@IsOptional()` 會放過 `null`，只用在可為空的欄位。
   - 用 `PartialType` 產生 UpdateDto 時一律寫 `PartialType(CreateDto, { skipNullProperties: false })`：預設會對每個欄位套 `@IsOptional()`，`{ amount: null }` 會通過驗證、到 service 才變成 500。可為 null 的欄位在子類別另外加 `@IsOptional()`。
-  - 全域 ValidationPipe 在 INF-4（W2）才加入，在那之前 DTO 先用單元測試的 `plainToInstance` 加 `validate()` 驗證；service 的業務錯誤丟 `AppException`（見「錯誤處理」）。
+  - 請求的驗證由全域 ValidationPipe 負責（見「驗證管線」）；DTO 的單元測試仍可用 `plainToInstance` 加 `validate()`。service 的業務錯誤丟 `AppException`（見「錯誤處理」）。
+  - `PATCH` 合併原值用 `mergePatch`，不要直接展開 DTO（見「驗證管線」）。
 - **e2e**：一律用 `test/utils/create-test-app.ts` 的 `createTestApp()` 建 app，它和正式環境走同一個 `configureApp`。需要登入的端點用 `bearer(app)` 帶 token；測試用的 controller（例如測錯誤格式）不是在測登入，就加 `@Public()`。
 - **登入（AUTH-1）**：token 用 HS256、有效 24 小時、只帶 `sub`（使用者 id），金鑰是 `JWT_SECRET`。發 token 用 `TokenService.signAccessToken(user)`，只在註冊、登入（AUTH-2）呼叫。
+- **註冊、登入（AUTH-2）**：
+  - 密碼用 `bcrypt@6`（原生套件，在背景執行緒算，不會卡住其他請求；附預先編譯檔，不用編譯，D-009）雜湊，成本 10；只看前 72 bytes，超過的登入一律失敗。Email 只收 ASCII，去空白、轉小寫後儲存與比對。
+  - **次數限制（PRD FR-03）**：① 每個 IP、每個端點（註冊、登入各自計算）每分鐘 `AUTH_IP_LIMIT_PER_MINUTE` 次（預設 10），用 `@nestjs/throttler`，只掛在這兩個端點；② 登入時每個 Email 在 `LOGIN_FAILURE_WINDOW_SECONDS`（預設 900）內失敗 `LOGIN_FAILURE_LIMIT` 次（預設 5）就鎖到視窗結束（`LoginAttemptsService`）。超過都回 429 `TOO_MANY_REQUESTS`＋`retryAfterSeconds`。
+  - **計數存在記憶體，只在單一後端實例有效**（PRD 第十九節）；重新啟動會歸零。要多實例時改成共享儲存（例如 Redis）。IP 是 `req.ip`，`TRUST_PROXY_HOPS` 要設對。
+  - `.env.test` 把 `AUTH_IP_LIMIT_PER_MINUTE` 調成 1000，否則 e2e 連續註冊會被擋；測 429 的 e2e 另開檔案，用 `vi.stubEnv` 設小的值（`test/auth-ip-limit.e2e-spec.ts`、`test/auth-email-limit.e2e-spec.ts`）。
+  - e2e 要真的註冊、登入時照 `test/auth-flow.e2e-spec.ts`；只需要「有登入」的空殼測試用 `bearer(app)`。
 - **新增必填環境變數**：同一個 PR 要一起更新 `src/config/env.validation.ts`、`.env.example`、`.env.test.example`、`src/openapi/export-env.constants.ts` 與 CI 的 env（`backend` job，以及 `docker` job 的 `-e`）。
   - **只在 `production` 必填、其他環境有預設值**的變數（例如 `DATABASE_SSL`、`TRUST_PROXY_HOPS`）**不可以**寫屬性初始值：`plainToInstance` 會先 `new EnvVars()`，`production` 沒設時會直接拿到初始值而通過驗證。改用 `@ValidateIf` 只在 `production` 或有設值時驗證，預設值在 `validateEnv` 最後補上。
   - 測試不同環境變數的 e2e 要**另開一個檔案**，`vi.stubEnv` 之後再動態 import `createTestApp`（`@nestjs/config` 在 import 時就存下環境變數），參考 `test/trust-proxy.e2e-spec.ts`。

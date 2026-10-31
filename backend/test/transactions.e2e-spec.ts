@@ -6,6 +6,15 @@ import { bearer } from './utils/test-token.js';
 
 const ID = '5c4b3a29-1807-4f6e-8d5c-4b3a29180765';
 
+// 全域 ValidationPipe（INF-4）之後，不合法的 body 會先回 400，要送合法的值才會走到 501
+const CREATE_BODY = {
+  transactionType: 'expense',
+  amount: '120.00',
+  accountId: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d',
+  categoryId: '7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d',
+  transactionDate: '2026-10-25',
+};
+
 /**
  * transactions 空殼：全部端點回 501。
  * AUTH-1 之後要帶 token，否則 guard 先回 401（沒帶 token 的情況在 auth.e2e-spec.ts）。
@@ -24,15 +33,16 @@ describe('交易空殼（e2e）', () => {
   });
 
   it.each([
-    ['get', '/api/v1/transactions'],
-    ['post', '/api/v1/transactions'],
-    ['get', `/api/v1/transactions/${ID}`],
-    ['patch', `/api/v1/transactions/${ID}`],
-    ['delete', `/api/v1/transactions/${ID}`],
-  ] as const)('%s %s 回 501 NOT_IMPLEMENTED', async (method, path) => {
+    ['get', '/api/v1/transactions', undefined],
+    ['post', '/api/v1/transactions', CREATE_BODY],
+    ['get', `/api/v1/transactions/${ID}`, undefined],
+    ['patch', `/api/v1/transactions/${ID}`, { amount: '150.00' }],
+    ['delete', `/api/v1/transactions/${ID}`, undefined],
+  ] as const)('%s %s 回 501 NOT_IMPLEMENTED', async (method, path, body) => {
     const res = await request(app.getHttpServer())
       [method](path)
       .set('Authorization', auth)
+      .send(body)
       .expect(501);
     expect(res.body).toMatchObject({
       statusCode: 501,

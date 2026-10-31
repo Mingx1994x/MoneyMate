@@ -6,6 +6,7 @@ import { createPinoLoggerParams } from './common/logger.js';
 import { validateEnv } from './config/env.validation.js';
 import { AccountsModule } from './modules/accounts/accounts.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { BillsModule } from './modules/bills/bills.module.js';
 import { CategoriesModule } from './modules/categories/categories.module.js';
 import { DashboardModule } from './modules/dashboard/dashboard.module.js';
 import { GoalsModule } from './modules/goals/goals.module.js';
@@ -35,6 +36,7 @@ import { PrismaModule } from './prisma/index.js';
     AuthModule,
     HealthModule,
     LoansModule,
+    BillsModule,
     OnboardingModule,
     GoalsModule,
     CategoriesModule,

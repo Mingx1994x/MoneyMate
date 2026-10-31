@@ -28,35 +28,35 @@
 
 ## 共用（E）
 
-| 代碼                     | HTTP | 訊息                             | 何時發生                                                                   | details.field | 測試位置                        |
-| ------------------------ | ---- | -------------------------------- | -------------------------------------------------------------------------- | ------------- | ------------------------------- |
-| `AUTH_UNAUTHENTICATED`   | 401  | 請先登入                         | 沒帶 token、token 無效或過期；沒指定代碼的 401                             | `[]`          | `all-exceptions.filter.spec.ts` |
-| `BAD_REQUEST`            | 400  | 請求格式不正確                   | JSON 解析失敗、body-parser 的 400；沒指定代碼的 400                        | `[]`          | `test/errors.e2e-spec.ts`       |
-| `CONFLICT`               | 409  | 資料狀態已變更，請重新整理後再試 | 沒指定代碼的 409                                                           | `[]`          | `all-exceptions.filter.spec.ts` |
-| `FORBIDDEN`              | 403  | 沒有權限執行這個操作             | guard 回 `false` 時 Nest 丟的 `ForbiddenException`                         | `[]`          | `all-exceptions.filter.spec.ts` |
-| `INTERNAL_ERROR`         | 500  | 系統發生錯誤，請稍後再試         | 所有未預期的例外                                                           | `[]`          | `all-exceptions.filter.spec.ts` |
-| `NOT_FOUND`              | 404  | 找不到要求的資源                 | `/api/v1` 底下的未知路由；沒指定代碼的 404                                 | `[]`          | `test/errors.e2e-spec.ts`       |
-| `NOT_IMPLEMENTED`        | 501  | 這個功能還在開發中               | 空殼                                                                       | `[]`          | `test/errors.e2e-spec.ts`       |
-| `PAYLOAD_TOO_LARGE`      | 413  | 送出的資料太大                   | body 超過上限                                                              | `[]`          | `test/errors.e2e-spec.ts`       |
-| `TOO_MANY_REQUESTS`      | 429  | 操作太頻繁，請稍後再試           | 限流                                                                       | `[]`          | `all-exceptions.filter.spec.ts` |
-| `UNSUPPORTED_MEDIA_TYPE` | 415  | 不支援的資料格式                 | body-parser 的 415（例如 charset 不是 UTF-8、不支援的 `Content-Encoding`） | `[]`          | `test/errors.e2e-spec.ts`       |
-| `VALIDATION_FAILED`      | 400  | 輸入的資料有誤，請檢查標示的欄位 | DTO 驗證失敗，而且欄位沒有專屬代碼（INF-4）；service 檢查的一般欄位錯誤    | 出錯的欄位    | INF-4                           |
+| 代碼                     | HTTP | 訊息                             | 何時發生                                                                   | details.field | 測試位置                                                                                               |
+| ------------------------ | ---- | -------------------------------- | -------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
+| `AUTH_UNAUTHENTICATED`   | 401  | 請先登入                         | 沒帶 token、token 無效或過期；沒指定代碼的 401                             | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
+| `BAD_REQUEST`            | 400  | 請求格式不正確                   | JSON 解析失敗、body-parser 的 400；沒指定代碼的 400                        | `[]`          | `test/errors.e2e-spec.ts`                                                                              |
+| `CONFLICT`               | 409  | 資料狀態已變更，請重新整理後再試 | 沒指定代碼的 409                                                           | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
+| `FORBIDDEN`              | 403  | 沒有權限執行這個操作             | guard 回 `false` 時 Nest 丟的 `ForbiddenException`                         | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
+| `INTERNAL_ERROR`         | 500  | 系統發生錯誤，請稍後再試         | 所有未預期的例外                                                           | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
+| `NOT_FOUND`              | 404  | 找不到要求的資源                 | `/api/v1` 底下的未知路由；沒指定代碼的 404                                 | `[]`          | `test/errors.e2e-spec.ts`                                                                              |
+| `NOT_IMPLEMENTED`        | 501  | 這個功能還在開發中               | 空殼                                                                       | `[]`          | `test/errors.e2e-spec.ts`                                                                              |
+| `PAYLOAD_TOO_LARGE`      | 413  | 送出的資料太大                   | body 超過上限                                                              | `[]`          | `test/errors.e2e-spec.ts`                                                                              |
+| `TOO_MANY_REQUESTS`      | 429  | 操作太頻繁，請稍後再試           | 限流（註冊、登入的次數限制，PRD FR-03）                                    | `[]`          | `all-exceptions.filter.spec.ts`、`test/auth-ip-limit.e2e-spec.ts`、`test/auth-email-limit.e2e-spec.ts` |
+| `UNSUPPORTED_MEDIA_TYPE` | 415  | 不支援的資料格式                 | body-parser 的 415（例如 charset 不是 UTF-8、不支援的 `Content-Encoding`） | `[]`          | `test/errors.e2e-spec.ts`                                                                              |
+| `VALIDATION_FAILED`      | 400  | 輸入的資料有誤，請檢查標示的欄位 | DTO 驗證失敗，而且欄位沒有專屬代碼（INF-4）；service 檢查的一般欄位錯誤    | 出錯的欄位    | `validation.spec.ts`、`test/validation.e2e-spec.ts`                                                    |
 
 ## 共用驗證（INF-4）
 
-| 代碼                  | HTTP | 訊息                  | 何時發生                   | details.field | 測試位置 |
-| --------------------- | ---- | --------------------- | -------------------------- | ------------- | -------- |
-| `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`    | 金額欄位      | INF-4    |
-| `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議） | 金額欄位      | INF-4    |
-| `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`            | 金額欄位      | INF-4    |
-| `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`      | `name`        | INF-4    |
+| 代碼                  | HTTP | 訊息                  | 何時發生                   | details.field | 測試位置                                            |
+| --------------------- | ---- | --------------------- | -------------------------- | ------------- | --------------------------------------------------- |
+| `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`    | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
+| `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議） | 金額欄位      | `validation.spec.ts`                                |
+| `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`            | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
+| `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`      | `name`        | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
 
 ## auth（D）
 
-| 代碼                       | HTTP | 訊息                    | 何時發生                  | details.field            | 測試位置 |
-| -------------------------- | ---- | ----------------------- | ------------------------- | ------------------------ | -------- |
-| `AUTH_EMAIL_TAKEN`         | 409  | 這個 Email 已經註冊過了 | 註冊時 Email 重複（提議） | `email`                  | AUTH-1   |
-| `AUTH_INVALID_CREDENTIALS` | 401  | Email 或密碼錯誤        | 登入失敗                  | `[]`（不指出是哪一個錯） | AUTH-1   |
+| 代碼                       | HTTP | 訊息                    | 何時發生                                            | details.field            | 測試位置                     |
+| -------------------------- | ---- | ----------------------- | --------------------------------------------------- | ------------------------ | ---------------------------- |
+| `AUTH_EMAIL_TAKEN`         | 409  | 這個 Email 已經註冊過了 | 註冊時 Email 重複（轉成小寫後比對，大小寫不同也算） | `email`                  | `test/auth-flow.e2e-spec.ts` |
+| `AUTH_INVALID_CREDENTIALS` | 401  | Email 或密碼錯誤        | 登入失敗：Email 不存在或密碼錯誤，兩者回應完全相同  | `[]`（不指出是哪一個錯） | `test/auth-flow.e2e-spec.ts` |
 
 ## onboarding（D）
 
@@ -67,13 +67,13 @@
 
 ## accounts（C）
 
-| 代碼                         | HTTP     | 訊息                                           | 何時發生                                                                   | details.field                                                | 測試位置 |
-| ---------------------------- | -------- | ---------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ | -------- |
-| `ACCOUNT_DEACTIVATE_BLOCKED` | 409      | 帳戶還有餘額或未來的交易，不能停用             | 停用條件不符（提議）                                                       | `isActive`                                                   | —        |
-| `ACCOUNT_IN_USE`             | 409      | 這個帳戶已有交易或帳單，不能刪除，可以改成停用 | 刪除有交易或被帳單使用的帳戶                                               | `[]`                                                         | —        |
-| `ACCOUNT_INACTIVE`           | 409      | 這個帳戶已停用，請先重新啟用                   | 對停用帳戶新增、修改、刪除交易；用停用帳戶繳費；修改停用帳戶（含初始餘額） | 寫入時是對應的帳戶欄位；DELETE 時是 `[]`                     | —        |
-| `ACCOUNT_NOT_FOUND`          | 404／400 | 找不到這個帳戶                                 | 路徑上是 404；body、query 引用不存在或他人的帳戶是 400                     | 404：`[]`；400：引用的 ID 欄位（`accountId`、`toAccountId`） | —        |
-| `OPENING_BALANCE_NEGATIVE`   | 400      | 非信用卡帳戶的初始餘額不可為負數               |                                                                            | `openingBalance`                                             | —        |
+| 代碼                         | HTTP     | 訊息                                           | 何時發生                                                                                                           | details.field                                                | 測試位置                    |
+| ---------------------------- | -------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------- |
+| `ACCOUNT_DEACTIVATE_BLOCKED` | 409      | 帳戶還有餘額或未來的交易，不能停用             | 停用條件不符（提議）                                                                                               | `isActive`                                                   | —                           |
+| `ACCOUNT_IN_USE`             | 409      | 這個帳戶已有交易或帳單，不能刪除，可以改成停用 | 刪除有交易或被帳單使用的帳戶                                                                                       | `[]`                                                         | —                           |
+| `ACCOUNT_INACTIVE`           | 409      | 這個帳戶已停用，請先重新啟用                   | 對停用帳戶新增、修改、刪除交易；修改停用帳戶（含初始餘額）；新增或修改帳單時指定停用帳戶；用停用帳戶繳費或取消繳費 | 寫入時是對應的帳戶欄位；DELETE、帳單的繳費與取消繳費是 `[]`  | —                           |
+| `ACCOUNT_NOT_FOUND`          | 404／400 | 找不到這個帳戶                                 | 路徑上是 404；body、query 引用不存在或他人的帳戶是 400                                                             | 404：`[]`；400：引用的 ID 欄位（`accountId`、`toAccountId`） | `test/accounts.e2e-spec.ts` |
+| `OPENING_BALANCE_NEGATIVE`   | 400      | 非信用卡帳戶的初始餘額不可為負數               |                                                                                                                    | `openingBalance`                                             | `test/accounts.e2e-spec.ts` |
 
 ## categories（C）
 
@@ -93,12 +93,13 @@
 
 ## bills（E）
 
-| 代碼                     | HTTP | 訊息                               | 何時發生                           | details.field | 測試位置 |
-| ------------------------ | ---- | ---------------------------------- | ---------------------------------- | ------------- | -------- |
-| `BILL_ALREADY_PAID`      | 409  | 這張帳單已經繳過了                 | 重複繳費、修改已繳帳單的金額或日期 | `[]`          | —        |
-| `BILL_NOT_FOUND`         | 404  | 找不到這張帳單                     |                                    | `[]`          | —        |
-| `NEXT_BILL_ALREADY_PAID` | 409  | 下一期帳單已經繳費，不能取消這一期 |                                    | `[]`          | —        |
-| `PAID_DATE_IN_FUTURE`    | 400  | 繳費日期不可晚於今天               |                                    | `paidDate`    | —        |
+| 代碼                     | HTTP | 訊息                               | 何時發生                                                                           | details.field | 測試位置 |
+| ------------------------ | ---- | ---------------------------------- | ---------------------------------------------------------------------------------- | ------------- | -------- |
+| `BILL_ALREADY_PAID`      | 409  | 這張帳單已經繳過了                 | 重複繳費；修改已繳帳單名稱與備註以外的欄位（值和現值相同的欄位不算）；刪除已繳帳單 | `[]`          | —        |
+| `BILL_NOT_FOUND`         | 404  | 找不到這張帳單                     | 路徑的 `:id` 不存在、屬於他人或不是 UUID                                           | `[]`          | BILL-1   |
+| `BILL_NOT_PAID`          | 409  | 這張帳單還沒繳費                   | 對待繳帳單取消繳費                                                                 | `[]`          | —        |
+| `NEXT_BILL_ALREADY_PAID` | 409  | 下一期帳單已經繳費，不能取消這一期 | 取消繳費，但同系列之後的帳單已繳                                                   | `[]`          | —        |
+| `PAID_DATE_IN_FUTURE`    | 400  | 繳費日期不可晚於今天               | 繳費時 `paidDate` 晚於台北今天                                                     | `paidDate`    | —        |
 
 ## loans（E）
 

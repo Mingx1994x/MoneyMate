@@ -4,13 +4,13 @@ import type { NextFunction, Request, Response } from 'express';
 import { Logger } from 'nestjs-pino';
 import { AllExceptionsFilter } from './common/errors/all-exceptions.filter.js';
 import { usePinoHttp } from './common/logger.js';
+import { createValidationPipe } from './common/validation.js';
 import { parseCorsOrigins, type EnvVars } from './config/env.validation.js';
 
 /**
  * 所有會影響請求行為的設定都只放在這裡（前綴、CORS、安全標頭、代理、pipe、filter、
  * interceptor、useLogger、shutdown hooks），正式程式（main.ts）與 e2e（createTestApp）共用。
  * LoggerModule 的註冊在 AppModule（套件限制），選項在 common/logger.ts。
- * 之後加入：ValidationPipe（INF-4）。
  */
 export function configureApp(app: NestExpressApplication): void {
   app.useLogger(app.get(Logger));
@@ -43,6 +43,7 @@ export function configureApp(app: NestExpressApplication): void {
     exposedHeaders: ['X-Request-Id'],
   });
 
+  app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new AllExceptionsFilter());
 
   app.enableShutdownHooks();

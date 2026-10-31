@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { LoansController } from './loans.controller.js';
+import { LoansService } from './loans.service.js';
 
-// LoansService 在 LOAN-2 實作時加入
+// 匯出 LoansService 給 C 的 DashboardModule 用（getLoanSummary）
 @Module({
   controllers: [LoansController],
+  providers: [LoansService],
+  exports: [LoansService],
 })
 export class LoansModule {}

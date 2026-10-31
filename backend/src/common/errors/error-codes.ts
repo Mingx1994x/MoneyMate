@@ -83,6 +83,7 @@ export const ERROR_CODES = {
   // ── bills（E）
   BILL_ALREADY_PAID: { status: 409, message: '這張帳單已經繳過了' },
   BILL_NOT_FOUND: { status: 404, message: '找不到這張帳單' },
+  BILL_NOT_PAID: { status: 409, message: '這張帳單還沒繳費' },
   NEXT_BILL_ALREADY_PAID: {
     status: 409,
     message: '下一期帳單已經繳費，不能取消這一期',

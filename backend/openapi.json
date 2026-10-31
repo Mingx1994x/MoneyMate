@@ -3,7 +3,7 @@
   "paths": {
     "/api/v1/auth/register": {
       "post": {
-        "description": "Email 去除前後空白並轉成小寫後儲存；已經註冊過回 AUTH_EMAIL_TAKEN（比對也用小寫，大小寫不同視為同一個 Email）。\n\n密碼用 bcrypt 雜湊後儲存，回應不含任何密碼資訊。註冊成功直接登入，回傳 token，hasCompletedOnboarding 一定是 false。\n\n次數限制（PRD FR-03，AUTH-2 實作）：每個 IP 每分鐘最多 10 次，超過回 429 TOO_MANY_REQUESTS。上限由環境變數設定，測試環境調高（變數名稱在 AUTH-2 定義，並寫進 .env.example、.env.test.example 與 CI）。",
+        "description": "Email 去除前後空白並轉成小寫後儲存（只接受半形英數與符號）；已經註冊過回 AUTH_EMAIL_TAKEN（比對也用小寫，大小寫不同視為同一個 Email）。兩個請求同時註冊同一個 Email，只有一個成功。\n\n密碼用 bcrypt 雜湊後儲存，回應不含任何密碼資訊。註冊成功直接登入，回傳 token，hasCompletedOnboarding 一定是 false。\n\n次數限制（PRD FR-03）：每個 IP 每分鐘最多 10 次（上限是 AUTH_IP_LIMIT_PER_MINUTE，測試環境調高），超過回 429 TOO_MANY_REQUESTS，並帶 retryAfterSeconds。只在單一後端實例有效。",
         "operationId": "Auth_register",
         "parameters": [],
         "requestBody": {
@@ -56,19 +56,9 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
-        "summary": "【未實作】註冊",
+        "summary": "註冊",
         "tags": [
           "auth"
         ]
@@ -76,7 +66,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "Email 轉成小寫後比對。Email 不存在、密碼錯誤都回 AUTH_INVALID_CREDENTIALS，不透露是哪一個錯。\n\nEmail 不存在時也要跑一次 bcrypt 比對，讓兩種情況的回應時間差不多。\n\n次數限制（PRD FR-03，AUTH-2 實作），兩條都要：\n1. 每個 IP 每分鐘最多 10 次（成功、失敗都算）。\n2. 每個 Email（轉成小寫後）每 15 分鐘最多失敗 5 次；超過後這個 Email 在剩下的時間內回 429，即使密碼正確也一樣。Email 不存在的失敗也要計算，才不會從回應看出這個 Email 有沒有註冊。\n\n超過任一條都回 429 TOO_MANY_REQUESTS。上限由環境變數設定，測試環境調高（變數名稱在 AUTH-2 定義，並寫進 .env.example、.env.test.example 與 CI）。MVP 只部署單一後端實例，記憶體計數才有效（PRD 第十九節）。",
+        "description": "Email 轉成小寫後比對。Email 不存在、密碼錯誤都回 AUTH_INVALID_CREDENTIALS，不透露是哪一個錯；Email 不存在時也會跑一次 bcrypt 比對，讓兩種情況的回應時間差不多。\n\n次數限制（PRD FR-03），兩條都要：\n1. 每個 IP 每分鐘最多 10 次（成功、失敗都算；AUTH_IP_LIMIT_PER_MINUTE）。\n2. 每個 Email（轉成小寫後）每 15 分鐘最多失敗 5 次（LOGIN_FAILURE_LIMIT、LOGIN_FAILURE_WINDOW_SECONDS）；超過後這個 Email 在視窗結束前一律回 429，即使密碼正確也一樣。Email 不存在的失敗也會計算，所以從 429 看不出 Email 有沒有註冊。登入成功會把這個 Email 的失敗次數歸零。\n\n超過任一條都回 429 TOO_MANY_REQUESTS，並帶 retryAfterSeconds。計數存在記憶體，只在單一後端實例有效（PRD 第十九節）；測試環境用環境變數調高上限。",
         "operationId": "Auth_login",
         "parameters": [],
         "requestBody": {
@@ -129,19 +119,9 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
-        "summary": "【未實作】登入",
+        "summary": "登入",
         "tags": [
           "auth"
         ]
@@ -149,7 +129,7 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "未完成問卷也可以呼叫。token 對應的使用者不存在時（例如資料庫被重設）回 401 AUTH_UNAUTHENTICATED。",
+        "description": "未完成問卷也可以呼叫，hasCompletedOnboarding 是 false（有目標資料才是 true）。token 對應的使用者不存在時（例如資料庫被重設）回 401 AUTH_UNAUTHENTICATED。",
         "operationId": "Auth_me",
         "parameters": [],
         "responses": {
@@ -172,16 +152,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -189,7 +159,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得登入者資料",
+        "summary": "取得登入者資料",
         "tags": [
           "auth"
         ]
@@ -650,6 +620,695 @@
         ]
       }
     },
+    "/api/v1/bills": {
+      "get": {
+        "description": "status 篩選 pending、paid、overdue；overdue 是待繳且到期日早於台北今天（計算出來的，不是資料庫欄位）。dueFrom、dueTo 篩選到期日（含頭尾，不是繳費日），dueFrom 晚於 dueTo 回 VALIDATION_FAILED（field: dueFrom）。\n\n排序：待繳在前，依 dueDate 由近到遠；已繳在後，依 dueDate 由新到舊；相同時再依 id。指定 status 時只套用該組的排序。",
+        "operationId": "Bills_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "overdue：待繳且到期日早於台北今天。不帶時列出全部",
+            "schema": {
+              "example": "pending",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/BillListStatus"
+                }
+              ]
+            }
+          },
+          {
+            "name": "dueFrom",
+            "required": false,
+            "in": "query",
+            "description": "到期日起（含）",
+            "schema": {
+              "format": "date",
+              "example": "2026-11-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dueTo",
+            "required": false,
+            "in": "query",
+            "description": "到期日迄（含），不可早於 dueFrom",
+            "schema": {
+              "format": "date",
+              "example": "2026-11-30",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】列出帳單",
+        "tags": [
+          "bills"
+        ]
+      },
+      "post": {
+        "description": "建立的帳單一律是待繳；不能建立已繳的帳單（要補記請記一筆交易）。dueDate 在過去也可以建立，建立後就是逾期；晚於台北今天加 50 年回 VALIDATION_FAILED（field: dueDate）。\n\nrecurrence 沒帶是 none。dueDay、dueMonth 由後端從 dueDate 取：dueDay 是日；recurrence 是 yearly 時 dueMonth 是月，否則是 null。\n\n分類必須是支出分類，收入分類回 CATEGORY_TYPE_MISMATCH；帳戶已停用回 ACCOUNT_INACTIVE（field: accountId）。",
+        "operationId": "Bills_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBillDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`AMOUNT_NOT_POSITIVE`：金額必須大於 0\n\n`NAME_INVALID`：名稱需為 1 到 30 個字\n\n`ACCOUNT_NOT_FOUND`：找不到這個帳戶\n\n`CATEGORY_NOT_FOUND`：找不到這個分類\n\n`CATEGORY_TYPE_MISMATCH`：分類的類型不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】新增帳單",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/bills/{id}": {
+      "get": {
+        "description": "不存在、屬於他人或 id 不是 UUID，一律回 404。已繳的帳單也可以讀。",
+        "operationId": "Bills_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`BILL_NOT_FOUND`：找不到這張帳單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】取得單筆帳單",
+        "tags": [
+          "bills"
+        ]
+      },
+      "patch": {
+        "description": "沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。\n\n已繳的帳單只能改 name、note：其他欄位的值和現值不同時回 BILL_ALREADY_PAID，相同的忽略（前端送出整張表單也不會失敗）。amount 用數值比較，'15000' 和 '15000.00' 視為相同。\n\n待繳的帳單可以改全部欄位。accountId、categoryId 有變更才檢查擁有權與分類類型，帳戶有變更才檢查是否啟用。改 dueDate 時 dueDay 改成新日期的日、dueMonth 依 recurrence 重算；只改 recurrence 時只重算 dueMonth。\n\ndueDate 必須晚於同系列最後一張已繳帳單的 dueDate，也不可晚於台北今天加 50 年，否則回 VALIDATION_FAILED（field: dueDate）。\n\n改 amount 只影響這張與之後產生的下一期，已繳的歷史不變。",
+        "operationId": "Bills_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBillDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`AMOUNT_NOT_POSITIVE`：金額必須大於 0\n\n`NAME_INVALID`：名稱需為 1 到 30 個字\n\n`ACCOUNT_NOT_FOUND`：找不到這個帳戶\n\n`CATEGORY_NOT_FOUND`：找不到這個分類\n\n`CATEGORY_TYPE_MISMATCH`：分類的類型不符",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`BILL_NOT_FOUND`：找不到這張帳單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用\n\n`BILL_ALREADY_PAID`：這張帳單已經繳過了",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】修改帳單",
+        "tags": [
+          "bills"
+        ]
+      },
+      "delete": {
+        "description": "已繳的帳單回 BILL_ALREADY_PAID，要先取消繳費。待繳帳單是系列的最新一期，刪除後系列不再產生下一期，已繳的歷史保留。",
+        "operationId": "Bills_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`BILL_NOT_FOUND`：找不到這張帳單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`BILL_ALREADY_PAID`：這張帳單已經繳過了",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】刪除帳單（只限待繳）",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/bills/{id}/pay": {
+      "post": {
+        "description": "body 可以是空的：paidAmount 預設帳單的 amount，paidDate 預設台北今天；paidDate 晚於台北今天回 PAID_DATE_IN_FUTURE。\n\n在同一個資料庫交易內：建立一筆支出（帳戶、分類沿用帳單，金額是 paidAmount，日期是 paidDate；不檢查餘額）、帳單改為已繳；recurrence 不是 none 時建立下一期待繳帳單，放在 nextBill（不重複時是 null）。\n\n下一期的 amount 沿用預定金額（不是實繳金額），dueDate 從本期的 dueDate 推算（不是繳費日），所以逾期補繳後，下一期可能也已經逾期。\n\n已繳回 BILL_ALREADY_PAID：連按兩次也只會有一筆支出。扣款帳戶已停用回 ACCOUNT_INACTIVE；要用別的帳戶付，先用 PATCH 改掉待繳帳單的 accountId。",
+        "operationId": "Bills_pay",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayBillDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayBillResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確\n\n`AMOUNT_NOT_POSITIVE`：金額必須大於 0\n\n`PAID_DATE_IN_FUTURE`：繳費日期不可晚於今天",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`BILL_NOT_FOUND`：找不到這張帳單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`BILL_ALREADY_PAID`：這張帳單已經繳過了\n\n`ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】繳費",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/bills/{id}/unpay": {
+      "post": {
+        "description": "刪除這張帳單產生的支出、帳單改回待繳並清空 paidAmount、paidDate；同系列的待繳帳單（繳費時產生的下一期）一起刪除。\n\n同系列的待繳帳單已經是不重複（停止重複時保留），或系列已經沒有待繳帳單（停止重複時刪除，或直接刪除待繳帳單）時，改回待繳的這張也改成不重複（dueMonth 改成 null），再繳費不會產生下一期。\n\n待繳的帳單回 BILL_NOT_PAID；同系列之後的帳單已繳回 NEXT_BILL_ALREADY_PAID（要從最新一期往回取消）；扣款帳戶已停用回 ACCOUNT_INACTIVE。",
+        "operationId": "Bills_unpay",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "改回待繳的帳單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`BILL_NOT_FOUND`：找不到這張帳單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`BILL_NOT_PAID`：這張帳單還沒繳費\n\n`NEXT_BILL_ALREADY_PAID`：下一期帳單已經繳費，不能取消這一期\n\n`ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】取消繳費",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/bills/{id}/stop-recurrence": {
+      "post": {
+        "description": "從系列的任何一張（包括已繳的歷史期）都可以停止，處理的是同系列的待繳帳單：keepCurrent 是 true 時保留它、改成不重複（dueMonth 改成 null）；false 時刪除它。已繳的歷史都不動。\n\n系列沒有待繳帳單時什麼都不做，回 stopped: false、bill: null。",
+        "operationId": "Bills_stopRecurrence",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopRecurrenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopRecurrenceResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`BILL_NOT_FOUND`：找不到這張帳單",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】停止重複",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
     "/api/v1/onboarding": {
       "post": {
         "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
@@ -921,7 +1580,7 @@
     },
     "/api/v1/categories": {
       "get": {
-        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：sortOrder 由小到大，相同時依 id（「其他」的 sortOrder 最大，排最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
+        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：先類型（income 在前、expense 在後），同類型依 sortOrder 由小到大，再依 id（「其他」的 sortOrder 是 99，排在該類型最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
         "operationId": "Categories_findAll",
         "parameters": [
           {
@@ -969,16 +1628,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -986,7 +1635,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出分類",
+        "summary": "列出分類",
         "tags": [
           "categories"
         ]
@@ -1039,16 +1688,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1056,13 +1695,13 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出帳戶",
+        "summary": "列出帳戶",
         "tags": [
           "accounts"
         ]
       },
       "post": {
-        "description": "currency 固定 TWD。只有 credit_card 的 openingBalance 可以是負數，其他類型為負數時回 OPENING_BALANCE_NEGATIVE。\n\ndeductFromEstimate = true 時，同一個資料庫交易內從估計帳戶扣掉 min(openingBalance, 估計帳戶目前餘額)，並記在新帳戶的 deductedFromEstimate；估計帳戶目前餘額扣到 0 時自動停用。新增失敗時估計帳戶不會被扣（PRD 15.9）。\n\n實際扣除金額 ≤ 0 時不扣，忽略 deductFromEstimate，deductedFromEstimate 存 null（不存 0）：包含 openingBalance ≤ 0、估計帳戶目前餘額 ≤ 0（例如估計帳戶有支出交易）、沒有估計帳戶，或估計帳戶已停用。這些情況不是錯誤，照常建立帳戶。",
+        "description": "currency 固定 TWD。只有 credit_card 的 openingBalance 可以是負數，其他類型為負數時回 OPENING_BALANCE_NEGATIVE（估計帳戶只由問卷建立，不能從這裡新增）。\n\ndeductFromEstimate = true 時，同一個資料庫交易內從估計帳戶扣掉 min(openingBalance, 估計帳戶目前餘額)，並記在新帳戶的 deductedFromEstimate；估計帳戶目前餘額扣到 0 時自動停用。新增失敗時估計帳戶不會被扣（PRD 15.9）。\n\n實際扣除金額 ≤ 0 時不扣，忽略 deductFromEstimate，deductedFromEstimate 存 null（不存 0）：包含 openingBalance ≤ 0、估計帳戶目前餘額 ≤ 0（例如估計帳戶有支出交易）、沒有估計帳戶，或估計帳戶已停用。這些情況不是錯誤，照常建立帳戶。",
         "operationId": "Accounts_create",
         "parameters": [],
         "requestBody": {
@@ -1105,16 +1744,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1122,7 +1751,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】新增帳戶",
+        "summary": "新增帳戶",
         "tags": [
           "accounts"
         ]
@@ -1173,16 +1802,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1190,13 +1809,13 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得單筆帳戶",
+        "summary": "取得單筆帳戶",
         "tags": [
           "accounts"
         ]
       },
       "patch": {
-        "description": "沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。accountType 不能改。\n\n停用的帳戶只能重新啟用：請求只帶 isActive = true 時通過；帶了其他欄位回 ACCOUNT_INACTIVE（先重新啟用，再修改）。\n\n停用（isActive = false）：目前餘額必須為 0，而且沒有未來日期的交易，否則回 ACCOUNT_DEACTIVATE_BLOCKED。停用不會把扣掉的估計值加回（PRD 15.9）。\n\n修改 openingBalance 後目前餘額跟著變動；非 credit_card 改成負數回 OPENING_BALANCE_NEGATIVE。",
+        "description": "沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。accountType 不能改。\n\n停用的帳戶只能重新啟用：請求只帶 isActive = true 時通過；帶了其他欄位回 ACCOUNT_INACTIVE（先重新啟用，再修改）。\n\n停用（isActive = false）：目前餘額必須為 0，而且沒有未來日期的交易，否則回 ACCOUNT_DEACTIVATE_BLOCKED。停用不會把扣掉的估計值加回（PRD 15.9）。\n\n修改 openingBalance 後目前餘額跟著變動；credit_card 與估計帳戶可以是負數，其他類型改成負數回 OPENING_BALANCE_NEGATIVE。",
         "operationId": "Accounts_update",
         "parameters": [
           {
@@ -1920,7 +2539,7 @@
         "properties": {
           "email": {
             "type": "string",
-            "description": "Email，後端去除前後空白並轉成小寫後儲存與比對",
+            "description": "Email，後端去除前後空白並轉成小寫後儲存與比對。只接受半形英數與符號（不接受中文等非 ASCII 字元）",
             "maxLength": 254,
             "example": "shin@example.com"
           },
@@ -2028,6 +2647,7 @@
           "TRANSFER_SAME_ACCOUNT",
           "BILL_ALREADY_PAID",
           "BILL_NOT_FOUND",
+          "BILL_NOT_PAID",
           "NEXT_BILL_ALREADY_PAID",
           "PAID_DATE_IN_FUTURE",
           "LOAN_END_DATE_IN_PAST",
@@ -2447,6 +3067,375 @@
             "example": "每月 5 日自動扣款"
           }
         }
+      },
+      "BillListStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "paid",
+          "overdue"
+        ]
+      },
+      "Recurrence": {
+        "type": "string",
+        "enum": [
+          "none",
+          "monthly",
+          "yearly"
+        ]
+      },
+      "BillStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "paid"
+        ]
+      },
+      "BillResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "5c3a1e8f-7d2b-4f6a-b9e0-1d4c7a2f8b36"
+          },
+          "seriesId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "同一個重複系列的帳單共用；下一期沿用",
+            "example": "a4d7e2c9-1f3b-4a8e-8c6d-2b9f0e7a1c54"
+          },
+          "name": {
+            "type": "string",
+            "example": "房租"
+          },
+          "amount": {
+            "type": "string",
+            "description": "預定金額，金額字串",
+            "example": "15000.00"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "0b8d3c7e-2f4a-4e6b-9c1d-5a7f8e9b0c21"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "預設扣款帳戶",
+            "example": "9e2f6a14-3b7c-4d8e-a5f1-6c0b2d4e8a73"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-11-01"
+          },
+          "dueDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31,
+            "description": "原始的到期日（例如 31），短月之後用來回到原本的日期",
+            "example": 1
+          },
+          "dueMonth": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 12,
+            "description": "每年重複的帳單的到期月份；不是 yearly 時是 null",
+            "example": null
+          },
+          "recurrence": {
+            "example": "monthly",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Recurrence"
+              }
+            ]
+          },
+          "status": {
+            "example": "pending",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BillStatus"
+              }
+            ]
+          },
+          "paidAmount": {
+            "type": "string",
+            "nullable": true,
+            "description": "實繳金額，金額字串；待繳時是 null",
+            "example": null
+          },
+          "paidDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "繳費日期；待繳時是 null",
+            "example": null
+          },
+          "isOverdue": {
+            "type": "boolean",
+            "description": "待繳且 dueDate 早於台北今天（回應時計算，不是資料庫欄位）",
+            "example": false
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "example": "每月 1 日"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-27T02:30:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-27T02:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "seriesId",
+          "name",
+          "amount",
+          "categoryId",
+          "accountId",
+          "dueDate",
+          "dueDay",
+          "dueMonth",
+          "recurrence",
+          "status",
+          "paidAmount",
+          "paidDate",
+          "isOverdue",
+          "note",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "BillListResponseDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "example": 20
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 42
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillResponseDto"
+            }
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "total",
+          "items"
+        ]
+      },
+      "CreateBillDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "帳單名稱，去除前後空白後 1–30 字",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "房租"
+          },
+          "amount": {
+            "type": "string",
+            "description": "預定金額，金額字串，> 0；下一期沿用這個金額",
+            "example": "15000.00"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "支出分類（收入分類回 CATEGORY_TYPE_MISMATCH）",
+            "example": "0b8d3c7e-2f4a-4e6b-9c1d-5a7f8e9b0c21"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "預設扣款帳戶，必須是啟用中的帳戶",
+            "example": "9e2f6a14-3b7c-4d8e-a5f1-6c0b2d4e8a73"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "description": "到期日。可以是過去的日期（建立後就是逾期），不可晚於台北今天加 50 年（在 service 檢查）；日期是 29–31 時，之後遇到短月用當月最後一天",
+            "example": "2026-11-01"
+          },
+          "recurrence": {
+            "default": "none",
+            "example": "monthly",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Recurrence"
+              }
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "每月 1 日"
+          }
+        },
+        "required": [
+          "name",
+          "amount",
+          "categoryId",
+          "accountId",
+          "dueDate"
+        ]
+      },
+      "UpdateBillDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "帳單名稱，去除前後空白後 1–30 字",
+            "minLength": 1,
+            "maxLength": 30,
+            "example": "房租"
+          },
+          "amount": {
+            "type": "string",
+            "description": "預定金額，金額字串，> 0；下一期沿用這個金額",
+            "example": "15000.00"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "支出分類（收入分類回 CATEGORY_TYPE_MISMATCH）",
+            "example": "0b8d3c7e-2f4a-4e6b-9c1d-5a7f8e9b0c21"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "預設扣款帳戶，必須是啟用中的帳戶",
+            "example": "9e2f6a14-3b7c-4d8e-a5f1-6c0b2d4e8a73"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "description": "到期日。可以是過去的日期（建立後就是逾期），不可晚於台北今天加 50 年（在 service 檢查）；日期是 29–31 時，之後遇到短月用當月最後一天",
+            "example": "2026-11-01"
+          },
+          "recurrence": {
+            "default": "none",
+            "example": "monthly",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Recurrence"
+              }
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "每月 1 日"
+          }
+        }
+      },
+      "PayBillDto": {
+        "type": "object",
+        "properties": {
+          "paidAmount": {
+            "type": "string",
+            "description": "實繳金額，金額字串，> 0；不帶時用帳單的 amount",
+            "example": "15000.00"
+          },
+          "paidDate": {
+            "type": "string",
+            "format": "date",
+            "description": "繳費日期，不帶時用台北今天；晚於台北今天回 PAID_DATE_IN_FUTURE（在 service 檢查）",
+            "example": "2026-10-27"
+          }
+        }
+      },
+      "PayBillResponseDto": {
+        "type": "object",
+        "properties": {
+          "bill": {
+            "description": "繳費後的這張帳單",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BillResponseDto"
+              }
+            ]
+          },
+          "nextBill": {
+            "nullable": true,
+            "description": "產生的下一期待繳帳單；不重複的帳單是 null",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BillResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "bill",
+          "nextBill"
+        ]
+      },
+      "StopRecurrenceDto": {
+        "type": "object",
+        "properties": {
+          "keepCurrent": {
+            "type": "boolean",
+            "description": "系列中的待繳帳單：true 保留並改成不重複；false 刪除。必填，沒帶或不是布林回 VALIDATION_FAILED",
+            "example": true
+          }
+        },
+        "required": [
+          "keepCurrent"
+        ]
+      },
+      "StopRecurrenceResponseDto": {
+        "type": "object",
+        "properties": {
+          "stopped": {
+            "type": "boolean",
+            "description": "系列有待繳帳單（已處理）時是 true；沒有待繳帳單時是 false",
+            "example": true
+          },
+          "bill": {
+            "nullable": true,
+            "description": "保留時是改成不重複後的待繳帳單；刪除或沒有待繳帳單時是 null",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BillResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "stopped",
+          "bill"
+        ]
       },
       "CreateOnboardingDto": {
         "type": "object",
