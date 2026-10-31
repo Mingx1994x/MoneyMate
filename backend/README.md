@@ -69,7 +69,7 @@ npm run db:drift           # 一致時印出 "-- This is an empty migration."；
 **系統分類 seed**：新資料庫要先有 12 個系統分類，分類下拉選單才有選項、交易才能記帳（收入、支出一定要有分類）。
 
 - **本機**：`npm run seed:categories`，連哪個資料庫由 `DATABASE_URL` 決定（讀 `.env`，是 `app_dev`）。
-- **部署（Render＋Supabase）**：在 Render 設 `RUN_SEED=true`，容器啟動時（migration 之後）會自動執行 `node dist/seed/seed-categories.js`，和 `RUN_MIGRATIONS=true` 同一套做法；新資料庫兩個都要設。可以重複執行，所以每次啟動都跑也沒關係。映像檔裡沒有 `nest`，不能在容器裡跑 `npm run seed:categories`。
+- **部署（Render＋Supabase）**：在 Render 設 `RUN_SEED=true`，容器啟動時（migration 之後）會自動執行 `node dist/seed/seed-categories.js`，和 `RUN_MIGRATIONS=true` 同一套做法；新資料庫兩個都要設。可以重複執行，所以每次啟動都跑也沒關係。seed 失敗時只印警告、照樣啟動 app（交易會回滾，現有分類不受影響）；migration 失敗則會直接結束。映像檔裡沒有 `nest`，不能在容器裡跑 `npm run seed:categories`。
 - 只會新增或更新自己的 12 個分類（用 `code` 比對），不會刪除任何資料、不會動使用者的分類（衝突時丟錯並回滾）；之後被停用的分類重跑也不會又打開。12 筆用一個 SQL 寫入，所以遠端資料庫也不會逾時。
 - 分類清單在 `src/seed/system-categories.ts`，要和 `docs/data-dictionary.md` 的「系統分類」表一致（`system-categories.spec.ts` 會檢查）。e2e 需要分類時，在測試的 `beforeAll` 呼叫 `seedSystemCategories(tx)`，不要依賴別的測試檔留下的資料（共用的 `app_test` 會被各檔 TRUNCATE）。
 - Demo 帳號與 12 個月 Demo 資料（`seed:demo`）要等 C 的 service 與 AUTH-2，之後再加；`seed:demo` 要先呼叫 `seedSystemCategories`，一行指令才能在新資料庫重建。
