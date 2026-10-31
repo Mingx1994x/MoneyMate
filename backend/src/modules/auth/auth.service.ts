@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { compare, hash } from 'bcryptjs';
+import { compare, hash } from 'bcrypt';
 import { AppException } from '../../common/errors/app.exception.js';
 import { Prisma, PrismaService } from '../../prisma/index.js';
 import { attemptKey, normalizeEmail } from './auth-email.js';
