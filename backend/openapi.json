@@ -2493,16 +2493,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2510,7 +2500,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】Dashboard 全部區塊＋一句下一步",
+        "summary": "Dashboard 全部區塊＋一句下一步",
         "tags": [
           "dashboard"
         ]
