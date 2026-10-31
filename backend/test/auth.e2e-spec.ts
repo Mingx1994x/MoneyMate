@@ -13,11 +13,6 @@ const UNAUTHENTICATED = {
 };
 
 // 全域 ValidationPipe（INF-4）之後，不合法的 body 會先回 400，要送合法的值才會走到 501
-const REGISTER_BODY = {
-  email: 'shin@example.com',
-  password: 'correct-horse-battery',
-};
-const LOGIN_BODY = REGISTER_BODY;
 const ONBOARDING_BODY = { monthlySpending: 40000 };
 
 const NOT_IMPLEMENTED = {
@@ -27,10 +22,10 @@ const NOT_IMPLEMENTED = {
 };
 
 /**
- * AUTH-1：全域 JWT guard，以及 auth、onboarding、goal 的空殼。
- * 空殼的端點實作後（AUTH-2、W4），501 的測試改成實際行為。
+ * AUTH-1：全域 JWT guard，以及問卷、目標還沒實作的空殼（W4 實作後，501 的測試改成實際行為）。
+ * 註冊、登入、/auth/me 的行為在 auth-flow.e2e-spec.ts。
  */
-describe('登入驗證與 D 的空殼（e2e）', () => {
+describe('登入驗證與問卷、目標空殼（e2e）', () => {
   let app: INestApplication<App>;
   let auth: string;
 
@@ -43,16 +38,13 @@ describe('登入驗證與 D 的空殼（e2e）', () => {
     await app?.close();
   });
 
-  describe('公開端點：不帶 token 也能呼叫', () => {
+  describe('公開端點：不帶 token 也能呼叫（不是 401）', () => {
     it.each([
-      ['post', '/api/v1/auth/register', REGISTER_BODY],
-      ['post', '/api/v1/auth/login', LOGIN_BODY],
-    ] as const)('%s %s 回 501（不是 401）', async (method, path, body) => {
-      const res = await request(app.getHttpServer())
-        [method](path)
-        .send(body)
-        .expect(501);
-      expect(res.body).toMatchObject(NOT_IMPLEMENTED);
+      ['post', '/api/v1/auth/register'],
+      ['post', '/api/v1/auth/login'],
+    ] as const)('%s %s 沒送內容回 400，不是 401', async (method, path) => {
+      const res = await request(app.getHttpServer())[method](path).expect(400);
+      expect(res.body).toMatchObject({ code: 'VALIDATION_FAILED' });
     });
 
     it('/health 不需要登入', async () => {
@@ -62,6 +54,7 @@ describe('登入驗證與 D 的空殼（e2e）', () => {
   });
 
   describe('需要登入的端點', () => {
+    // body 都送合法的內容：有全域 ValidationPipe（INF-4）之後，不合法的 body 會先回 400
     const protectedRoutes = [
       ['get', '/api/v1/auth/me', undefined],
       ['post', '/api/v1/onboarding', ONBOARDING_BODY],
@@ -73,16 +66,17 @@ describe('登入驗證與 D 的空殼（e2e）', () => {
 
     it.each(protectedRoutes)(
       '%s %s 不帶 token 回 401',
-      async (method, path) => {
+      async (method, path, body) => {
         const res = await request(app.getHttpServer())
           [method](path)
+          .send(body)
           .expect(401);
         expect(res.body).toMatchObject(UNAUTHENTICATED);
       },
     );
 
-    it.each(protectedRoutes.slice(0, 5))(
-      '%s %s 帶 token 回 501',
+    it.each(protectedRoutes.slice(1, 5))(
+      '%s %s 帶 token 回 501（還沒實作）',
       async (method, path, body) => {
         const res = await request(app.getHttpServer())
           [method](path)
@@ -131,7 +125,7 @@ describe('登入驗證與 D 的空殼（e2e）', () => {
 
   it('bearer 小寫也接受', async () => {
     await request(app.getHttpServer())
-      .get('/api/v1/auth/me')
+      .get('/api/v1/goal')
       .set('Authorization', auth.replace('Bearer', 'bearer'))
       .expect(501);
   });

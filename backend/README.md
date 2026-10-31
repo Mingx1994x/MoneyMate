@@ -64,6 +64,15 @@ npm run db:drift           # 一致時印出 "-- This is an empty migration."；
 | `npm run db:deploy`                | 只套用既有 migration（部署用）               |
 | `npm run db:drift`                 | 檢查 schema 與 migration 是否一致（見上方）  |
 | `npm run openapi:export`           | 匯出 `openapi.json`（不需要資料庫與 `.env`） |
+| `npm run seed:categories`          | 建立或更新 12 個系統分類（可重複執行）       |
+
+**系統分類 seed**：新資料庫要先有 12 個系統分類，分類下拉選單才有選項、交易才能記帳（收入、支出一定要有分類）。
+
+- **本機**：`npm run seed:categories`，連哪個資料庫由 `DATABASE_URL` 決定（讀 `.env`，是 `app_dev`）。
+- **部署（Render＋Supabase）**：在 Render 設 `RUN_SEED=true`，容器啟動時（migration 之後）會自動執行 `node dist/seed/seed-categories.js`，和 `RUN_MIGRATIONS=true` 同一套做法；新資料庫兩個都要設。可以重複執行，所以每次啟動都跑也沒關係。seed 失敗時只印警告、照樣啟動 app（交易會回滾，現有分類不受影響）；migration 失敗則會直接結束。映像檔裡沒有 `nest`，不能在容器裡跑 `npm run seed:categories`。
+- 只會新增或更新自己的 12 個分類（用 `code` 比對），不會刪除任何資料、不會動使用者的分類（衝突時丟錯並回滾）；之後被停用的分類重跑也不會又打開。12 筆用一個 SQL 寫入，所以遠端資料庫也不會逾時。
+- 分類清單在 `src/seed/system-categories.ts`，要和 `docs/data-dictionary.md` 的「系統分類」表一致（`system-categories.spec.ts` 會檢查）。e2e 需要分類時，在測試的 `beforeAll` 呼叫 `seedSystemCategories(tx)`，不要依賴別的測試檔留下的資料（共用的 `app_test` 會被各檔 TRUNCATE）。
+- Demo 帳號與 12 個月 Demo 資料（`seed:demo`）要等 C 的 service 與 AUTH-2，之後再加；`seed:demo` 要先呼叫 `seedSystemCategories`，一行指令才能在新資料庫重建。
 
 Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（沒裝時會自動下載 `latest`，目前是 8 RC），也不要照 Prisma 的更新提示執行 `npm i prisma@latest`。
 
@@ -274,6 +283,12 @@ if (next.status !== 'closed' && next.endDate < today) {
   - `PATCH` 合併原值用 `mergePatch`，不要直接展開 DTO（見「驗證管線」）。
 - **e2e**：一律用 `test/utils/create-test-app.ts` 的 `createTestApp()` 建 app，它和正式環境走同一個 `configureApp`。需要登入的端點用 `bearer(app)` 帶 token；測試用的 controller（例如測錯誤格式）不是在測登入，就加 `@Public()`。
 - **登入（AUTH-1）**：token 用 HS256、有效 24 小時、只帶 `sub`（使用者 id），金鑰是 `JWT_SECRET`。發 token 用 `TokenService.signAccessToken(user)`，只在註冊、登入（AUTH-2）呼叫。
+- **註冊、登入（AUTH-2）**：
+  - 密碼用 `bcrypt@6`（原生套件，在背景執行緒算，不會卡住其他請求；附預先編譯檔，不用編譯，D-009）雜湊，成本 10；只看前 72 bytes，超過的登入一律失敗。Email 只收 ASCII，去空白、轉小寫後儲存與比對。
+  - **次數限制（PRD FR-03）**：① 每個 IP、每個端點（註冊、登入各自計算）每分鐘 `AUTH_IP_LIMIT_PER_MINUTE` 次（預設 10），用 `@nestjs/throttler`，只掛在這兩個端點；② 登入時每個 Email 在 `LOGIN_FAILURE_WINDOW_SECONDS`（預設 900）內失敗 `LOGIN_FAILURE_LIMIT` 次（預設 5）就鎖到視窗結束（`LoginAttemptsService`）。超過都回 429 `TOO_MANY_REQUESTS`＋`retryAfterSeconds`。
+  - **計數存在記憶體，只在單一後端實例有效**（PRD 第十九節）；重新啟動會歸零。要多實例時改成共享儲存（例如 Redis）。IP 是 `req.ip`，`TRUST_PROXY_HOPS` 要設對。
+  - `.env.test` 把 `AUTH_IP_LIMIT_PER_MINUTE` 調成 1000，否則 e2e 連續註冊會被擋；測 429 的 e2e 另開檔案，用 `vi.stubEnv` 設小的值（`test/auth-ip-limit.e2e-spec.ts`、`test/auth-email-limit.e2e-spec.ts`）。
+  - e2e 要真的註冊、登入時照 `test/auth-flow.e2e-spec.ts`；只需要「有登入」的空殼測試用 `bearer(app)`。
 - **新增必填環境變數**：同一個 PR 要一起更新 `src/config/env.validation.ts`、`.env.example`、`.env.test.example`、`src/openapi/export-env.constants.ts` 與 CI 的 env（`backend` job，以及 `docker` job 的 `-e`）。
   - **只在 `production` 必填、其他環境有預設值**的變數（例如 `DATABASE_SSL`、`TRUST_PROXY_HOPS`）**不可以**寫屬性初始值：`plainToInstance` 會先 `new EnvVars()`，`production` 沒設時會直接拿到初始值而通過驗證。改用 `@ValidateIf` 只在 `production` 或有設值時驗證，預設值在 `validateEnv` 最後補上。
   - 測試不同環境變數的 e2e 要**另開一個檔案**，`vi.stubEnv` 之後再動態 import `createTestApp`（`@nestjs/config` 在 import 時就存下環境變數），參考 `test/trust-proxy.e2e-spec.ts`。
