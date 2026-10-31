@@ -188,7 +188,7 @@ export class BillsController {
     summary: '取消繳費',
     description: [
       '刪除這張帳單產生的支出、帳單改回待繳並清空 paidAmount、paidDate；同系列的待繳帳單（繳費時產生的下一期）一起刪除。',
-      '同系列的待繳帳單已經是不重複（停止重複時保留），或系列已經沒有待繳帳單（停止重複時刪除，或直接刪除待繳帳單）時，改回待繳的這張也改成不重複，再繳費不會產生下一期。',
+      '同系列的待繳帳單已經是不重複（停止重複時保留），或系列已經沒有待繳帳單（停止重複時刪除，或直接刪除待繳帳單）時，改回待繳的這張也改成不重複（dueMonth 改成 null），再繳費不會產生下一期。',
       '待繳的帳單回 BILL_NOT_PAID；同系列之後的帳單已繳回 NEXT_BILL_ALREADY_PAID（要從最新一期往回取消）；扣款帳戶已停用回 ACCOUNT_INACTIVE。',
     ].join('\n\n'),
   })
@@ -212,7 +212,7 @@ export class BillsController {
   @ApiOperation({
     summary: '停止重複',
     description: [
-      '從系列的任何一張（包括已繳的歷史期）都可以停止，處理的是同系列的待繳帳單：keepCurrent 是 true 時保留它、改成不重複；false 時刪除它。已繳的歷史都不動。',
+      '從系列的任何一張（包括已繳的歷史期）都可以停止，處理的是同系列的待繳帳單：keepCurrent 是 true 時保留它、改成不重複（dueMonth 改成 null）；false 時刪除它。已繳的歷史都不動。',
       '系列沒有待繳帳單時什麼都不做，回 stopped: false、bill: null。',
     ].join('\n\n'),
   })
