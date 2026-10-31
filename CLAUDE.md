@@ -28,6 +28,7 @@ npm test -- src/common/money.spec.ts -t '名稱'  # 只跑名稱符合的測試
 npm run test:e2e                                # e2e（test/**/*.e2e-spec.ts），需要 .env.test 與本機資料庫
 npm run test:e2e -- test/loans.e2e-spec.ts
 npm run openapi:export                          # 改了 DTO、controller、錯誤代碼後必跑
+npm run seed:categories                         # 建立 12 個系統分類（可重複執行，連 DATABASE_URL 指的資料庫）
 ```
 
 - Prisma 一律透過 npm scripts（`db:migrate`、`db:deploy`、`prisma:generate`），不要用 `npx prisma`（會下載最新版）。

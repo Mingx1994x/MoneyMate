@@ -3,7 +3,7 @@
   "paths": {
     "/api/v1/auth/register": {
       "post": {
-        "description": "Email 去除前後空白並轉成小寫後儲存；已經註冊過回 AUTH_EMAIL_TAKEN（比對也用小寫，大小寫不同視為同一個 Email）。\n\n密碼用 bcrypt 雜湊後儲存，回應不含任何密碼資訊。註冊成功直接登入，回傳 token，hasCompletedOnboarding 一定是 false。\n\n次數限制（PRD FR-03，AUTH-2 實作）：每個 IP 每分鐘最多 10 次，超過回 429 TOO_MANY_REQUESTS。上限由環境變數設定，測試環境調高（變數名稱在 AUTH-2 定義，並寫進 .env.example、.env.test.example 與 CI）。",
+        "description": "Email 去除前後空白並轉成小寫後儲存（只接受半形英數與符號）；已經註冊過回 AUTH_EMAIL_TAKEN（比對也用小寫，大小寫不同視為同一個 Email）。兩個請求同時註冊同一個 Email，只有一個成功。\n\n密碼用 bcrypt 雜湊後儲存，回應不含任何密碼資訊。註冊成功直接登入，回傳 token，hasCompletedOnboarding 一定是 false。\n\n次數限制（PRD FR-03）：每個 IP 每分鐘最多 10 次（上限是 AUTH_IP_LIMIT_PER_MINUTE，測試環境調高），超過回 429 TOO_MANY_REQUESTS，並帶 retryAfterSeconds。只在單一後端實例有效。",
         "operationId": "Auth_register",
         "parameters": [],
         "requestBody": {
@@ -56,19 +56,9 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
-        "summary": "【未實作】註冊",
+        "summary": "註冊",
         "tags": [
           "auth"
         ]
@@ -76,7 +66,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "Email 轉成小寫後比對。Email 不存在、密碼錯誤都回 AUTH_INVALID_CREDENTIALS，不透露是哪一個錯。\n\nEmail 不存在時也要跑一次 bcrypt 比對，讓兩種情況的回應時間差不多。\n\n次數限制（PRD FR-03，AUTH-2 實作），兩條都要：\n1. 每個 IP 每分鐘最多 10 次（成功、失敗都算）。\n2. 每個 Email（轉成小寫後）每 15 分鐘最多失敗 5 次；超過後這個 Email 在剩下的時間內回 429，即使密碼正確也一樣。Email 不存在的失敗也要計算，才不會從回應看出這個 Email 有沒有註冊。\n\n超過任一條都回 429 TOO_MANY_REQUESTS。上限由環境變數設定，測試環境調高（變數名稱在 AUTH-2 定義，並寫進 .env.example、.env.test.example 與 CI）。MVP 只部署單一後端實例，記憶體計數才有效（PRD 第十九節）。",
+        "description": "Email 轉成小寫後比對。Email 不存在、密碼錯誤都回 AUTH_INVALID_CREDENTIALS，不透露是哪一個錯；Email 不存在時也會跑一次 bcrypt 比對，讓兩種情況的回應時間差不多。\n\n次數限制（PRD FR-03），兩條都要：\n1. 每個 IP 每分鐘最多 10 次（成功、失敗都算；AUTH_IP_LIMIT_PER_MINUTE）。\n2. 每個 Email（轉成小寫後）每 15 分鐘最多失敗 5 次（LOGIN_FAILURE_LIMIT、LOGIN_FAILURE_WINDOW_SECONDS）；超過後這個 Email 在視窗結束前一律回 429，即使密碼正確也一樣。Email 不存在的失敗也會計算，所以從 429 看不出 Email 有沒有註冊。登入成功會把這個 Email 的失敗次數歸零。\n\n超過任一條都回 429 TOO_MANY_REQUESTS，並帶 retryAfterSeconds。計數存在記憶體，只在單一後端實例有效（PRD 第十九節）；測試環境用環境變數調高上限。",
         "operationId": "Auth_login",
         "parameters": [],
         "requestBody": {
@@ -129,19 +119,9 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
-        "summary": "【未實作】登入",
+        "summary": "登入",
         "tags": [
           "auth"
         ]
@@ -149,7 +129,7 @@
     },
     "/api/v1/auth/me": {
       "get": {
-        "description": "未完成問卷也可以呼叫。token 對應的使用者不存在時（例如資料庫被重設）回 401 AUTH_UNAUTHENTICATED。",
+        "description": "未完成問卷也可以呼叫，hasCompletedOnboarding 是 false（有目標資料才是 true）。token 對應的使用者不存在時（例如資料庫被重設）回 401 AUTH_UNAUTHENTICATED。",
         "operationId": "Auth_me",
         "parameters": [],
         "responses": {
@@ -172,16 +152,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -189,7 +159,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得登入者資料",
+        "summary": "取得登入者資料",
         "tags": [
           "auth"
         ]
@@ -2569,7 +2539,7 @@
         "properties": {
           "email": {
             "type": "string",
-            "description": "Email，後端去除前後空白並轉成小寫後儲存與比對",
+            "description": "Email，後端去除前後空白並轉成小寫後儲存與比對。只接受半形英數與符號（不接受中文等非 ASCII 字元）",
             "maxLength": 254,
             "example": "shin@example.com"
           },

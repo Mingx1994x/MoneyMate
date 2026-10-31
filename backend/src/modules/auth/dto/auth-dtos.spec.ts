@@ -37,14 +37,19 @@ describe('RegisterDto', () => {
     expect(await validate(dto)).toEqual([]);
   });
 
-  it.each(['', 'not-an-email', 'a@b', `${'a'.repeat(250)}@example.com`])(
-    'Email %j 失敗',
-    async (email) => {
-      expect(await invalidFields(RegisterDto, { ...valid, email })).toEqual([
-        'email',
-      ]);
-    },
-  );
+  it.each([
+    '',
+    'not-an-email',
+    'a@b',
+    `${'a'.repeat(250)}@example.com`,
+    // 非 ASCII：JavaScript 與 PostgreSQL 轉小寫的結果可能不同，會撞到 email = lower(email) 的 CHECK
+    '測試@example.com',
+    'İnfo@example.com',
+  ])('Email %j 失敗', async (email) => {
+    expect(await invalidFields(RegisterDto, { ...valid, email })).toEqual([
+      'email',
+    ]);
+  });
 
   it('密碼 8 字元與 72 字元都通過', async () => {
     for (const password of ['12345678', 'a'.repeat(72)]) {
