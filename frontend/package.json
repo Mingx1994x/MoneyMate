@@ -2,6 +2,9 @@
   "name": "moneymate-frontend",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
