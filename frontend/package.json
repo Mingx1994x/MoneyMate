@@ -1,0 +1,27 @@
+{
+  "name": "moneymate-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "lint": "oxlint --deny-warnings app/ nuxt.config.ts",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "nuxt": "^4.1.0",
+    "vue": "^3.5.0",
+    "vue-router": "^5.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/node": "^24.19.2",
+    "oxlint": "^1.89.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.8.0",
+    "vue-tsc": "^3.3.13"
+  }
+}

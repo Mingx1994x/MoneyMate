@@ -1,5 +1,6 @@
 # CI-1：前後端的 lint、型別檢查、建置（後端另跑單元測試）；DEP-1：後端映像檔能 build 並啟動。
-# 分支保護只設 ci-ok 一個必要檢查；e2e 與 migration 檢查在 CI-2。
+# CI-2：backend-e2e 從空資料庫跑 migration、prisma migrate diff、再跑 e2e。
+# 分支保護只設 ci-ok 一個必要檢查。
 name: CI
 
 on:
@@ -109,6 +110,7 @@ jobs:
       # 只 build 抓不到「runtime 套件被放進 devDependencies」：要真的啟動才會 ERR_MODULE_NOT_FOUND。
       # 資料庫是假的（連不到的主機）；app 不在啟動時連線，/health 仍回 200。
       # DATABASE_SSL、TRUST_PROXY_HOPS 在 DEP-2 之後是 production 必填，先帶上，兩條 PR 誰先合併都不會壞。
+      # JWT_SECRET 在 AUTH-1 之後必填；production 要 32 字元以上、不含 insecure，這個值只給這個容器用。
       - name: 啟動容器並確認 /health
         run: |
           docker run -d --name api -p 3001:3001 \
@@ -116,6 +118,7 @@ jobs:
             -e CORS_ORIGIN=http://localhost:3000 \
             -e DATABASE_SSL=false \
             -e TRUST_PROXY_HOPS=0 \
+            -e JWT_SECRET=ci-docker-only-jwt-secret-0123456789abcdef \
             moneymate-api:ci
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/health || true)
@@ -153,10 +156,57 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
 
+  # CI-2：空資料庫 migration、schema 與 migration 是否一致、e2e。
+  # 與 backend、docker 並行；沒改後端時 skipped，ci-ok 仍可過。
+  backend-e2e:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+          TZ: UTC
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: backend/.nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: node --version
+      - run: npm ci
+      - name: 測試用環境檔
+        run: cp .env.test.example .env.test
+      - name: 從空資料庫跑完全部 migration
+        run: npm run db:test:prepare
+      - name: 建立 shadow 資料庫
+        run: npm run db:create-shadow
+      - name: schema 與 migration 是否一致
+        run: npm run db:drift
+      - name: e2e
+        run: npm run test:e2e
+
   # 分支保護唯一的必要檢查。changes 失敗時其他 job 都是 skipped，
   # 所以 changes 必須是 success，其他只接受 success 或 skipped。
   ci-ok:
-    needs: [changes, backend, docker, frontend]
+    needs: [changes, backend, docker, frontend, backend-e2e]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -167,13 +217,14 @@ jobs:
           BACKEND: ${{ needs.backend.result }}
           DOCKER: ${{ needs.docker.result }}
           FRONTEND: ${{ needs.frontend.result }}
+          BACKEND_E2E: ${{ needs['backend-e2e'].result }}
         run: |
-          echo "changes=$CHANGES backend=$BACKEND docker=$DOCKER frontend=$FRONTEND"
+          echo "changes=$CHANGES backend=$BACKEND docker=$DOCKER frontend=$FRONTEND backend-e2e=$BACKEND_E2E"
           if [ "$CHANGES" != success ]; then
             echo "::error::changes job 不是 success（$CHANGES）"
             exit 1
           fi
-          for result in "$BACKEND" "$DOCKER" "$FRONTEND"; do
+          for result in "$BACKEND" "$DOCKER" "$FRONTEND" "$BACKEND_E2E"; do
             case "$result" in
               success | skipped) ;;
               *)
