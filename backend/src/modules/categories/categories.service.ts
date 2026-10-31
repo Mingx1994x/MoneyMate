@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { CategoryType, PrismaService } from '../../prisma/index.js';
+import { AppException } from '../../common/errors/app.exception.js';
+import {
+  CategoryType,
+  PrismaService,
+  type PrismaTx,
+} from '../../prisma/index.js';
 import type { CategoryResponseDto } from './dto/category-response.dto.js';
 
 @Injectable()
@@ -25,5 +30,30 @@ export class CategoriesService {
       select: { id: true, code: true, name: true, type: true, sortOrder: true },
     });
     return rows;
+  }
+
+  /**
+   * body 引用的分類可以用：存在、啟用中、是系統分類或這位使用者自己的，而且類型相同。
+   * 給 transactions 與 E 的帳單用；field 是錯誤 details 的欄位名稱。
+   */
+  async assertUsable(
+    userId: string,
+    categoryId: string,
+    type: CategoryType,
+    field = 'categoryId',
+    db: PrismaTx = this.prisma,
+  ): Promise<void> {
+    const category = await db.category.findFirst({
+      where: {
+        id: categoryId,
+        isActive: true,
+        OR: [{ userId: null }, { userId }],
+      },
+      select: { type: true },
+    });
+    if (!category) throw AppException.forField('CATEGORY_NOT_FOUND', field);
+    if (category.type !== type) {
+      throw AppException.forField('CATEGORY_TYPE_MISMATCH', field);
+    }
   }
 }
