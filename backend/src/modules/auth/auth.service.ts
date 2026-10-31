@@ -86,6 +86,10 @@ export class AuthService {
     const key = attemptKey(email);
     // 先檢查有沒有被鎖：鎖住期間即使密碼正確也回 429
     this.attempts.assertAllowed(key);
+    // 比對密碼之前先記一次失敗，成功再歸零：bcrypt 比對要約 80 ms，
+    // 等比對完才記的話，這段時間內同時送來的請求都看不到前面的失敗，會繞過鎖定。
+    // assertAllowed 和 recordFailure 之間沒有 await，同時送來的請求會依序被算到。
+    this.attempts.recordFailure(key);
 
     const found = await this.prisma.user.findUnique({
       where: { email },
@@ -97,7 +101,6 @@ export class AuthService {
       found?.passwordHash ?? DUMMY_HASH,
     );
     if (!found || !passwordOk) {
-      this.attempts.recordFailure(key);
       throw new AppException('AUTH_INVALID_CREDENTIALS');
     }
 

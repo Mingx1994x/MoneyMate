@@ -56,6 +56,16 @@ describe('每個 Email 的登入失敗限制（e2e，PRD FR-03）', () => {
     await login('other@example.com', PASSWORD).expect(200);
   });
 
+  it('同時送出多個錯誤密碼，也只有上限次數會比對密碼', async () => {
+    await register('burst@example.com').expect(201);
+    const res = await Promise.all(
+      Array.from({ length: 10 }, () => login('burst@example.com', 'wrong')),
+    );
+    const statuses = res.map((r) => r.status);
+    expect(statuses.filter((s) => s === 401)).toHaveLength(2);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(8);
+  });
+
   it('視窗結束後解鎖，密碼正確就能登入', async () => {
     clock.set('2026-10-29T03:00:00Z');
     await register('expire@example.com').expect(201);

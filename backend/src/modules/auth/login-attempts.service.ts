@@ -75,13 +75,21 @@ export class LoginAttemptsService {
     return entry;
   }
 
-  /** 先刪過期的；還是太多就刪最舊的（Map 依加入順序） */
+  /**
+   * 先刪過期的；還是太多就從最舊的開始刪（Map 依加入順序），但跳過鎖住的：
+   * 鎖住的要留到視窗結束，否則灌入大量不同的 Email 就能把別人的鎖擠掉。
+   * 最後再用硬上限防記憶體被灌爆：每筆鎖住的紀錄要花攻擊者 limit 次請求，正常情況不會到。
+   */
   private prune(now: number): void {
     for (const [key, entry] of this.entries) {
       if (now >= entry.windowEndsAt) this.entries.delete(key);
     }
-    for (const key of this.entries.keys()) {
+    for (const [key, entry] of this.entries) {
       if (this.entries.size <= MAX_TRACKED_EMAILS) break;
+      if (entry.count < this.limit) this.entries.delete(key);
+    }
+    for (const key of this.entries.keys()) {
+      if (this.entries.size <= MAX_TRACKED_EMAILS * 5) break;
       this.entries.delete(key);
     }
   }

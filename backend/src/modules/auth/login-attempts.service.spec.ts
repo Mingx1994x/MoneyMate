@@ -76,21 +76,30 @@ describe('LoginAttemptsService', () => {
     expect(thrown(() => attempts.assertAllowed('b@example.com'))).toBeDefined();
   });
 
-  it('最多記 10,000 個 Email：超過時丟掉最舊的，記憶體不會一直長', () => {
-    const { attempts } = setup(1);
+  it('最多記 10,000 個 Email：超過時丟掉最舊的「還沒鎖住」紀錄，記憶體不會一直長', () => {
+    const { attempts } = setup(2);
+    attempts.recordFailure('oldest@example.com'); // 1 次，還沒鎖住
+    for (let i = 0; i < 10_000; i += 1) {
+      attempts.recordFailure(`spam${i}@example.com`);
+    }
+    // 最舊的被丟掉了：再失敗 1 次是新的第 1 次，不會鎖
     attempts.recordFailure('oldest@example.com');
+    expect(thrown(() => attempts.assertAllowed('oldest@example.com'))).toBe(
+      undefined,
+    );
+  });
+
+  it('鎖住的紀錄不會被擠掉：灌入 10,000 個不同的 Email 也解不開別人的鎖', () => {
+    const { attempts } = setup(1);
+    attempts.recordFailure('victim@example.com');
     expect(
-      thrown(() => attempts.assertAllowed('oldest@example.com')),
+      thrown(() => attempts.assertAllowed('victim@example.com')),
     ).toBeDefined();
     for (let i = 0; i < 10_000; i += 1) {
       attempts.recordFailure(`spam${i}@example.com`);
     }
-    // 最舊的被丟掉了；最新的還在
-    expect(thrown(() => attempts.assertAllowed('oldest@example.com'))).toBe(
-      undefined,
-    );
     expect(
-      thrown(() => attempts.assertAllowed('spam9999@example.com')),
+      thrown(() => attempts.assertAllowed('victim@example.com')),
     ).toBeDefined();
   });
 });
