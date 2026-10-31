@@ -16,6 +16,8 @@
 | D-006 | 2026/10/26 | 懶人記帳（Apple Pay 捷徑、電子發票匯入）列為 P1 候選 | US-26、US-27、FR-32、FR-33、A12、A13、第二十九節第 20 項 |
 | D-007 | 2026/10/26 | PR 審查分工與標題格式 | 20.7 協作規則 |
 | D-008 | 2026/10/27 | JWT 驗證不用 Passport，改用自己寫的全域 guard | 第七節、16.7 |
+| D-010 | 2026/10/31 | 目標的目前金額用 `getAccountsTotal`，不另做 `getTotalBalance` | 15.1、16.7 |
+| D-011 | 2026/10/31 | 估計帳戶可以改名稱和金額，不能刪除 | 15.9 |
 
 ---
 
@@ -115,3 +117,25 @@
   - P0 沒有刪除帳號的功能，token 對應的使用者不會消失，所以不用每個請求都查一次資料庫。
 - **誰同意：** D 提出（PR AUTH-1），待 E 審查 PR 時確認
 - **影響：** C、E 的端點不用加任何 guard；實作時在參數加 `@CurrentUser() user: AuthUser`。
+
+---
+
+## D-010 目標的目前金額用 `getAccountsTotal`，不另做 `getTotalBalance`
+
+- **日期：** 2026/10/31
+- **決定：** PRD 16.7 列給 D 的 `getTotalBalance(userId, today)` 和 C 的 `FinanceCalcService.getAccountsTotal(userId, today)` 是同一個數字（帳戶合計），只保留 `getAccountsTotal`。目標進度、財富自由年齡的「目前金額」都呼叫它（從 `modules/finance/index.js` 匯入）。
+- **原因：** 同一個公式寫兩次，之後改一邊會忘記改另一邊；PRD 15.1 規定合計只能由 `FinanceCalcService` 計算。
+- **誰同意：** C 提議，D 同意
+- **影響：** PRD 16.7 表格中的 `getTotalBalance` 視為 `getAccountsTotal`。
+
+---
+
+## D-011 估計帳戶可以改名稱和金額，不能刪除
+
+- **日期：** 2026/10/31
+- **決定：**
+  - 「現有資產（估計）」帳戶可以修改名稱和金額（`opening_balance`）。
+  - 不能刪除；使用者想歸零就把金額改成 0。
+- **原因：** 每位使用者只會有 1 個估計帳戶，而且只有問卷會建立；刪掉後沒辦法再建回來，新增真實帳戶時的「從估計值扣掉」（PRD 15.9）也會失效。
+- **誰同意：** C 提議，D 同意
+- **影響：** C 在 W3 實作 `PATCH`、`DELETE /accounts/:id` 時照這條處理。

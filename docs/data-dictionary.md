@@ -46,7 +46,7 @@
 | `currency` | text | 否 | — | 固定 `TWD`，不開放輸入 |
 | `opening_balance` | numeric(14,2) | 否 | — | 初始餘額；只有信用卡和**估計帳戶**可以是負數（估計帳戶被扣除後，初始餘額可能變負，但目前餘額不會是負數，見 PRD 15.9） |
 | `is_active` | boolean | 否 | — | 預設 `true`；有交易的帳戶只能停用不能刪 |
-| `is_estimate` | boolean | 否 | — | 問卷建立的「現有資產（估計）」帳戶為 `true`；每人最多 1 個；類型一定是 `bank` |
+| `is_estimate` | boolean | 否 | — | 問卷建立的「現有資產（估計）」帳戶為 `true`；每人最多 1 個；類型一定是 `bank`；可以改名稱和金額，不能刪除（要歸零就改成 0，見 decisions D-011） |
 | `deducted_from_estimate` | numeric(14,2) | 是 | 建立這個帳戶時**沒有**從估計帳戶扣錢（使用者選「否」、扣除金額為 0、信用卡等初始餘額 ≤ 0 不詢問的帳戶、估計帳戶本身）。**不存 0，一律存 null** | 有值（> 0）= 扣了多少；刪除帳戶時可加回 |
 | `note` | text | 是 | 沒有備註 | 最多 200 字 |
 | `created_at`、`updated_at` | timestamptz | 否 | — | |
@@ -140,7 +140,7 @@
 | `account_id` | uuid → accounts | 否 | — | 預設扣款帳戶，必須是啟用的 |
 | `due_date` | date | 否 | — | 這一期的到期日 |
 | `due_day` | int | 否 | — | 原本的日期（例如 31）；短月改成當月最後一天，下一期再回到 31 |
-| `due_month` | int | 是 | 這張帳單**不是用「每年」重複建立的** | 年度帳單原本的月份（例如 2），閏年用。⚠️ 年度帳單「停止重複」後 `recurrence` 變 `none`，但 `due_month` **保留原值**，所以 `none` 也可能有值 |
+| `due_month` | int | 是 | 這張帳單**不是用「每年」重複建立的** | 年度帳單原本的月份（例如 2），閏年用。只有 `yearly` 有值；「停止重複」或 PATCH 改成不是 `yearly` 時一律清成 null；改回 `yearly` 時從 `due_date` 回推 |
 | `series_id` | uuid | 否 | — | 第一張帳單建立時由資料庫產生；下一期沿用同一個值；同一系列最多 1 張待繳 |
 | `recurrence` | enum `recurrence` | 否 | — | `none` 不重複、`monthly` 每月、`yearly` 每年 |
 | `status` | enum `bill_status` | 否 | — | `pending` 待繳、`paid` 已繳 |
@@ -185,7 +185,7 @@ Prisma 寫不出來，已手動加在第一份 migration（`backend/prisma/migra
 |---|---|
 | users | CHECK：`email` 必須是小寫 |
 | accounts | CHECK：`currency` 必須是 `TWD` |
-| accounts | CHECK：`opening_balance` ≥ 0，**信用卡和估計帳戶除外**（要跟 C 確認估計帳戶轉換） |
+| accounts | CHECK：`opening_balance` ≥ 0，**信用卡和估計帳戶除外**（估計帳戶被扣除後初始餘額可能變負，已和 C 確認，見 PRD 15.9） |
 | accounts | CHECK：估計帳戶（`is_estimate = true`）的類型必須是 `bank` |
 | accounts | CHECK：`deducted_from_estimate` 是 null 或 > 0（**沒扣就存 null，不存 0**） |
 | accounts | 部分唯一索引：每位使用者最多 1 個 `is_estimate = true` |
@@ -193,7 +193,7 @@ Prisma 寫不出來，已手動加在第一份 migration（`backend/prisma/migra
 | transactions | CHECK：轉帳要有 `to_account_id`、沒有 `category_id`、兩個帳戶不同；收入／支出要有 `category_id`、沒有 `to_account_id` |
 | loans | CHECK：`outstanding_balance` ≥ 0、`monthly_payment` > 0、`payment_day` 在 1–31、`interest_rate` 是 null 或在 0–100 |
 | bills | CHECK：`paid` 時 `paid_amount`、`paid_date` 必須有值；`pending` 時必須是 null |
-| bills | CHECK：`amount` > 0、`paid_amount` 是 null 或 > 0、`due_day` 在 1–31、`due_month` 是 null 或在 1–12、**`yearly` 一定要有 `due_month`**（反過來不檢查，因為停止重複後 `none` 也可能有 `due_month`） |
+| bills | CHECK：`amount` > 0、`paid_amount` 是 null 或 > 0、`due_day` 在 1–31、`due_month` 是 null 或在 1–12、**`yearly` 一定要有 `due_month`**（反過來資料庫不檢查；不是 `yearly` 時由程式清成 null） |
 | bills | 部分唯一索引：同一個 `series_id` 最多 1 張 `pending` |
 | goals | CHECK：`monthly_spending` 在 1,000–333,000 之間，而且是**整數** |
 | goals | CHECK：`target_amount` = `monthly_spending` × 300 |
