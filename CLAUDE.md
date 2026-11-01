@@ -52,4 +52,5 @@ npm run seed:categories                         # 建立 12 個系統分類（�
 - Commit 格式：`<gitmoji> <type>: <中文標題>`，例如 `✨ feat: LOAN-1 貸款端點空殼`、`📝 docs: 更新 PRD 至 v0.5.10`。
 - Commit 訊息、PR 標題與 PR 說明都以繁體中文為主；gitmoji、type 與程式名稱（端點、檔名、套件名）維持原文。
 - PR 標題結尾標上組別代號，例如 `(E)`。前端 PR 由 A 審、後端 PR 由 E 審，A、E 互審；schema 變更另需 D 審查（`docs/decisions.md` D-007）。
+- 一個 PR 只改 `frontend/` 或 `backend/` 其中一個（根目錄的 `docs/`、`.github/`、`CLAUDE.md` 不算）；同一個人兩邊都要做時（例如 C 的 API 與交易列表頁）拆成兩個 PR。改 API 時後端 PR 先合併（含 `openapi.json`），前端再開 PR 跟上；欄位不要直接改名或刪除，先加新欄位，前端改完再刪舊的。真的拆不開時在 PR 說明寫原因，A、E 都要審。
 - 重要決定寫進 `docs/decisions.md`。編號用 `D-{組別}-{三位數}`（例如 `D-E-001`），組別是寫的人；只加在自己組別那一區（總覽表最後一列與該區最後面），不要動別區。跨組的決定先討論，有共識後由其中一人寫進自己那一區；會議上的決定由 A 記。D-001～D-011 是舊編號，不改號也不再新增（D-A-001）。
