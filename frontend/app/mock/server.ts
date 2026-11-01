@@ -214,13 +214,22 @@ function meOut(db: DB, userId: string): Me {
   }
 }
 
+/** 跟後端一樣：欄位錯誤回 VALIDATION_FAILED，details 指出是哪個欄位 */
+const fieldError = (status: number, code: string, field: string, message: string) =>
+  new ApiError(status, code, message, [{ field, code, message }])
+
 function register(db: DB, body: Body) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw bad('EMAIL_INVALID', 'Email 格式不正確')
+  // 後端只接受 ASCII 的 Email（非 ASCII 轉小寫的結果在 JS 和 PostgreSQL 可能不同）
+  if (!/^[\x21-\x7e]+@[\x21-\x7e]+\.[\x21-\x7e]+$/.test(email) || email.length > 254) {
+    throw fieldError(400, 'VALIDATION_FAILED', 'email', 'Email 格式不正確')
+  }
   const password = typeof body.password === 'string' ? body.password : ''
-  if (password.length < 8 || password.length > 72) throw bad('PASSWORD_INVALID', '密碼需要 8–72 個字元')
-  if (db.users.some((u) => u.email === email)) throw conflict('EMAIL_TAKEN', '這個 Email 已經註冊過了')
-  const displayName = typeof body.displayName === 'string' && body.displayName.trim() ? body.displayName.trim().slice(0, 30) : null
+  const bytes = new TextEncoder().encode(password).length
+  if (password.length < 8 || bytes > 72) throw fieldError(400, 'VALIDATION_FAILED', 'password', '密碼需要 8 個字元以上、72 bytes 以內')
+  if (db.users.some((u) => u.email === email)) throw fieldError(409, 'AUTH_EMAIL_TAKEN', 'email', '這個 Email 已經註冊過了')
+  const displayName = typeof body.displayName === 'string' && body.displayName.trim() ? body.displayName.trim() : null
+  if (displayName && displayName.length > 30) throw fieldError(400, 'VALIDATION_FAILED', 'displayName', '名稱最多 30 個字')
   // ⚠️ Mock 只存在你的瀏覽器裡；正式後端用 bcrypt 雜湊
   const user = { id: newId('user'), email, password, displayName, createdAt: now() }
   db.users.push(user)
@@ -230,7 +239,7 @@ function register(db: DB, body: Body) {
 function login(db: DB, body: Body) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const u = db.users.find((x) => x.email === email && x.password === body.password)
-  if (!u) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Email 或密碼不正確')
+  if (!u) throw new ApiError(401, 'AUTH_INVALID_CREDENTIALS', 'Email 或密碼錯誤')
   return { accessToken: TOKEN_PREFIX + u.id, user: meOut(db, u.id) }
 }
 
@@ -854,7 +863,7 @@ export class MockServer {
       if (!opts?.public) {
         const token = req.token ?? ''
         userId = token.startsWith(TOKEN_PREFIX) ? token.slice(TOKEN_PREFIX.length) : ''
-        if (!userId || !db.users.some((u) => u.id === userId)) throw new ApiError(401, 'UNAUTHORIZED', '請先登入')
+        if (!userId || !db.users.some((u) => u.id === userId)) throw new ApiError(401, 'AUTH_UNAUTHENTICATED', '請先登入')
       }
       const result = handler({ db, userId, today: this.clock(), body, query, params: m.slice(1) })
       return opts?.write ? this.commit(db, result) : result

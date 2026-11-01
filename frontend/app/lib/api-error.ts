@@ -1,19 +1,36 @@
 import type { ApiErrorBody } from '../types/api'
 
-/** 後端錯誤格式（PRD §13） */
+/** 跟欄位有關的錯誤（docs/error-codes.md）：field 是請求裡的屬性名稱（camelCase） */
+export interface ErrorDetail {
+  field: string
+  code: string
+  message: string
+}
+
+/** 後端錯誤格式（PRD §13、docs/error-codes.md） */
 export class ApiError extends Error implements ApiErrorBody {
   statusCode: number
   code: string
-  details: unknown[]
+  details: ErrorDetail[]
   requestId: string
+  /** 429 才有：幾秒後可以再試 */
+  retryAfterSeconds?: number
 
-  constructor(statusCode: number, code: string, message: string, details: unknown[] = []) {
+  constructor(
+    statusCode: number,
+    code: string,
+    message: string,
+    details: ErrorDetail[] = [],
+    extra: { requestId?: string; retryAfterSeconds?: number } = {},
+  ) {
     super(message)
     this.name = 'ApiError'
     this.statusCode = statusCode
     this.code = code
     this.details = details
-    this.requestId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now())
+    this.requestId =
+      extra.requestId ?? (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now()))
+    this.retryAfterSeconds = extra.retryAfterSeconds
   }
 }
 
@@ -22,12 +39,15 @@ export class ApiError extends Error implements ApiErrorBody {
  * 沒列到的代碼就顯示後端的 message。
  */
 export const ERROR_MESSAGES: Record<string, string> = {
-  UNAUTHORIZED: '登入已過期，請重新登入',
-  INVALID_CREDENTIALS: 'Email 或密碼不正確',
-  EMAIL_TAKEN: '這個 Email 已經註冊過了',
-  EMAIL_INVALID: 'Email 格式不正確',
-  PASSWORD_INVALID: '密碼需要 8–72 個字元',
-  TOO_MANY_REQUESTS: '嘗試次數太多，請稍後再試',
+  // ---- 共用（E）：代碼與後端 docs/error-codes.md 一致 ----
+  AUTH_UNAUTHENTICATED: '登入已過期，請重新登入',
+  TOO_MANY_REQUESTS: '操作太頻繁，請稍後再試',
+  VALIDATION_FAILED: '輸入的資料有誤，請檢查標示的欄位',
+  NOT_IMPLEMENTED: '這個功能還在開發中，準備好就能使用',
+  // ---- auth（D） ----
+  AUTH_EMAIL_TAKEN: '這個 Email 已經註冊過了',
+  AUTH_INVALID_CREDENTIALS: 'Email 或密碼錯誤',
+  // ---- 以下是 demo 時期前端自訂的代碼，#35 會依 docs/error-codes.md 全部對齊 ----
   ONBOARDING_ALREADY_DONE: '你已經完成問卷了',
   AMOUNT_INVALID: '金額格式不正確（最多 2 位小數）',
   AMOUNT_NOT_POSITIVE: '金額必須大於 0',
@@ -53,16 +73,30 @@ export const ERROR_MESSAGES: Record<string, string> = {
   LOAN_NOT_FOUND: '找不到這筆貸款',
   LOAN_END_DATE_PAST: '結清日已過，狀態請選「已結清」',
   MONTHLY_PAYMENT_REQUIRED: '沒有年利率時，請自己填每月還款',
-  VALIDATION_FAILED: '資料格式不正確',
   NETWORK_ERROR: '連線失敗，請稍後再試',
   INTERNAL_ERROR: '伺服器發生錯誤，資料沒有被儲存，請稍後再試',
 }
 
 export function errorText(e: unknown): string {
-  if (e instanceof ApiError) return ERROR_MESSAGES[e.code] ?? e.message
-  if (e && typeof e === 'object' && 'code' in e && typeof (e as { code: unknown }).code === 'string') {
-    const code = (e as { code: string }).code
-    return ERROR_MESSAGES[code] ?? ((e as { message?: string }).message || '發生錯誤')
+  if (e instanceof ApiError) {
+    if (e.code === 'TOO_MANY_REQUESTS' && e.retryAfterSeconds) {
+      return `操作太頻繁，請 ${Math.ceil(e.retryAfterSeconds)} 秒後再試`
+    }
+    // 認得的代碼用前端的中文；不認得的直接顯示後端的 message（docs/error-codes.md 的規定）
+    return ERROR_MESSAGES[e.code] ?? (e.message || '發生錯誤，請稍後再試')
   }
   return '發生未知錯誤，請稍後再試'
+}
+
+/**
+ * 把後端的 details 轉成「欄位 → 訊息」，表單可以把錯誤顯示在對應的欄位下面。
+ * 例：註冊時 Email 重複 → { email: '這個 Email 已經註冊過了' }
+ */
+export function fieldErrors(e: unknown): Record<string, string> {
+  if (!(e instanceof ApiError)) return {}
+  const out: Record<string, string> = {}
+  for (const d of e.details) {
+    if (d.field && !out[d.field]) out[d.field] = ERROR_MESSAGES[d.code] ?? d.message
+  }
+  return out
 }
