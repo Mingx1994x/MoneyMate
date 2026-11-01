@@ -104,7 +104,10 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
   - 每個代碼的 `details.field` 寫在 `docs/error-codes.md`；跟欄位無關的錯誤 `details` 是 `[]`。
   - DTO 驗證失敗由全域 ValidationPipe 自動轉換（見「驗證管線」）；service 自己檢查多個欄位時，用 `detail(field, code)` 組 `details`，訊息一律取自代碼表，不要手寫。
 
-- **500 不會回傳錯誤訊息**，只寫日誌；Prisma 的錯誤只記名稱、代碼與約束名稱（message 可能含使用者輸入）。
+- **500 不會回傳錯誤訊息**，只寫日誌；Prisma 的錯誤只記名稱、代碼與約束名稱（message 可能含使用者輸入）。4xx 不記日誌。例外是 `AMOUNT_OVERFLOW`（數值溢位）記一筆 warn，內容同樣只用 `describeError`。
+- **意思唯一的唯一索引與外鍵**由 filter 依 `src/common/errors/db-constraint-codes.ts` 轉成錯誤代碼。新增一筆時，同一個 PR 改這張表；手寫的約束要在 migration 裡明確命名，名稱由 D 審查。CHECK 與對不上的約束回 500。三個帳戶複合外鍵不在表裡（刪除使用中的帳戶由 `accounts.remove` 自己轉 `ACCOUNT_IN_USE`）。分類外鍵也不在表裡：寫入交易要自己先確認分類存在且屬於登入者，不要靠它回 `CATEGORY_NOT_FOUND`。
+- **在 `$transaction` 裡**接住 Prisma 錯誤後立刻再丟，不要再對 `tx` 查詢（下一句會變成 25P02，使用者看到 500）。刪除成功之後仍可在同一個回呼繼續寫。刪除帳戶的順序：先 `findFirst({ id, userId })`，沒有就丟 `ACCOUNT_NOT_FOUND`；刪除前留下 `deductedFromEstimate`；`catch` 裡只依 P2003 與 `ACCOUNT_IN_USE_FKEYS` 丟 `ACCOUNT_IN_USE`；估計值加回寫在刪除成功之後，不要放在 `catch` 或 `finally`。
+- **註冊**寫入前先把 Email 轉成小寫。`users_email_key` 只接已經小寫且字面相同的競態，不必自己接 P2002。含大寫走 CHECK，會是 500。問卷的目標與估計帳戶放在同一個交易；`createAccount` 不要 catch 估計帳戶的唯一索引。P0 的帳戶建立與修改不要寫 `isEstimate: true`。
 - **檢查資料是不是登入者的**：用 `findFirst({ where: { id, userId } })`，找不到就丟該資源的 `*_NOT_FOUND`；或用 `updateMany`／`deleteMany` 帶 `userId` 再檢查 `count`。不要靠 `update` 找不到時的 P2025（只能轉成通用的 `NOT_FOUND`）。
 - **新增錯誤代碼**，同一個 PR 要一起改：
   1. `ERROR_CODES` 自己模組的段落（段內照字母排序）。

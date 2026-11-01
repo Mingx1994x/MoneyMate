@@ -2629,6 +2629,7 @@
           "AMOUNT_INVALID",
           "AMOUNT_NEGATIVE",
           "AMOUNT_NOT_POSITIVE",
+          "AMOUNT_OVERFLOW",
           "NAME_INVALID",
           "AUTH_EMAIL_TAKEN",
           "AUTH_INVALID_CREDENTIALS",

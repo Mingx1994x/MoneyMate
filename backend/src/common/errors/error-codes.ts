@@ -34,6 +34,7 @@ export const ERROR_CODES = {
   AMOUNT_INVALID: { status: 400, message: '金額格式不正確' },
   AMOUNT_NEGATIVE: { status: 400, message: '金額不可為負數' },
   AMOUNT_NOT_POSITIVE: { status: 400, message: '金額必須大於 0' },
+  AMOUNT_OVERFLOW: { status: 400, message: '金額超出可記錄的範圍' },
   NAME_INVALID: { status: 400, message: '名稱需為 1 到 30 個字' },
 
   // ── auth（D）
