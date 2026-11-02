@@ -137,6 +137,30 @@ export class EnvVars {
   @Validate(JwtSecretConstraint)
   JWT_SECRET!: string;
 
+  // 登入次數限制（PRD FR-03）。都有預設值、可以不設；測試環境用環境變數調高（.env.test.example）。
+  // 只在單一後端實例有效（計數存在記憶體，PRD 第十九節）。
+
+  /** 註冊、登入：每個 IP、每個端點每分鐘最多幾次（成功、失敗都算） */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  AUTH_IP_LIMIT_PER_MINUTE: number = 10;
+
+  /** 登入：同一個 Email 在視窗內最多失敗幾次，超過就鎖到視窗結束 */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  LOGIN_FAILURE_LIMIT: number = 5;
+
+  /** 上面那條失敗次數的視窗長度（秒），預設 15 分鐘 */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(86400)
+  LOGIN_FAILURE_WINDOW_SECONDS: number = 900;
+
   /**
    * 只接受 'true'／'false'；沒設時依 NODE_ENV 決定（見 isSwaggerEnabled）。
    * 一定要讀原始的 obj[key]：enableImplicitConversion 已經把 value 轉成 Boolean('false') === true。

@@ -251,6 +251,87 @@ describe('Swagger 文件', () => {
     });
   });
 
+  describe('帳單端點（BILL-1）', () => {
+    type Schema = {
+      required?: string[];
+      properties: Record<string, Record<string, unknown>>;
+    };
+    const schema = (name: string) => doc.components?.schemas?.[name] as Schema;
+    const bills = '/api/v1/bills';
+    const bill = '/api/v1/bills/{id}';
+
+    it('8 個端點都在、都標【未實作】、都要登入', () => {
+      const ops = [
+        doc.paths[bills]?.get,
+        doc.paths[bills]?.post,
+        doc.paths[bill]?.get,
+        doc.paths[bill]?.patch,
+        doc.paths[bill]?.delete,
+        doc.paths[`${bill}/pay`]?.post,
+        doc.paths[`${bill}/unpay`]?.post,
+        doc.paths[`${bill}/stop-recurrence`]?.post,
+      ];
+      for (const op of ops) {
+        if (op === undefined) throw new Error('缺少帳單端點');
+        expect(op.summary).toMatch(/^【未實作】/);
+        expect(op.security).toEqual([{ bearer: [] }]);
+        expect(op.responses['401']).toBeDefined();
+        expect(op.responses['501']).toBeDefined();
+      }
+    });
+
+    it('動作型端點回 200 不是 201；繳費的 body 可以不帶', () => {
+      for (const action of ['pay', 'unpay', 'stop-recurrence']) {
+        const responses = doc.paths[`${bill}/${action}`]?.post?.responses;
+        expect(responses?.['200'], action).toBeDefined();
+        expect(responses?.['201'], action).toBeUndefined();
+      }
+      expect(doc.paths[`${bill}/pay`]?.post?.requestBody).toMatchObject({
+        required: false,
+      });
+      expect(doc.paths[bills]?.post?.responses['201']).toBeDefined();
+    });
+
+    it('Recurrence、BillStatus、BillListStatus 是獨立的 enum schema', () => {
+      expect(schema('Recurrence')).toMatchObject({
+        enum: ['none', 'monthly', 'yearly'],
+      });
+      expect(schema('BillStatus')).toMatchObject({
+        enum: ['pending', 'paid'],
+      });
+      expect(schema('BillListStatus')).toMatchObject({
+        enum: ['pending', 'paid', 'overdue'],
+      });
+    });
+
+    it('BillResponseDto：可為 null 的欄位也在 required；每個欄位都有 example', () => {
+      const res = schema('BillResponseDto');
+      const nullable = ['dueMonth', 'paidAmount', 'paidDate', 'note'];
+      expect(res.required).toEqual(expect.arrayContaining(nullable));
+      for (const field of nullable) {
+        expect(res.properties[field], field).toMatchObject({ nullable: true });
+      }
+      expect(res.properties).not.toHaveProperty('userId');
+      for (const [field, prop] of Object.entries(res.properties)) {
+        expect(prop, field).toHaveProperty('example');
+      }
+    });
+
+    it('請求不能帶後端決定的欄位', () => {
+      const props = Object.keys(schema('CreateBillDto').properties);
+      for (const field of [
+        'dueDay',
+        'dueMonth',
+        'seriesId',
+        'status',
+        'paidAmount',
+        'paidDate',
+      ]) {
+        expect(props).not.toContain(field);
+      }
+    });
+  });
+
   it('SWAGGER_ENABLED 沒設（development）時掛載：JSON 在 /api/docs-json，不提供 YAML', async () => {
     await request(app.getHttpServer()).get('/api/docs-json').expect(200);
     await request(app.getHttpServer()).get('/api/docs-yaml').expect(404);

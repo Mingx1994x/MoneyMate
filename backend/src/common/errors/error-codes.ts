@@ -34,6 +34,7 @@ export const ERROR_CODES = {
   AMOUNT_INVALID: { status: 400, message: '金額格式不正確' },
   AMOUNT_NEGATIVE: { status: 400, message: '金額不可為負數' },
   AMOUNT_NOT_POSITIVE: { status: 400, message: '金額必須大於 0' },
+  AMOUNT_OVERFLOW: { status: 400, message: '金額超出可記錄的範圍' },
   NAME_INVALID: { status: 400, message: '名稱需為 1 到 30 個字' },
 
   // ── auth（D）
@@ -83,6 +84,7 @@ export const ERROR_CODES = {
   // ── bills（E）
   BILL_ALREADY_PAID: { status: 409, message: '這張帳單已經繳過了' },
   BILL_NOT_FOUND: { status: 404, message: '找不到這張帳單' },
+  BILL_NOT_PAID: { status: 409, message: '這張帳單還沒繳費' },
   NEXT_BILL_ALREADY_PAID: {
     status: 409,
     message: '下一期帳單已經繳費，不能取消這一期',

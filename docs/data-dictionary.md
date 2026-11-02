@@ -46,7 +46,7 @@
 | `currency` | text | 否 | — | 固定 `TWD`，不開放輸入 |
 | `opening_balance` | numeric(14,2) | 否 | — | 初始餘額；只有信用卡和**估計帳戶**可以是負數（估計帳戶被扣除後，初始餘額可能變負，但目前餘額不會是負數，見 PRD 15.9） |
 | `is_active` | boolean | 否 | — | 預設 `true`；有交易的帳戶只能停用不能刪 |
-| `is_estimate` | boolean | 否 | — | 問卷建立的「現有資產（估計）」帳戶為 `true`；每人最多 1 個；類型一定是 `bank`；可以改名稱和金額，不能刪除（要歸零就改成 0，見 decisions D-011） |
+| `is_estimate` | boolean | 否 | — | 問卷建立的「現有資產（估計）」帳戶為 `true`；每人最多 1 個；類型一定是 `bank`；可以改名稱和金額，不能刪除（要歸零就改成 0，見 decisions D-D-002） |
 | `deducted_from_estimate` | numeric(14,2) | 是 | 建立這個帳戶時**沒有**從估計帳戶扣錢（使用者選「否」、扣除金額為 0、信用卡等初始餘額 ≤ 0 不詢問的帳戶、估計帳戶本身）。**不存 0，一律存 null** | 有值（> 0）= 扣了多少；刪除帳戶時可加回 |
 | `note` | text | 是 | 沒有備註 | 最多 200 字 |
 | `created_at`、`updated_at` | timestamptz | 否 | — | |
