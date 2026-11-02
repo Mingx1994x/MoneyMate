@@ -85,15 +85,31 @@ export function serializeErr(err: unknown): SerializedErrorLog {
   return { type: typeof err };
 }
 
+/**
+ * `*.password` 不含最外層。`this.logger.log({ password })` 經 nestjs-pino 後欄位在最外層，
+ * 所以每個鍵列三種路徑：`password`、`*.password`、`*.*.password`，再深一層就不刪。
+ * 字串訊息 redact 碰不到（2026/11/02 實測：原本只有 `*.password` 時最外層的 password 會留下）。
+ */
+const REDACT_KEYS = [
+  'password',
+  'currentPassword',
+  'newPassword',
+  'oldPassword',
+  'passwordHash',
+  'token',
+  'accessToken',
+  'refreshToken',
+  'resetToken',
+  'authorization',
+  'cookie',
+] as const;
+
 const REDACT_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
   'req.headers["x-api-key"]',
-  '*.password',
-  '*.token',
-  '*.accessToken',
-  '*.refreshToken',
-] as const;
+  ...REDACT_KEYS.flatMap((key) => [key, `*.${key}`, `*.*.${key}`]),
+];
 
 export function createPinoLoggerParams(
   opts?: LoggerParamsOptions,

@@ -114,7 +114,12 @@ describe('createPinoLoggerParams', () => {
     expect(http.quietReqLogger).toBe(true);
     expect(http.customAttributeKeys).toEqual({ reqId: 'requestId' });
     expect(http.redact).toMatchObject({
-      paths: expect.arrayContaining(['req.headers.authorization']) as string[],
+      paths: expect.arrayContaining([
+        'req.headers.authorization',
+        'password',
+        '*.password',
+        'accessToken',
+      ]) as string[],
       remove: true,
     });
     expect(http.useLevel).toBeUndefined();
