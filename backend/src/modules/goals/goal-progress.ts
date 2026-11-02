@@ -51,15 +51,14 @@ export function buildMilestones(
     .sort((a, b) => a.amount.comparedTo(b.amount))
     .filter((s, i, all) => i === 0 || !s.amount.eq(all[i - 1].amount));
 
-  const milestones = [
-    ...candidates,
-    { amount: target, label: '財富自由' },
-  ].map((s, i) => ({
-    index: i + 1,
-    amount: s.amount,
-    label: s.label,
-    reached: current.gte(s.amount),
-  }));
+  const milestones = [...candidates, { amount: target, label: '財富自由' }].map(
+    (s, i) => ({
+      index: i + 1,
+      amount: s.amount,
+      label: s.label,
+      reached: current.gte(s.amount),
+    }),
+  );
 
   const first = milestones.find((m) => !m.reached);
   return {
