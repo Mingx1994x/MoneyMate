@@ -74,6 +74,6 @@ function toApiError(e: unknown): ApiError {
     })
   }
   // 不是後端的錯誤格式（例如部署平台回的 502／503／504）
-  if (fe?.statusCode) return new ApiError(fe.statusCode, 'INTERNAL_ERROR', '伺服器錯誤，請稍後再試')
-  return new ApiError(0, 'NETWORK_ERROR', '連不上伺服器，請確認網路或稍後再試')
+  if (fe?.statusCode) return new ApiError(fe.statusCode, 'INTERNAL_ERROR', '系統發生錯誤，請稍後再試')
+  return new ApiError(0, 'NETWORK_ERROR', '') // 文字在 ERROR_MESSAGES.NETWORK_ERROR
 }
