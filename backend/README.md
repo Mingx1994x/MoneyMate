@@ -117,6 +117,52 @@ Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（�
   5. 實作 PR 補測試，並填 md 的「測試位置」。
 - 前端遇到不認得的代碼時直接顯示 `message`。`/api/v1` 以外的路徑（回 Express 的 HTML 404）與 `/health` 的 503 不是這個格式。
 
+## 日誌
+
+每個請求（`GET /health` 除外）會有一筆 JSON 的請求完成日誌，頂層有 `requestId`。錯誤回應的 `requestId`、標頭 `X-Request-Id`、這筆日誌是同一個值。本機 stdout 就是這種 JSON。部署環境到 Render 的 Logs 搜這個值（完整部署說明見 DEP-5）。
+
+可選送 `X-Request-Id`（`A–Z`、`a–z`、`0–9`、`-`，1–64 字）。不符、空白、或重複標頭就換一個新的。
+
+**不要記**密碼、token、完整 body、headers。請求完成那一行只有 method、path（不含 query）、status、ip、耗時。
+
+**業務程式怎麼記**
+
+繼續用 `@nestjs/common` 的 `Logger`，不要注入 `PinoLogger`。請求中自動帶同一個 `requestId`，不必自己塞：
+
+```ts
+import { Logger } from '@nestjs/common';
+
+@Injectable()
+export class BillsService {
+  private readonly logger = new Logger(BillsService.name);
+
+  async pay(billId: string, seriesId: string): Promise<void> {
+    // …業務邏輯…
+    this.logger.log({ billId, seriesId }, '帳單已繳費');
+  }
+}
+```
+
+結構化欄位只放 ID、狀態、金額。例外不要整包丟進 logger：
+
+| 可以                                                            | 不要                                                                                              |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `this.logger.log({ billId, seriesId }, '帳單已繳費')`           | `this.logger.log(dto)`、`this.logger.log({ body, headers })`                                      |
+| `this.logger.warn(\`資料庫檢查失敗：${describeError(error)}\`)` | `this.logger.error(error)`、`this.logger.error(error.message)`、`this.logger.warn(String(error))` |
+
+redact 只刪固定欄位名（`password`、`token`、`accessToken`、`authorization`、`cookie` 等），只看最外層與往下兩層。下面這些仍會整段進日誌：
+
+- 訊息字串。把 Email 拼進句子，或記下 `req.originalUrl`（query 可能帶 token），都不會被刪。
+- Email、名稱、備註，以及欄位名對不上的機密（自己取的 `secret`）。`this.logger.log(loginDto)` 即使密碼被刪掉，Email 還在。
+- `error.message`、`String(error)`、`JSON.stringify(error)`。Prisma 的 message 含查詢參數。`this.logger.error(error)` 也一樣：message 會變成日誌的 `msg`。用 `describeError(error)`。
+- `throw new Error(使用者輸入)`。未預期錯誤的 5xx 日誌會帶 stack，第一行就是這句 message。業務錯誤用 `AppException`。
+
+**其他**
+
+- 不要在 feature module `imports: [LoggerModule]`。它是全域的，再 import 會讓每個請求寫兩筆完成日誌。
+- 4xx 不會寫例外的 stack，但會有請求完成那一行。5xx 另外有一行 `describeError`（Prisma 只記名稱、代碼與約束名稱）。
+- `GET /health` 不寫請求完成日誌（Render 幾秒打一次）。資料庫失敗時的 warn 仍帶同一個 request ID。
+
 ## 共用工具
 
 | 工具                                | 位置                               | 用法                                                                                                                                                                                                                                               |
