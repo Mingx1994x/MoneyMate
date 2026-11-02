@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { ClockService } from '../src/clock/clock.service.js';
+import { toDbDate } from '../src/common/date-only.js';
 import {
   CategoryType,
   PrismaService,
@@ -207,6 +208,20 @@ describe('交易 API（e2e）', () => {
       expect(res.body).toMatchObject({ code: 'CATEGORY_TYPE_MISMATCH' });
     });
 
+    it('支出選了收入分類：400 CATEGORY_TYPE_MISMATCH', async () => {
+      const res = await post({
+        transactionType: 'expense',
+        amount: '100',
+        accountId: bankId,
+        categoryId: salaryId,
+      }).expect(400);
+      expect(res.body).toMatchObject({
+        code: 'CATEGORY_TYPE_MISMATCH',
+        details: [{ field: 'categoryId' }],
+      });
+      expect(await balanceOf(bankId)).toBe('100000.00');
+    });
+
     it('引用別人的帳戶、轉入帳戶、分類：400 NOT_FOUND，不洩漏是否存在（AC-24）', async () => {
       const otherId = await createUser(prisma, 'c-other@example.com');
       const otherAccount = await prisma.account.create({
@@ -268,16 +283,91 @@ describe('交易 API（e2e）', () => {
         accountId: bankId,
         categoryId: foodId,
       }).expect(409);
-      expect(res.body).toMatchObject({ code: 'ACCOUNT_INACTIVE' });
+      expect(res.body).toMatchObject({
+        code: 'ACCOUNT_INACTIVE',
+        details: [{ field: 'accountId' }],
+      });
     });
 
-    it.each(['0', '-1', 'abc'])('金額 %j：400（全域驗證）', async (amount) => {
-      await post({
+    it('轉帳到停用的帳戶：409 ACCOUNT_INACTIVE（field toAccountId），餘額不變', async () => {
+      await prisma.account.update({
+        where: { id: cardId },
+        data: { isActive: false },
+      });
+      const res = await post({
+        transactionType: 'transfer',
+        amount: '100',
+        accountId: bankId,
+        toAccountId: cardId,
+      }).expect(409);
+      expect(res.body).toMatchObject({
+        code: 'ACCOUNT_INACTIVE',
+        details: [{ field: 'toAccountId' }],
+      });
+      expect(await balanceOf(bankId)).toBe('100000.00');
+    });
+
+    it('停用的分類：400 CATEGORY_NOT_FOUND', async () => {
+      const oldFood = await createCategory(
+        prisma,
+        'old-food',
+        CategoryType.expense,
+        { isActive: false },
+      );
+      const res = await post({
+        transactionType: 'expense',
+        amount: '100',
+        accountId: bankId,
+        categoryId: oldFood,
+      }).expect(400);
+      expect(res.body).toMatchObject({
+        code: 'CATEGORY_NOT_FOUND',
+        details: [{ field: 'categoryId' }],
+      });
+    });
+
+    it.each([
+      ['0', 'AMOUNT_NOT_POSITIVE'],
+      ['-1', 'AMOUNT_NOT_POSITIVE'],
+      ['abc', 'AMOUNT_INVALID'],
+      ['', 'AMOUNT_INVALID'],
+      [undefined, 'AMOUNT_INVALID'],
+    ])('金額 %j：400 %s（AC-05）', async (amount, code) => {
+      const res = await post({
         transactionType: 'expense',
         amount,
         accountId: bankId,
         categoryId: foodId,
       }).expect(400);
+      expect(res.body).toMatchObject({ code, details: [{ field: 'amount' }] });
+    });
+
+    it.each(['', null, '2026-02-30'])(
+      '日期 %j：400 VALIDATION_FAILED（AC-06）',
+      async (transactionDate) => {
+        const res = await post({
+          transactionType: 'expense',
+          amount: '100',
+          accountId: bankId,
+          categoryId: foodId,
+          transactionDate,
+        }).expect(400);
+        expect(res.body).toMatchObject({
+          code: 'VALIDATION_FAILED',
+          details: [{ field: 'transactionDate' }],
+        });
+      },
+    );
+
+    it('備註送空字串：存成 null', async () => {
+      const res = await post({
+        transactionType: 'expense',
+        amount: '100',
+        accountId: bankId,
+        categoryId: foodId,
+        note: '',
+      }).expect(201);
+      expect(res.body).toMatchObject({ note: null });
     });
   });
 
@@ -369,6 +459,98 @@ describe('交易 API（e2e）', () => {
         '2026-10-05',
         '2026-10-01',
       ]);
+    });
+
+    it('同一天有多筆：依 createdAt 由新到舊，createdAt 相同再依 id 由大到小', async () => {
+      const day = '2026-10-15';
+      const add = async (createdAt: string, note: string) =>
+        (
+          await prisma.transaction.create({
+            data: {
+              userId,
+              accountId: bankId,
+              transactionType: TransactionType.expense,
+              amount: '10',
+              categoryId: foodId,
+              transactionDate: toDbDate(day),
+              createdAt: new Date(createdAt),
+              note,
+            },
+            select: { id: true },
+          })
+        ).id;
+      await add('2026-10-15T02:00:00Z', '最早');
+      await add('2026-10-15T04:00:00Z', '最晚');
+      const sameA = await add('2026-10-15T03:00:00Z', '同時 A');
+      const sameB = await add('2026-10-15T03:00:00Z', '同時 B');
+      // createdAt 相同的兩筆：id 大的在前（uuid 依字串比較，和 PostgreSQL 的排序一致）
+      const [first, second] =
+        sameA > sameB ? ['同時 A', '同時 B'] : ['同時 B', '同時 A'];
+
+      const body = listBody(
+        (await list(`?dateFrom=${day}&dateTo=${day}`)).body,
+      );
+      expect(body.items.map((t) => t.note)).toEqual([
+        '最晚',
+        first,
+        second,
+        '最早',
+      ]);
+    });
+
+    it('未來日期的交易也會列出（排在最前面）', async () => {
+      await createTransaction(prisma, {
+        userId,
+        accountId: bankId,
+        transactionType: TransactionType.income,
+        amount: '45000',
+        categoryId: salaryId,
+        transactionDate: '2026-11-05', // 晚於今天 2026-10-28
+      });
+      const body = listBody((await list()).body);
+      expect(body.total).toBe(6);
+      expect(body.items[0]).toMatchObject({
+        transactionDate: '2026-11-05',
+        amount: '45000.00',
+      });
+    });
+
+    it.each([
+      ['dateFrom=abc', 'dateFrom', 'VALIDATION_FAILED'],
+      ['transactionType=xxx', 'transactionType', 'VALIDATION_FAILED'],
+      ['categoryId=not-a-uuid', 'categoryId', 'CATEGORY_NOT_FOUND'],
+    ])('query 格式錯誤 %s：400（field %s）', async (query, field, code) => {
+      const res = await api()
+        .get(`/api/v1/transactions?${query}`)
+        .set('Authorization', auth)
+        .expect(400);
+      expect(res.body).toMatchObject({ code, details: [{ field }] });
+    });
+
+    it('篩選別人的分類：400 CATEGORY_NOT_FOUND', async () => {
+      const otherId = await createUser(prisma, 'c-other@example.com');
+      const otherFood = await createCategory(
+        prisma,
+        'other-food',
+        CategoryType.expense,
+        { userId: otherId },
+      );
+      const res = await api()
+        .get(`/api/v1/transactions?categoryId=${otherFood}`)
+        .set('Authorization', auth)
+        .expect(400);
+      expect(res.body).toMatchObject({
+        code: 'CATEGORY_NOT_FOUND',
+        details: [{ field: 'categoryId' }],
+      });
+    });
+
+    it('每筆都有 isBillGenerated', async () => {
+      const { items } = (await list()).body as {
+        items: { isBillGenerated: unknown }[];
+      };
+      expect(items).toHaveLength(5);
+      expect(items.every((t) => t.isBillGenerated === false)).toBe(true);
     });
 
     it('看不到別人的交易', async () => {
