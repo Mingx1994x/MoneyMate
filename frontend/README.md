@@ -3,7 +3,7 @@
 依 **PRD v0.5.8** 做的前端初版，給組員試用、開會討論要改什麼。
 **目前還沒有後端**：用瀏覽器內的「假後端」（mock API）模擬 NestJS，資料只存在每個人自己的瀏覽器裡，彼此不會互相影響。
 
-🔗 **Demo 網址：** https://gianni1203.github.io/frontend-moneymate-demo/
+🔗 **Demo 網址：** Vercel 部署完成後補上（舊版 Demo：https://gianni1203.github.io/frontend-moneymate-demo/）
 
 ## 試用方式
 
@@ -101,8 +101,26 @@ NUXT_PUBLIC_API_BASE=https://<後端網址>/api/v1
 - **E**：錯誤代碼的完整清單（前端先列了一版，見 `app/lib/api-error.ts`）
 - **A**：共用版型（側欄、手機底部導覽、右下角＋）與整體視覺風格
 
-## 部署
+## 部署（Vercel）
 
-推到 `main` 後，GitHub Actions 自動執行 `nuxt generate` 並部署到 GitHub Pages（`.github/workflows/deploy.yml`）。
-Nitro preset 用環境變數 `NITRO_PRESET` 切換（`github_pages`／`vercel`／`node_server`），之後搬到 Vercel 或 AWS 不用改程式（PRD §19）。
-`ci-artifacts` 分支只是 CI 自動推的建置紀錄，方便除錯，可以忽略。
+PRD 第二十九節第 4 項：W1–W5 前端部署在 Vercel。Vercel 會自動偵測 Nuxt，不需要 `vercel.json`。
+
+### Vercel 專案設定（只需設定一次）
+
+| 設定 | 值 | 說明 |
+|---|---|---|
+| Root Directory | `frontend` | repo 根目錄是前後端一起的 monorepo |
+| Framework Preset | Nuxt.js | 自動偵測；Build Command、Output Directory 用預設 |
+| Node.js Version | 24.x | 與 `.nvmrc` 一致；`package.json` 的 `engines` 也寫了 `24.x` |
+| Production Branch | `main` | Settings → Git。**預設是 repo 的預設分支 `dev`，一定要改** |
+| 環境變數 | 先不用設 | 預設 `NUXT_PUBLIC_API_MODE=mock`（瀏覽器內假後端） |
+
+### 部署行為
+
+- 合併進 `main` → 自動更新正式網址
+- 其他分支與 PR → 自動產生 Preview 網址，可以貼在 PR 給大家看
+
+### 之後串接後端時
+
+1. Vercel 環境變數設定 `NUXT_PUBLIC_API_MODE=http`、`NUXT_PUBLIC_API_BASE=https://<後端網址>/api/v1`，重新部署
+2. 請後端在 Render 的 `CORS_ORIGIN` 加上 Vercel 的正式網址（必要時連 Preview 網址一起加），否則瀏覽器會擋掉請求
