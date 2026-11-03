@@ -4,11 +4,13 @@ import { AppException } from '../../common/errors/app.exception.js';
 import { toMoney, toMoneyString } from '../../common/money.js';
 import {
   AccountType,
+  CategoryType,
   Prisma,
   PrismaService,
   type Account,
   type PrismaTx,
 } from '../../prisma/index.js';
+import { CategoriesService } from '../categories/index.js';
 import { FinanceCalcService } from '../finance/index.js';
 import type { AccountResponseDto } from './dto/account-response.dto.js';
 import type { CreateAccountDto } from './dto/create-account.dto.js';
@@ -28,7 +30,58 @@ export class AccountsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly finance: FinanceCalcService,
+    private readonly categories: CategoriesService,
   ) {}
+
+  /**
+   * body 引用的帳戶可以寫入：屬於這位使用者（否則 400 ACCOUNT_NOT_FOUND），而且啟用中（否則 409 ACCOUNT_INACTIVE）。
+   * field 是錯誤 details 的欄位名稱（accountId、toAccountId）。給 transactions 與 E 的帳單用。
+   */
+  async assertActiveAccount(
+    userId: string,
+    accountId: string,
+    field = 'accountId',
+    db: PrismaTx = this.prisma,
+  ): Promise<void> {
+    const account = await db.account.findFirst({
+      where: { id: accountId, userId },
+      select: { isActive: true },
+    });
+    if (!account) throw AppException.forField('ACCOUNT_NOT_FOUND', field, 400);
+    if (!account.isActive)
+      throw AppException.forField('ACCOUNT_INACTIVE', field);
+  }
+
+  /**
+   * 給 E 的帳單（PRD 16.7）：依序檢查帳戶屬於登入者、帳戶啟用中（requireActiveAccount 預設 true）、
+   * 分類可用、分類類型相同；第一個失敗就丟出。
+   */
+  async assertAccountAndCategoryOwned(
+    userId: string,
+    accountId: string,
+    categoryId: string,
+    options: { categoryType: CategoryType; requireActiveAccount?: boolean },
+    db: PrismaTx = this.prisma,
+  ): Promise<void> {
+    if (options.requireActiveAccount ?? true) {
+      await this.assertActiveAccount(userId, accountId, 'accountId', db);
+    } else {
+      const owned = await db.account.findFirst({
+        where: { id: accountId, userId },
+        select: { id: true },
+      });
+      if (!owned) {
+        throw AppException.forField('ACCOUNT_NOT_FOUND', 'accountId', 400);
+      }
+    }
+    await this.categories.assertUsable(
+      userId,
+      categoryId,
+      options.categoryType,
+      'categoryId',
+      db,
+    );
+  }
 
   /** GET /accounts：預設只列啟用中的帳戶；啟用中在前，同組依 createdAt 由舊到新，再依 id */
   async findAll(

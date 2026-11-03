@@ -2115,16 +2115,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2132,7 +2122,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出交易（篩選＋分頁）",
+        "summary": "列出交易（篩選＋分頁）",
         "tags": [
           "transactions"
         ]
@@ -2191,16 +2181,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2208,7 +2188,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】新增交易（快速記帳、繳卡費也走這支）",
+        "summary": "新增交易（快速記帳、繳卡費也走這支）",
         "tags": [
           "transactions"
         ]
@@ -2259,16 +2239,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2276,7 +2246,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得單筆交易",
+        "summary": "取得單筆交易",
         "tags": [
           "transactions"
         ]
