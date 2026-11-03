@@ -32,16 +32,19 @@ describe('FinanceCalcService 驗算（e2e）', () => {
   let salary: string;
   let living: string;
 
-  /** 假的貸款摘要：每個測試可以改 outstanding 的值 */
+  /**
+   * 假的貸款摘要：每個測試可以改 outstanding 的值。
+   * 用 vi.fn() 才能檢查呼叫參數，確認淨資產扣的是登入者、今天的貸款（PRD 第十九節權限檢查）。
+   */
   let outstanding = new Prisma.Decimal(0);
-  const fakeLoans: Pick<LoansService, 'getLoanSummary'> = {
-    getLoanSummary: (): Promise<LoanSummary> =>
-      Promise.resolve({
-        activeCount: outstanding.isZero() ? 0 : 1,
-        outstandingTotal: outstanding,
-        upcomingPayments: [],
-      }),
-  };
+  const getLoanSummary = vi.fn((): Promise<LoanSummary> =>
+    Promise.resolve({
+      activeCount: outstanding.isZero() ? 0 : 1,
+      outstandingTotal: outstanding,
+      upcomingPayments: [],
+    }),
+  );
+  const fakeLoans: Pick<LoansService, 'getLoanSummary'> = { getLoanSummary };
 
   const account = async (
     owner: string,
@@ -113,6 +116,7 @@ describe('FinanceCalcService 驗算（e2e）', () => {
   beforeEach(async () => {
     await resetDb(prisma);
     outstanding = new Prisma.Decimal(0);
+    getLoanSummary.mockClear();
     userId = await createUser(prisma, 'c-finance@example.com');
     salary = await createCategory(prisma, 'salary', CategoryType.income);
     living = await createCategory(prisma, 'living', CategoryType.expense);
@@ -151,6 +155,9 @@ describe('FinanceCalcService 驗算（e2e）', () => {
 
     it('淨資產 −760,000（帳戶合計 − 房貸 1,000,000）', async () => {
       expect(s(await calc.getNetWorth(userId, TODAY))).toBe('-760000.00');
+      // 扣的是登入者、今天的貸款：傳錯 userId 或 today 時這裡會失敗
+      expect(getLoanSummary).toHaveBeenCalledTimes(1);
+      expect(getLoanSummary).toHaveBeenCalledWith(userId, TODAY);
     });
 
     it('本月收入 50,000、支出 110,000（轉帳不計）', async () => {
@@ -295,6 +302,12 @@ describe('FinanceCalcService 驗算（e2e）', () => {
       outstanding = new Prisma.Decimal('30000.5');
       expect(s(await calc.getAccountsTotal(userId, TODAY))).toBe('100000.00');
       expect(s(await calc.getNetWorth(userId, TODAY))).toBe('69999.50');
+      expect(getLoanSummary).toHaveBeenCalledWith(userId, TODAY);
+    });
+
+    it('換一天算淨資產：貸款也用同一個 today', async () => {
+      await calc.getNetWorth(userId, '2026-12-01');
+      expect(getLoanSummary).toHaveBeenCalledWith(userId, '2026-12-01');
     });
 
     it('月收支只算該月：上個月、下個月的交易都不算', async () => {
