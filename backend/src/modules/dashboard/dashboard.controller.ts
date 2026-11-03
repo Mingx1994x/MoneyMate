@@ -1,29 +1,25 @@
-import {
-  Controller,
-  Get,
-  NotImplementedException,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  ApiAuth,
-  ApiErrors,
-  ApiNotImplemented,
-} from '../../common/swagger/api-decorators.js';
+import { ClockService } from '../../clock/clock.service.js';
+import { ApiAuth, ApiErrors } from '../../common/swagger/api-decorators.js';
+import { CurrentUser, type AuthUser } from '../auth/index.js';
+import { DashboardService } from './dashboard.service.js';
 import { DashboardSummaryQueryDto } from './dto/dashboard-query.dto.js';
 import { DashboardSummaryResponseDto } from './dto/dashboard-summary.dto.js';
 
 /**
- * dashboard 空殼（C）：照 loans 範例寫。
- * - handler 只丟 NotImplementedException（501），不寫 async。
- * - 沒用到的參數加 _ 前綴，實作時拿掉；@CurrentUser() 由 AUTH-1 提供，實作時再加。
- * - 實作 PR 要拿掉 @ApiNotImplemented()。
- * GET /dashboard/trend 是 P1，P0 不建。
+ * dashboard（C）。目前接上：本月收支、儲蓄率、帳戶合計、可用現金（C），帳單、貸款（E，未實作時列進 unavailable）。
+ * 目標（D）在 W4 接上，之前 goal、nextStep 是 null。GET /dashboard/trend 是 P1，P0 不建。
  */
 @ApiTags('dashboard')
 @ApiAuth()
 @Controller('dashboard')
 export class DashboardController {
+  constructor(
+    private readonly dashboard: DashboardService,
+    private readonly clock: ClockService,
+  ) {}
+
   @Get('summary')
   @ApiOperation({
     summary: 'Dashboard 全部區塊＋一句下一步',
@@ -35,10 +31,10 @@ export class DashboardController {
   })
   @ApiOkResponse({ type: DashboardSummaryResponseDto })
   @ApiErrors('VALIDATION_FAILED')
-  @ApiNotImplemented()
   summary(
-    @Query() _query: DashboardSummaryQueryDto,
-  ): DashboardSummaryResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Query() query: DashboardSummaryQueryDto,
+  ): Promise<DashboardSummaryResponseDto> {
+    return this.dashboard.getSummary(user.id, this.clock.today(), query.month);
   }
 }

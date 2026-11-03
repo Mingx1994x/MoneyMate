@@ -1,11 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { toDbDate, type DateOnly } from '../../common/date-only.js';
+import {
+  monthStart,
+  nextMonthStart,
+  toDbDate,
+  type DateOnly,
+  type MonthString,
+} from '../../common/date-only.js';
 import {
   AccountType,
   Prisma,
   PrismaService,
   type PrismaTx,
 } from '../../prisma/index.js';
+import { LoansService } from '../loans/index.js';
 
 /** 一個帳戶的目前餘額，以及計算帳戶合計、可用現金時需要的屬性 */
 export interface AccountBalance {
@@ -25,7 +32,10 @@ export interface AccountBalance {
  */
 @Injectable()
 export class FinanceCalcService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly loans: LoansService,
+  ) {}
 
   /**
    * 這位使用者每個帳戶（含停用）的目前餘額。一個 SQL 算完：每筆交易對帳戶的影響
@@ -93,5 +103,76 @@ export class FinanceCalcService {
     return all
       .filter((a) => a.isActive)
       .reduce((sum, a) => sum.plus(a.balance), new Prisma.Decimal(0));
+  }
+
+  /**
+   * 淨資產（PRD 15.1）：所有帳戶目前餘額（停用的餘額必為 0）− active 貸款未償餘額。
+   * 貸款金額來自 E 的 getLoanSummary（D-011 同一口徑，AC-22）；E 還沒實作時會丟 NotImplementedException，由呼叫端處理。
+   */
+  async getNetWorth(
+    userId: string,
+    today: DateOnly,
+    db: PrismaTx = this.prisma,
+  ): Promise<Prisma.Decimal> {
+    const [all, loans] = await Promise.all([
+      this.getAccountBalances(userId, today, db),
+      this.loans.getLoanSummary(userId, today),
+    ]);
+    return all
+      .reduce((sum, a) => sum.plus(a.balance), new Prisma.Decimal(0))
+      .minus(loans.outstandingTotal);
+  }
+
+  /**
+   * 可用現金（PRD 15.1）：啟用中 cash＋bank 的目前餘額，不含估計帳戶、投資、信用卡。
+   * hasCashAccounts：有沒有這種帳戶；沒有時不計算 14 天資金缺口（PRD 15.5、AC-20）。
+   */
+  async getAvailableCash(
+    userId: string,
+    today: DateOnly,
+    db: PrismaTx = this.prisma,
+  ): Promise<{ total: Prisma.Decimal; hasCashAccounts: boolean }> {
+    const cash = (await this.getAccountBalances(userId, today, db)).filter(
+      (a) =>
+        a.isActive &&
+        !a.isEstimate &&
+        (a.accountType === AccountType.cash ||
+          a.accountType === AccountType.bank),
+    );
+    return {
+      total: cash.reduce(
+        (sum, a) => sum.plus(a.balance),
+        new Prisma.Decimal(0),
+      ),
+      hasCashAccounts: cash.length > 0,
+    };
+  }
+
+  /**
+   * 某月的收入、支出合計（PRD 15.2）：只加 income、expense，不含轉帳；
+   * 只計入日期 ≤ today 的交易（AC-19）；停用帳戶的交易也算。
+   */
+  async getMonthlyTotals(
+    userId: string,
+    month: MonthString,
+    today: DateOnly,
+    db: PrismaTx = this.prisma,
+  ): Promise<{ income: Prisma.Decimal; expense: Prisma.Decimal }> {
+    const rows = await db.$queryRaw<
+      { income: Prisma.Decimal | null; expense: Prisma.Decimal | null }[]
+    >`
+      SELECT
+        SUM(amount) FILTER (WHERE transaction_type = 'income') AS income,
+        SUM(amount) FILTER (WHERE transaction_type = 'expense') AS expense
+      FROM transactions
+      WHERE user_id = ${userId}::uuid
+        AND transaction_date >= ${toDbDate(monthStart(month))}::date
+        AND transaction_date < ${toDbDate(nextMonthStart(month))}::date
+        AND transaction_date <= ${toDbDate(today)}::date`;
+    const row = rows[0];
+    return {
+      income: new Prisma.Decimal(row?.income ?? 0),
+      expense: new Prisma.Decimal(row?.expense ?? 0),
+    };
   }
 }
