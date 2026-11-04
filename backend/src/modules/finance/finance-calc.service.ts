@@ -107,20 +107,25 @@ export class FinanceCalcService {
 
   /**
    * 淨資產（PRD 15.1）：所有帳戶目前餘額（停用的餘額必為 0）− active 貸款未償餘額。
-   * 貸款金額來自 E 的 getLoanSummary（D-011 同一口徑，AC-22）；E 還沒實作時會丟 NotImplementedException，由呼叫端處理。
+   * 貸款金額來自 E 的 getLoanSummary（D-011 同一口徑，AC-22）。
+   * 呼叫端已經拿到 getLoanSummary 的結果時（dashboard），傳 loanOutstanding（它的 outstandingTotal），不再查一次。
    */
   async getNetWorth(
     userId: string,
     today: DateOnly,
     db: PrismaTx = this.prisma,
+    loanOutstanding?: Prisma.Decimal,
   ): Promise<Prisma.Decimal> {
     const [all, loans] = await Promise.all([
       this.getAccountBalances(userId, today, db),
-      this.loans.getLoanSummary(userId, today),
+      loanOutstanding ??
+        this.loans
+          .getLoanSummary(userId, today)
+          .then((s) => s.outstandingTotal),
     ]);
     return all
       .reduce((sum, a) => sum.plus(a.balance), new Prisma.Decimal(0))
-      .minus(loans.outstandingTotal);
+      .minus(loans);
   }
 
   /**

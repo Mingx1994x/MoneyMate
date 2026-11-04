@@ -57,8 +57,14 @@ export class DashboardService {
       this.loans.getLoanSummary(userId, today),
     );
     if (!loanSummary) unavailable.push(DashboardSection.loans);
+    // 貸款合計傳進去，getNetWorth 不再呼叫一次 getLoanSummary
     const netWorth = loanSummary
-      ? await this.finance.getNetWorth(userId, today)
+      ? await this.finance.getNetWorth(
+          userId,
+          today,
+          undefined,
+          loanSummary.outstandingTotal,
+        )
       : null;
 
     // ── 目標（D 的 getGoalProgress 在 W4 實作，接上前一律 unavailable）
