@@ -1,96 +1,44 @@
 /**
- * API 資料格式（依 PRD v0.5.8 第十三、十四節）。
- * ⚠️ 暫時手寫。後端 Swagger 完成後，改用 openapi-typescript 自動產生（§19），
- *    並把這個檔案換成 re-export 產生出來的型別。
+ * API 資料格式。
+ *
+ * 型別從後端的 `backend/openapi.json` 產生（`npm run api:types` → `app/types/openapi.ts`，不要手動改那個檔案），
+ * 這裡只是幫常用的型別取比較短的名字。後端改了 API 卻沒重新產生時，CI 會失敗；
+ * 產生後頁面用錯欄位的地方，`npm run typecheck` 會直接報錯。
  *
  * 慣例：JSON 欄位 camelCase；金額是字串（"1234.00"）；日期 YYYY-MM-DD；時間戳 ISO 8601 UTC。
  */
+import type { components } from './openapi'
+
+type Schemas = components['schemas']
 
 export type Money = string
 export type DateString = string
 
 // ---------- Auth ----------
-export interface Me {
-  id: string
-  email: string
-  displayName: string | null
-  hasCompletedOnboarding: boolean
-}
-export interface AuthResponse {
-  accessToken: string
-  user: Me
-}
+export type Me = Schemas['MeDto']
+export type AuthResponse = Schemas['AuthResponseDto']
 
 // ---------- Accounts ----------
-export type AccountType = 'cash' | 'bank' | 'investment' | 'credit_card'
-
-export interface Account {
-  id: string
-  name: string
-  accountType: AccountType
-  currency: 'TWD'
-  openingBalance: Money
-  currentBalance: Money
-  isActive: boolean
-  isEstimate: boolean
-  deductedFromEstimate: Money | null
-  hasTransactions: boolean
-  note: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface CreateAccountBody {
-  name: string
-  accountType: AccountType
-  openingBalance: Money
-  note?: string | null
-  deductFromEstimate?: boolean
-}
+export type AccountType = Schemas['AccountType']
+export type Account = Schemas['AccountResponseDto']
+export type CreateAccountBody = Schemas['CreateAccountDto']
+export type UpdateAccountBody = Schemas['UpdateAccountDto']
 
 // ---------- Categories ----------
-export type CategoryType = 'income' | 'expense'
-export interface Category {
-  id: string
-  code: string
-  name: string
-  type: CategoryType
-  sortOrder: number
-}
+export type CategoryType = Schemas['CategoryType']
+export type Category = Schemas['CategoryResponseDto']
 
 // ---------- Transactions ----------
-export type TransactionType = 'income' | 'expense' | 'transfer'
+export type TransactionType = Schemas['TransactionType']
+export type Transaction = Schemas['TransactionResponseDto']
+export type TransactionBody = Schemas['CreateTransactionDto']
 
-export interface Transaction {
-  id: string
-  transactionType: TransactionType
-  amount: Money
-  accountId: string
-  toAccountId: string | null
-  categoryId: string | null
-  transactionDate: DateString
-  note: string | null
-  billId: string | null
-  isBillGenerated: boolean
-  createdAt: string
-  updatedAt: string
-}
-
-export interface TransactionBody {
-  transactionType: TransactionType
-  amount: Money
-  accountId: string
-  toAccountId?: string | null
-  categoryId?: string | null
-  transactionDate: DateString
-  note?: string | null
-}
-
-/** 不分頁的列表也包一層 items（E 的後端統一規則）：GET /accounts、/categories、/loans、/bills */
+/** 不分頁的列表也包一層 items（後端的統一規則）：GET /accounts、/categories、/loans */
 export interface ListResponse<T> {
   items: T[]
 }
 
+/** 分頁的列表：GET /transactions、/bills */
 export interface Paginated<T> {
   items: T[]
   page: number
@@ -98,7 +46,37 @@ export interface Paginated<T> {
   total: number
 }
 
-// ---------- Loans ----------
+// ---------- Goal ----------
+export type Goal = Schemas['GoalDto']
+export type Milestone = Schemas['MilestoneDto']
+export type FireAgeStatus = Schemas['FireAgeStatus']
+export type GoalProgress = Schemas['GoalProgressDto']
+
+// ---------- Dashboard ----------
+export type BillBrief = Schemas['DashboardBillBriefDto']
+export type NextStep = Schemas['DashboardNextStepDto']
+export type DashboardSection = Schemas['DashboardSection']
+export type DashboardSummary = Schemas['DashboardSummaryResponseDto']
+
+// ---------- Errors ----------
+/** 後端的錯誤代碼（docs/error-codes.md）。前端自己的代碼（NETWORK_ERROR）不在這裡面 */
+export type ErrorCode = Schemas['ErrorCode']
+
+export interface ApiErrorBody {
+  statusCode: number
+  /** 後端的 ErrorCode，或前端自己的 NETWORK_ERROR */
+  code: string
+  message: string
+  details: unknown[]
+  requestId: string
+}
+
+// ---------- Loans、Bills：暫時手寫 ----------
+// ⚠️ 後端的 loans、bills API 還是 501，頁面目前只能接假後端。
+//    #60（貸款頁）、#61（帳單頁）接上真的 API 時改用產生的型別，和後端不同的地方：
+//    - Loan.loanType 是 LoanType 列舉、interestRate 是 number
+//    - LoanPaymentPreview 是 { monthlyPayment, totalInterest, installments }
+//    - GET /bills 是分頁格式，Bill 多了 isOverdue
 export type LoanStatus = 'active' | 'closed'
 
 export interface Loan {
@@ -136,7 +114,6 @@ export interface LoanPaymentPreview {
   totalInterest: Money
 }
 
-// ---------- Bills ----------
 export type Recurrence = 'none' | 'monthly' | 'yearly'
 export type BillStatus = 'pending' | 'paid'
 
@@ -167,90 +144,4 @@ export interface BillBody {
   dueDate: DateString
   recurrence: Recurrence
   note?: string | null
-}
-
-// ---------- Goal ----------
-export interface Goal {
-  name: string
-  monthlySpending: Money
-  targetAmount: Money
-  birthYear: number | null
-  estMonthlySaving: Money | null
-}
-
-export interface Milestone {
-  index: number
-  amount: Money
-  label: string
-  reached: boolean
-}
-
-export type FireAgeStatus = 'ok' | 'achieved' | 'need_birth_year' | 'need_saving' | 'unreachable' | 'over_100'
-
-export interface GoalProgress {
-  targetAmount: Money
-  currentAmount: Money
-  remaining: Money
-  percent: number
-  achieved: boolean
-  milestones: Milestone[]
-  nextMilestone: (Milestone & { remaining: Money }) | null
-  fireAge: number | null
-  fireAgeStatus: FireAgeStatus
-  fireAssumptions: {
-    annualSpending: Money
-    annualSaving: Money | null
-    savingSource: 'actual' | 'estimate' | null
-    currentAssets: Money
-    age: number | null
-  }
-  activeLoanTotal: Money
-}
-
-// ---------- Dashboard ----------
-export interface BillBrief {
-  id: string
-  name: string
-  amount: Money
-  dueDate: DateString
-  daysUntilDue: number
-}
-
-export interface NextStep {
-  type: 'overdue_bills' | 'funding_gap' | 'next_milestone' | 'goal_achieved' | 'onboarding'
-  message: string
-  amount: Money | null
-}
-
-export interface DashboardSummary {
-  today: DateString
-  month: string
-  income: Money
-  expense: Money
-  savingsRate: number | null
-  accountsTotal: Money
-  netWorth: Money
-  availableCash: Money
-  hasCashAccounts: boolean
-  billsOverdue: BillBrief[]
-  billsOverdueCount: number
-  billsDueSoon: BillBrief[]
-  fundingGap: Money | null
-  loans: {
-    outstandingTotal: Money
-    activeCount: number
-    upcomingPayments: { loanId: string; name: string; date: DateString; monthlyPayment: Money }[]
-  } | null
-  goal: GoalProgress | null
-  nextStep: NextStep
-  unavailable: string[]
-}
-
-// ---------- Errors ----------
-export interface ApiErrorBody {
-  statusCode: number
-  code: string
-  message: string
-  details: unknown[]
-  requestId: string
 }

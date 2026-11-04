@@ -11,8 +11,9 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "lint": "oxlint --deny-warnings app/ nuxt.config.ts",
-    "typecheck": "nuxt typecheck"
+    "lint": "oxlint --deny-warnings --ignore-pattern app/types/openapi.ts app/ nuxt.config.ts",
+    "typecheck": "nuxt typecheck",
+    "api:types": "openapi-typescript ../backend/openapi.json -o app/types/openapi.ts"
   },
   "dependencies": {
     "nuxt": "^4.1.0",
