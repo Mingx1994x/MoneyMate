@@ -172,22 +172,16 @@ describe('Swagger 文件', () => {
     }
   });
 
-  describe('貸款端點（LOAN-1，C、D 照這個範例寫）', () => {
+  describe('貸款端點', () => {
     type Schema = {
       required?: string[];
       properties: Record<string, Record<string, unknown>>;
     };
     const schema = (name: string) => doc.components?.schemas?.[name] as Schema;
 
-    it('6 個端點都在、都要登入；payment-preview 已實作（LOAN-4），其他標【未實作】', () => {
-      const preview = doc.paths['/api/v1/loans/payment-preview']?.get;
-      if (preview === undefined) throw new Error('缺少 payment-preview');
-      expect(preview.summary).not.toMatch(/未實作/);
-      expect(preview.security).toEqual([{ bearer: [] }]);
-      expect(preview.responses['401']).toBeDefined();
-      expect(preview.responses['501']).toBeUndefined();
-
+    it('6 個端點都在、都已實作（LOAN-2、LOAN-4）、都要登入', () => {
       const ops = [
+        doc.paths['/api/v1/loans/payment-preview']?.get,
         doc.paths['/api/v1/loans']?.get,
         doc.paths['/api/v1/loans']?.post,
         doc.paths['/api/v1/loans/{id}']?.get,
@@ -196,10 +190,10 @@ describe('Swagger 文件', () => {
       ];
       for (const op of ops) {
         if (op === undefined) throw new Error('缺少貸款端點');
-        expect(op.summary).toMatch(/^【未實作】/);
+        expect(op.summary).not.toMatch(/未實作/);
         expect(op.security).toEqual([{ bearer: [] }]);
         expect(op.responses['401']).toBeDefined();
-        expect(op.responses['501']).toBeDefined();
+        expect(op.responses['501']).toBeUndefined();
       }
     });
 
