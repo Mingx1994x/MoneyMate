@@ -3,15 +3,21 @@ import { ClockModule } from '../../clock/clock.module.js';
 import { toDbDate } from '../../common/date-only.js';
 import { AppException } from '../../common/errors/app.exception.js';
 import { Prisma, PrismaModule, PrismaService } from '../../prisma/index.js';
+import { FakeClock } from '../../../test/utils/fake-clock.js';
 // 從 index 匯入，確認 C 用的入口匯出了模組與 service
 import { LoansModule, LoansService } from './index.js';
+
+// 這裡不連資料庫（getLoanSummary 用假的 prisma）；CRUD 在 test/loans.e2e-spec.ts 連真的資料庫測
+const newService = () =>
+  new LoansService({} as PrismaService, FakeClock.onTaipeiDate('2026-10-28'));
 
 describe('LoansService', () => {
   it('LoansModule 匯出 LoansService，其他模組 import 後拿得到', async () => {
     // 測試模組自己的 provider 注入 LoansService：沒有 export 時 compile 會失敗
     const moduleRef = await Test.createTestingModule({
-      // 正式環境的 PrismaModule、ClockModule 是全域的（AppModule 匯入），service 與 controller 注入時要用到
-      imports: [PrismaModule, ClockModule, LoansModule],
+      // 正式環境的 ClockModule、PrismaModule 是全域的（AppModule 匯入），LoansService 注入要用到；
+      // PrismaService 換成空物件，這個測試不連資料庫
+      imports: [LoansModule, ClockModule, PrismaModule],
       providers: [
         {
           provide: 'DASHBOARD',
@@ -40,10 +46,10 @@ describe('LoansService', () => {
       ]);
       const prisma = { loan: { findMany } } as unknown as PrismaService;
 
-      const s = await new LoansService(prisma).getLoanSummary(
-        'user-id',
-        '2026-10-28',
-      );
+      const s = await new LoansService(
+        prisma,
+        FakeClock.onTaipeiDate('2026-10-28'),
+      ).getLoanSummary('user-id', '2026-10-28');
 
       expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -59,7 +65,7 @@ describe('LoansService', () => {
   });
 
   describe('paymentPreview（LOAN-4）', () => {
-    const service = new LoansService({} as PrismaService);
+    const service = newService();
     const TODAY = '2026-10-28';
     const query = {
       outstandingBalance: '1000000.00',
