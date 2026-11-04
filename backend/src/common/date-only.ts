@@ -96,3 +96,20 @@ export function nextMonthStart(m: MonthString): DateOnly {
     ? `${year + 1}-01-01`
     : `${year}-${String(month + 1).padStart(2, '0')}-01`;
 }
+
+/**
+ * 某月的第 day 天；29–31 遇到短月用當月最後一天（貸款 paymentDay、帳單 dueDay，PRD 16.4）。
+ * 例：dayInMonth('2026-11', 31) → '2026-11-30'。day 不是 1–31 的整數或月份不合法時丟錯。
+ */
+export function dayInMonth(m: MonthString, day: number): DateOnly {
+  if (!Number.isInteger(day) || day < 1 || day > 31) {
+    throw new Error('dayInMonth: 日必須是 1–31 的整數');
+  }
+  const lastDay = Number(addDays(nextMonthStart(m), -1).slice(8, 10));
+  return `${monthStart(m).slice(0, 8)}${String(Math.min(day, lastDay)).padStart(2, '0')}`;
+}
+
+/** to − from 的天數（to 較早時為負）。日期不合法時丟錯。 */
+export function daysBetween(from: DateOnly, to: DateOnly): number {
+  return (toDbDate(to).getTime() - toDbDate(from).getTime()) / DAY_MS;
+}
