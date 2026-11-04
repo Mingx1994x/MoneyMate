@@ -361,6 +361,8 @@ describe('Dashboard API（e2e）', () => {
 
     it('呼叫 E 的 service 時帶登入者與台北今天', async () => {
       await summary().expect(200);
+      // 淨資產用 dashboard 拿到的貸款合計，不再呼叫一次
+      expect(getLoanSummary).toHaveBeenCalledTimes(1);
       expect(getLoanSummary).toHaveBeenCalledWith(userId, TODAY);
       expect(getBillAlerts).toHaveBeenCalledWith(userId, TODAY);
     });
