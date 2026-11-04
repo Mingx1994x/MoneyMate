@@ -595,6 +595,43 @@ describe('貸款 API（e2e）', () => {
     });
   });
 
+  describe('還款與貸款餘額', () => {
+    // 繳帳單（POST /bills/:id/pay）不影響貸款的測試，等 BILL-5 實作時補在帳單的 e2e
+    it('AC-09、US-L7：記一筆「貸款還款」支出 → 只多一筆交易，貸款完全不變', async () => {
+      const account = await prisma.account.create({
+        data: {
+          userId,
+          name: '薪轉戶',
+          accountType: AccountType.bank,
+          openingBalance: new Prisma.Decimal('100000'),
+        },
+      });
+      const categoryId = await createCategory(
+        prisma,
+        'loan_payment',
+        CategoryType.expense,
+      );
+      const loan = await create({ ...BODY, outstandingBalance: '320000' });
+
+      clock.set('2026-11-05T01:00:00Z');
+      await api()
+        .post('/api/v1/transactions')
+        .set('Authorization', auth)
+        .send({
+          transactionType: 'expense',
+          amount: '17969',
+          accountId: account.id,
+          categoryId,
+          transactionDate: '2026-11-05',
+        })
+        .expect(201);
+
+      expect(await prisma.transaction.count({ where: { userId } })).toBe(1);
+      // 餘額、balanceUpdatedAt、updatedAt 都跟新增時一樣
+      expect((await get(loan.id).expect(200)).body).toEqual(loan);
+    });
+  });
+
   describe('擁有權與 :id', () => {
     it('US-L10：別人的貸款讀取、修改、刪除都是 404 LOAN_NOT_FOUND，資料不變', async () => {
       const loan = await create();
