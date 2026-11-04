@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsInt, Max, Min } from 'class-validator';
 import {
   IsDateOnly,
   IsMoney,
@@ -26,16 +27,30 @@ export class LoanPaymentPreviewQueryDto {
   interestRate!: number;
 
   @ApiProperty({
+    type: 'integer',
+    minimum: 1,
+    maximum: 31,
+    description:
+      '每月繳款日，用來數剩餘期數（D-E-002）；29–31 遇短月用當月最後一天',
+    example: 31,
+  })
+  @ToNumber()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  paymentDay!: number;
+
+  @ApiProperty({
     format: 'date',
     description:
-      '結清日。早於本月時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED',
+      '結清日。早於台北今天時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED',
     example: '2031-09-30',
   })
   @IsDateOnly()
   endDate!: string;
 }
 
-/** 範例值是 2026/10 時，100 萬、3%、結清日 2031-09-30（60 期）的結果（PRD 15.8 的驗算案例） */
+/** 範例值是今天 2026-10-28 時，100 萬、3%、每月 31 號、結清日 2031-09-30（60 期）的結果（PRD 15.8 的驗算案例） */
 export class LoanPaymentPreviewResponseDto {
   @ApiProperty({ description: '建議每月還款，到元', example: '17969.00' })
   monthlyPayment!: string;
@@ -46,7 +61,8 @@ export class LoanPaymentPreviewResponseDto {
   @ApiProperty({
     type: 'integer',
     minimum: 1,
-    description: '剩餘期數：台北本月到結清日所在月份（含頭尾），至少 1',
+    description:
+      '剩餘期數：台北今天（含）到結清日（含）之間的還款日個數，至少 1（D-E-002）',
     example: 60,
   })
   installments!: number;
