@@ -1,11 +1,15 @@
 <script setup lang="ts">
-/** 登入頁（B）— PRD US-01、FR-02 */
+/**
+ * 登入頁（B）— PRD US-01、FR-02；後端 POST /auth/login
+ * 帳號或密碼錯誤時後端回 401 AUTH_INVALID_CREDENTIALS（不會指出是哪一個錯）；
+ * 次數太多回 429 TOO_MANY_REQUESTS（帶 retryAfterSeconds）。
+ */
 import { errorText } from '~/lib/api-error'
 import { DEMO_EMAIL, DEMO_PASSWORD } from '~/mock/seed'
 
 definePageMeta({ layout: 'auth' })
 
-const { login } = useAuth()
+const { login, homePath } = useAuth()
 const config = useRuntimeConfig()
 const isMock = config.public.apiMode === 'mock'
 
@@ -21,12 +25,12 @@ async function submit() {
     email: !email.value.trim() ? '請輸入 Email' : undefined,
     password: !password.value ? '請輸入密碼' : undefined,
   }
-  if (errors.value.email || errors.value.password) return
+  if (loading.value || errors.value.email || errors.value.password) return
   loading.value = true
   error.value = null
   try {
     const user = await login(email.value, password.value)
-    await navigateTo(user.hasCompletedOnboarding ? '/' : '/onboarding')
+    await navigateTo(homePath(user))
   } catch (e) {
     error.value = errorText(e)
   } finally {

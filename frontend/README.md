@@ -49,6 +49,18 @@ npm run dev        # http://localhost:3000
 npm run generate   # 產生靜態網站到 .output/public
 ```
 
+## 連本機後端開發
+
+預設是瀏覽器內的假後端（不用開後端）。要接真的 NestJS 後端時：
+
+1. 依 `backend/README.md` 啟動資料庫與後端（`docker compose up -d`、`npm run start:dev`，後端在 `http://localhost:3001`）
+2. 在 `frontend/` 複製 `.env.example` 成 `.env`（裡面已設好 `NUXT_PUBLIC_API_MODE=http` 與後端網址）
+3. `npm run dev`，打開 `http://localhost:3000`
+
+- 後端的 `CORS_ORIGIN` 預設就是 `http://localhost:3000`，照 `backend/.env.example` 建 `.env` 就不用改。
+- ⚠️ 問卷 API（`POST /onboarding`）還沒完成，`.env.example` 先打開 `NUXT_PUBLIC_SKIP_ONBOARDING=true`，登入後不會被導去問卷頁。問卷 API 完成後移除這個開關。
+- 還沒實作的 API 會回 501，畫面會顯示「這個功能還在開發中」。
+
 ## 架構
 
 ```
