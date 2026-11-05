@@ -179,9 +179,15 @@ describe('Swagger 文件', () => {
     };
     const schema = (name: string) => doc.components?.schemas?.[name] as Schema;
 
-    it('6 個端點都在、都標【未實作】、都要登入', () => {
+    it('6 個端點都在、都要登入；payment-preview 已實作（LOAN-4），其他標【未實作】', () => {
+      const preview = doc.paths['/api/v1/loans/payment-preview']?.get;
+      if (preview === undefined) throw new Error('缺少 payment-preview');
+      expect(preview.summary).not.toMatch(/未實作/);
+      expect(preview.security).toEqual([{ bearer: [] }]);
+      expect(preview.responses['401']).toBeDefined();
+      expect(preview.responses['501']).toBeUndefined();
+
       const ops = [
-        doc.paths['/api/v1/loans/payment-preview']?.get,
         doc.paths['/api/v1/loans']?.get,
         doc.paths['/api/v1/loans']?.post,
         doc.paths['/api/v1/loans/{id}']?.get,
@@ -236,13 +242,22 @@ describe('Swagger 文件', () => {
       }
     });
 
-    it('試算的範例前後一致：結清日 2031-09-30 對應 60 期、月付 17969.00', () => {
+    it('試算的範例前後一致：每月 31 號、結清日 2031-09-30 對應 60 期、月付 17969.00', () => {
       const params =
         doc.paths['/api/v1/loans/payment-preview']?.get?.parameters ?? [];
-      const endDate = params.find(
-        (p) => 'name' in p && p.name === 'endDate',
-      ) as { schema?: { example?: unknown }; example?: unknown } | undefined;
-      expect(endDate?.example ?? endDate?.schema?.example).toBe('2031-09-30');
+      type Param = {
+        required?: boolean;
+        schema?: { example?: unknown };
+        example?: unknown;
+      };
+      const param = (name: string) =>
+        params.find((p) => 'name' in p && p.name === name) as Param | undefined;
+      const example = (p: Param | undefined) =>
+        p?.example ?? p?.schema?.example;
+      expect(example(param('endDate'))).toBe('2031-09-30');
+      // paymentDay 是必填（D-E-002）
+      expect(param('paymentDay')?.required).toBe(true);
+      expect(example(param('paymentDay'))).toBe(31);
       expect(schema('LoanPaymentPreviewResponseDto').properties).toMatchObject({
         monthlyPayment: { example: '17969.00' },
         totalInterest: { example: '78120.00' },

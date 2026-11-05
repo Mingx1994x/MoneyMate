@@ -252,3 +252,25 @@
 
 | 編號 | 日期 | 決定 | 對應 PRD |
 | ---- | ---- | ---- | -------- |
+| D-E-002 | 2026/11/04 | 貸款試算的期數改用 `paymentDay` 數還款日，試算加必填參數 `paymentDay` | 15.8、第十三節 |
+
+### D-E-002 貸款試算的期數改用 `paymentDay` 數還款日
+
+- **日期：** 2026/11/04
+- **決定：**
+  - `GET /loans/payment-preview` 新增必填查詢參數 `paymentDay`（整數 1–31）。
+  - 每月還款日 ＝ `paymentDay`，29–31 遇短月用當月最後一天。
+  - 期數 n ＝ 台北今天（含）到 `endDate`（含）之間的還款日個數，至少 1。本月的還款日已過就從下個月算；今天剛好是還款日時算一期；晚於 `endDate` 的還款日不算。
+  - `POST /loans` 沒帶 `monthlyPayment` 時的自動計算，用 body 的 `paymentDay`，規則相同。
+  - PRD 15.8 的期數寫法「從本月到結清日所在月份（含頭尾）」改成上面的規則。
+- **原因：**
+  - 使用者填的未償餘額是繳完本月之後的數字。只看月份的話，本月還款日過後會多算一期，月付偏低（例如 每月 5 號還款，新增貸款日 10/6，1/5 結清：實際 3 期，原本算成 4 期）。
+  - 用 `paymentDay` 而不是結清日的「日」：使用者想的是「每月幾號扣款」，Dashboard 的還款提醒也用 `paymentDay`，同一筆貸款只會有一個還款日。
+  - 晚於結清日的還款日不算，跟 Dashboard 不列結清日之後的還款日一致。
+- **沒有採用的方案：**
+  - 照 PRD 原文，從本月算到結清月：上面「原因」第一點的問題。
+- **誰同意：** E 提出，待 B（貸款表單、mock）確認
+- **影響：**
+  - A：修改 PRD 15.8 的期數寫法。
+  - B：`LoanForm.vue` 試算帶 `paymentDay`、改繳款日時重新試算；mock 的 `loanPaymentPreview()` 改成數還款日。
+  - E：`LoanPaymentPreviewQueryDto` 加 `paymentDay`、Swagger description，`openapi.json` 在 LOAN-3／LOAN-4 的 PR 更新。

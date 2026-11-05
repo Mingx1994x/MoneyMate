@@ -1,5 +1,6 @@
 import {
   addDays,
+  addYears,
   dayInMonth,
   daysBetween,
   fromDbDate,
@@ -202,5 +203,24 @@ describe('daysBetween', () => {
 
   it('日期不合法時丟錯', () => {
     expect(() => daysBetween('2026-02-30', '2026-03-01')).toThrow(Error);
+  });
+});
+
+describe('addYears', () => {
+  it.each([
+    ['2026-10-28', 50, '2076-10-28'],
+    ['2024-02-29', 50, '2074-02-28'],
+    ['2024-02-29', 4, '2028-02-29'],
+    ['2026-10-28', -1, '2025-10-28'],
+  ])('%s 加 %i 年是 %s', (d, n, expected) => {
+    expect(addYears(d, n)).toBe(expected);
+  });
+
+  it.each([
+    ['日期不合法', '2026-02-30', 1],
+    ['年數不是整數', '2026-10-28', 1.5],
+    ['結果超出 2999', '2990-01-01', 10],
+  ])('%s時丟錯', (_label, d, n) => {
+    expect(() => addYears(d, n)).toThrow(Error);
   });
 });
