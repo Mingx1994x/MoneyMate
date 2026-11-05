@@ -5,6 +5,7 @@ import {
   type PrismaService,
   TransactionType,
 } from '../../src/prisma/index.js';
+import { seedSystemCategories } from '../../src/seed/system-categories.js';
 
 /**
  * e2e 共用的資料庫工具（C 的整合測試基礎設施）。
@@ -15,6 +16,22 @@ import {
 /** 清空所有業務資料：users 會 CASCADE 到 accounts、transactions、loans、bills、goals；系統分類也一起清 */
 export async function resetDb(prisma: PrismaService): Promise<void> {
   await prisma.$executeRawUnsafe('TRUNCATE users, categories CASCADE');
+}
+
+/**
+ * 建 12 個系統分類（跟正式環境一樣，用 D 的 seedSystemCategories），回傳 code → id。
+ * 例：`const categories = await seedCategories(prisma); categories.food`
+ * resetDb 會把分類一起清掉，所以要在 resetDb 之後呼叫。
+ */
+export async function seedCategories(
+  prisma: PrismaService,
+): Promise<Record<string, string>> {
+  await prisma.$transaction((tx) => seedSystemCategories(tx));
+  const rows = await prisma.category.findMany({
+    where: { userId: null },
+    select: { code: true, id: true },
+  });
+  return Object.fromEntries(rows.map((r) => [r.code, r.id]));
 }
 
 /** 直接在資料庫建一個使用者（不走註冊 API），回傳 id；搭配 bearer(app, id) 取得 token */
