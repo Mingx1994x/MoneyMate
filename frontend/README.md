@@ -79,9 +79,11 @@ app/
 │  ├─ useDraft.ts      表單草稿（沒送出的內容下次打開還在）、記住上次的帳戶與分類
 │  └─ useUi.ts         Toast、確認視窗、快速記帳開關
 ├─ middleware/         登入保護：沒登入 → /login；沒做問卷 → /onboarding
-├─ types/api.ts        ⭐ API 資料格式（之後改由 openapi-typescript 從 Swagger 產生）
-├─ lib/                金額、日期（Asia/Taipei）、錯誤代碼對照
-└─ mock/               瀏覽器內的假後端（照 PRD §13–16 實作）＋ Demo 資料
+├─ types/
+│  ├─ openapi.ts      從 backend/openapi.json 產生的型別（npm run api:types，不要手動改）
+│  └─ api.ts          ⭐ 常用型別的短名字（Account、Transaction…），頁面從這裡 import
+├─ lib/                金額、日期（Asia/Taipei）、錯誤訊息
+└─ mock/               瀏覽器內的假後端＋ Demo 資料（用自己的舊型別 mock/types.ts，之後整個刪掉）
 ```
 
 ### 換成真的後端
@@ -90,11 +92,24 @@ app/
 
 `app/mock/` 整個資料夾可以保留給前端單獨開發用，或之後刪除。
 
+### API 型別
+
+型別從後端的 `backend/openapi.json` 產生，不手寫：
+
+```bash
+npm run api:types    # 產生 app/types/openapi.ts
+npm run typecheck    # 頁面用到不存在或改名的欄位會報錯
+```
+
+- 後端合併了新的 API（`openapi.json` 有變）之後，前端在下一個 PR 執行 `npm run api:types` 並 commit。
+- CI 會用 PR 裡的 `openapi.json` 重新產生型別再 typecheck：後端改名或刪掉前端還在用的欄位時 CI 失敗；進版控的型別檔過期只會出現警告。
+- 貸款、帳單的型別暫時手寫（後端還是 501），#60、#61 接 API 時改用產生的型別。
+
 ### 跟 PRD 對齊的重點
 
 - API 欄位 camelCase、金額是字串（`"1234.00"`）、日期 `YYYY-MM-DD`；**前端不自己算餘額或合計**，數字都來自 API
 - 不分頁的列表回 `{ items }`、交易列表回 `{ items, page, pageSize, total }`
-- 錯誤依 `code` 顯示中文（`app/lib/api-error.ts`），之後以 E 的 `docs/error-codes.md` 為準
+- 錯誤訊息直接顯示後端回傳的 `message`（`docs/error-codes.md`）；只有前端自己的代碼（連不上後端的 `NETWORK_ERROR`）用 `app/lib/api-error.ts` 的文字
 - 收到 401 自動登出回登入頁；token 存 `localStorage`；不使用 `v-html`
 - 手機寬度可操作；快速記帳、帳戶、帳單、貸款表單有草稿暫存
 
@@ -109,7 +124,6 @@ app/
 
 ### 還沒定的
 
-- **E**：錯誤代碼的完整清單（前端先列了一版，見 `app/lib/api-error.ts`）
 - **A**：共用版型（側欄、手機底部導覽、右下角＋）與整體視覺風格
 
 ## 部署（Vercel）

@@ -133,7 +133,7 @@ function balanceNote(a: Account) {
       </div>
       <div class="card p-4">
         <p class="text-sm text-slate-500">淨資產</p>
-        <p class="num mt-1 text-2xl font-bold">{{ summary.data.value ? formatMoney(summary.data.value.netWorth) : '…' }}</p>
+        <p class="num mt-1 text-2xl font-bold">{{ !summary.data.value ? '…' : summary.data.value.netWorth === null ? '準備中' : formatMoney(summary.data.value.netWorth) }}</p>
         <p class="mt-1 text-xs text-slate-500">所有帳戶餘額 − 還款中貸款的未償餘額</p>
       </div>
     </div>
