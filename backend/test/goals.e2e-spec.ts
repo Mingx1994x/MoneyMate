@@ -93,6 +93,27 @@ describe('目標設定 GET／PATCH /goal（e2e）', () => {
       expect(goal.targetAmount.toFixed(2)).toBe('15000000.00');
     });
 
+    it('只改自己的目標：別人的目標不受影響（AC-02）', async () => {
+      const otherId = await createUser(prisma, 'd-goal-other@example.com');
+      await app
+        .get(OnboardingService)
+        .submit(otherId, { monthlySpending: 80000 });
+
+      await patch({
+        monthlySpending: 50000,
+        birthYear: 1990,
+        estMonthlySaving: '15000',
+      }).expect(200);
+
+      const other = await prisma.goal.findUniqueOrThrow({
+        where: { userId: otherId },
+      });
+      expect(other.monthlySpending.toFixed(2)).toBe('80000.00');
+      expect(other.targetAmount.toFixed(2)).toBe('24000000.00');
+      expect(other.birthYear).toBeNull();
+      expect(other.estMonthlySaving).toBeNull();
+    });
+
     it('填出生年與自估儲蓄；沒傳的欄位保持原值', async () => {
       await patch({ birthYear: 1990 }).expect(200);
       const res = await patch({ estMonthlySaving: '15000.50' }).expect(200);
