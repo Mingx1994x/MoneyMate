@@ -23,6 +23,7 @@ const NOT_IMPLEMENTED = {
 
 /**
  * AUTH-1：全域 JWT guard，以及問卷、目標還沒實作的空殼（W4 實作後，501 的測試改成實際行為）。
+ * GET／PATCH /goal 已實作：測試用的使用者沒有目標，帶 token 會回 409 ONBOARDING_REQUIRED（行為在 goals.e2e-spec.ts）。
  * 註冊、登入、/auth/me 的行為在 auth-flow.e2e-spec.ts。
  */
 describe('登入驗證與問卷、目標空殼（e2e）', () => {
@@ -75,7 +76,7 @@ describe('登入驗證與問卷、目標空殼（e2e）', () => {
       },
     );
 
-    it.each(protectedRoutes.slice(1, 5))(
+    it.each([protectedRoutes[1], protectedRoutes[4]])(
       '%s %s 帶 token 回 501（還沒實作）',
       async (method, path, body) => {
         const res = await request(app.getHttpServer())
@@ -84,6 +85,18 @@ describe('登入驗證與問卷、目標空殼（e2e）', () => {
           .send(body)
           .expect(501);
         expect(res.body).toMatchObject(NOT_IMPLEMENTED);
+      },
+    );
+
+    it.each(protectedRoutes.slice(2, 4))(
+      '%s %s 帶 token、沒做問卷 → 409 ONBOARDING_REQUIRED（不是 401）',
+      async (method, path, body) => {
+        const res = await request(app.getHttpServer())
+          [method](path)
+          .set('Authorization', auth)
+          .send(body)
+          .expect(409);
+        expect(res.body).toMatchObject({ code: 'ONBOARDING_REQUIRED' });
       },
     );
   });
@@ -127,7 +140,7 @@ describe('登入驗證與問卷、目標空殼（e2e）', () => {
     await request(app.getHttpServer())
       .get('/api/v1/goal')
       .set('Authorization', auth.replace('Bearer', 'bearer'))
-      .expect(501);
+      .expect(409);
   });
 
   it('不存在的路徑仍然回 404，不是 401（guard 只在找到端點後才執行）', async () => {

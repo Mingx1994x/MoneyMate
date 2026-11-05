@@ -1844,16 +1844,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1861,7 +1851,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得目標設定",
+        "summary": "取得目標設定",
         "tags": [
           "goal"
         ]
@@ -1920,16 +1910,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1937,7 +1917,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】修改目標（每月花費、出生年、自估每月儲蓄）",
+        "summary": "修改目標（每月花費、出生年、自估每月儲蓄）",
         "tags": [
           "goal"
         ]
