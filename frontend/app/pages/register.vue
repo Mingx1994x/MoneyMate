@@ -1,10 +1,14 @@
 <script setup lang="ts">
-/** 註冊頁（B）— Email 轉小寫、密碼 8–72 字元、名稱選填；註冊成功後自動登入並進入問卷 */
-import { errorText } from '~/lib/api-error'
+/**
+ * 註冊頁（B）— PRD US-01、FR-02；後端 POST /auth/register
+ * 註冊成功後自動登入（後端回 accessToken），新使用者一律先去問卷頁。
+ * 前端驗證只為體驗，規則跟後端 RegisterDto 一致；後端回的欄位錯誤（details）顯示在對應欄位下面。
+ */
+import { errorText, fieldErrors } from '~/lib/api-error'
 
 definePageMeta({ layout: 'auth' })
 
-const { register } = useAuth()
+const { register, homePath } = useAuth()
 const email = ref('')
 const password = ref('')
 const displayName = ref('')
@@ -13,20 +17,32 @@ const errors = ref<{ email?: string; password?: string; displayName?: string }>(
 const error = ref<string | null>(null)
 const loading = ref(false)
 
-async function submit() {
+// 後端規則：Email 只接受 ASCII；密碼 8 字元以上、72 bytes 以內（bcrypt 上限，一個中文字佔 3 bytes）
+const EMAIL_RE = /^[\x21-\x7e]+@[\x21-\x7e]+\.[\x21-\x7e]+$/
+const passwordBytes = computed(() => new TextEncoder().encode(password.value).length)
+
+function validate() {
+  const e = email.value.trim()
   errors.value = {
-    email: !email.value.trim() ? '請輸入 Email' : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()) ? 'Email 格式不正確' : undefined,
-    password: password.value.length < 8 ? '密碼至少 8 個字元' : password.value.length > 72 ? '密碼最多 72 個字元' : undefined,
+    email: !e ? '請輸入 Email' : !EMAIL_RE.test(e) || e.length > 254 ? 'Email 格式不正確（只能用英文、數字和符號）' : undefined,
+    password:
+      password.value.length < 8 ? '密碼至少 8 個字元' : passwordBytes.value > 72 ? '密碼太長了（中文字每個算 3 個字元，上限 72）' : undefined,
     displayName: displayName.value.trim().length > 30 ? '名稱最多 30 個字' : undefined,
   }
-  if (Object.values(errors.value).some(Boolean)) return
+  return !Object.values(errors.value).some(Boolean)
+}
+
+async function submit() {
+  if (loading.value || !validate()) return
   loading.value = true
   error.value = null
   try {
-    await register(email.value.trim(), password.value, displayName.value.trim())
-    await navigateTo('/onboarding')
+    const user = await register(email.value.trim(), password.value, displayName.value.trim())
+    await navigateTo(homePath(user))
   } catch (e) {
-    error.value = errorText(e)
+    const byField = fieldErrors(e)
+    if (Object.keys(byField).length) errors.value = { ...errors.value, ...byField }
+    else error.value = errorText(e)
   } finally {
     loading.value = false
   }

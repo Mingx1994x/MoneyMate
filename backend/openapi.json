@@ -1747,6 +1747,69 @@
         ]
       }
     },
+    "/api/v1/categories": {
+      "get": {
+        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：先類型（income 在前、expense 在後），同類型依 sortOrder 由小到大，再依 id（「其他」的 sortOrder 是 99，排在該類型最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
+        "operationId": "Categories_findAll",
+        "parameters": [
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "description": "只取收入或支出分類；不帶就回全部",
+            "schema": {
+              "example": "expense",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/CategoryType"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "列出分類",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
     "/api/v1/goal": {
       "get": {
         "operationId": "Goals_findOne",
@@ -1938,69 +2001,6 @@
         ]
       }
     },
-    "/api/v1/categories": {
-      "get": {
-        "description": "系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。\n\n只回 isActive = true 的分類。排序：先類型（income 在前、expense 在後），同類型依 sortOrder 由小到大，再依 id（「其他」的 sortOrder 是 99，排在該類型最後）。\n\ntype 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。",
-        "operationId": "Categories_findAll",
-        "parameters": [
-          {
-            "name": "type",
-            "required": false,
-            "in": "query",
-            "description": "只取收入或支出分類；不帶就回全部",
-            "schema": {
-              "example": "expense",
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/CategoryType"
-                }
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CategoryListResponseDto"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "列出分類",
-        "tags": [
-          "categories"
-        ]
-      }
-    },
     "/api/v1/transactions": {
       "get": {
         "description": "篩選條件都是選填，同時帶多個時取交集。分頁：page 預設 1、pageSize 預設 20、上限 100。\n\n排序：transactionDate 由新到舊，相同時依 createdAt 由新到舊，再依 id。包含未來日期的交易。\n\ncategoryId、accountId 不是 UUID，或不屬於登入者（系統分類算存在）時回 400 CATEGORY_NOT_FOUND／ACCOUNT_NOT_FOUND；dateTo 早於 dateFrom 回 400 VALIDATION_FAILED（field: dateTo）。",
@@ -2115,16 +2115,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2132,7 +2122,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出交易（篩選＋分頁）",
+        "summary": "列出交易（篩選＋分頁）",
         "tags": [
           "transactions"
         ]
@@ -2191,16 +2181,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2208,7 +2188,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】新增交易（快速記帳、繳卡費也走這支）",
+        "summary": "新增交易（快速記帳、繳卡費也走這支）",
         "tags": [
           "transactions"
         ]
@@ -2259,16 +2239,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2276,7 +2246,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得單筆交易",
+        "summary": "取得單筆交易",
         "tags": [
           "transactions"
         ]
@@ -2493,16 +2463,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2510,7 +2470,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】Dashboard 全部區塊＋一句下一步",
+        "summary": "Dashboard 全部區塊＋一句下一步",
         "tags": [
           "dashboard"
         ]
@@ -3859,6 +3819,66 @@
           }
         }
       },
+      "CategoryType": {
+        "type": "string",
+        "enum": [
+          "income",
+          "expense"
+        ]
+      },
+      "CategoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
+          },
+          "code": {
+            "type": "string",
+            "description": "系統分類代碼，唯一，seed 用它 upsert",
+            "example": "food"
+          },
+          "name": {
+            "type": "string",
+            "example": "飲食"
+          },
+          "type": {
+            "example": "expense",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CategoryType"
+              }
+            ]
+          },
+          "sortOrder": {
+            "type": "integer",
+            "description": "下拉選單順序，由小到大",
+            "example": 10
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "type",
+          "sortOrder"
+        ]
+      },
+      "CategoryListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "GoalDto": {
         "type": "object",
         "properties": {
@@ -3921,66 +3941,6 @@
             "example": "15000.00"
           }
         }
-      },
-      "CategoryType": {
-        "type": "string",
-        "enum": [
-          "income",
-          "expense"
-        ]
-      },
-      "CategoryResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
-          },
-          "code": {
-            "type": "string",
-            "description": "系統分類代碼，唯一，seed 用它 upsert",
-            "example": "food"
-          },
-          "name": {
-            "type": "string",
-            "example": "飲食"
-          },
-          "type": {
-            "example": "expense",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CategoryType"
-              }
-            ]
-          },
-          "sortOrder": {
-            "type": "integer",
-            "description": "下拉選單順序，由小到大",
-            "example": 10
-          }
-        },
-        "required": [
-          "id",
-          "code",
-          "name",
-          "type",
-          "sortOrder"
-        ]
-      },
-      "CategoryListResponseDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CategoryResponseDto"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
       },
       "TransactionType": {
         "type": "string",

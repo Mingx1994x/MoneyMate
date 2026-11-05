@@ -1,9 +1,13 @@
-# Money Mate — 前端 Demo（B）
+# Money Mate — 前端
 
-依 **PRD v0.5.8** 做的前端初版，給組員試用、開會討論要改什麼。
-**目前還沒有後端**：用瀏覽器內的「假後端」（mock API）模擬 NestJS，資料只存在每個人自己的瀏覽器裡，彼此不會互相影響。
+Nuxt 4（SPA，`ssr: false`）。初版由 B 依 **PRD v0.5.8** 做成，需求以 `docs/` 裡最新版的 PRD 為準。
+預設用瀏覽器內的「假後端」（mock API）模擬 NestJS，資料只存在每個人自己的瀏覽器裡，彼此不會互相影響；接上真的後端的方式見「換成真的後端」。
 
-🔗 **Demo 網址：** https://gianni1203.github.io/frontend-moneymate-demo/
+🔗 **網址**（建好 Vercel 專案後補上）：
+
+- 測試機（`dev`）：
+- 正式（`main`）：
+- 舊版 Demo：https://gianni1203.github.io/frontend-moneymate-demo/
 
 ## 試用方式
 
@@ -49,6 +53,18 @@ npm run dev        # http://localhost:3000
 npm run generate   # 產生靜態網站到 .output/public
 ```
 
+## 連本機後端開發
+
+預設是瀏覽器內的假後端（不用開後端）。要接真的 NestJS 後端時：
+
+1. 依 `backend/README.md` 啟動資料庫與後端（`docker compose up -d`、`npm run start:dev`，後端在 `http://localhost:3001`）
+2. 在 `frontend/` 複製 `.env.example` 成 `.env`（裡面已設好 `NUXT_PUBLIC_API_MODE=http` 與後端網址）
+3. `npm run dev`，打開 `http://localhost:3000`
+
+- 後端的 `CORS_ORIGIN` 預設就是 `http://localhost:3000`，照 `backend/.env.example` 建 `.env` 就不用改。
+- ⚠️ 問卷 API（`POST /onboarding`）還沒完成，`.env.example` 先打開 `NUXT_PUBLIC_SKIP_ONBOARDING=true`，登入後不會被導去問卷頁。問卷 API 完成後移除這個開關。
+- 還沒實作的 API 會回 501，畫面會顯示「這個功能還在開發中」。
+
 ## 架構
 
 ```
@@ -70,12 +86,7 @@ app/
 
 ### 換成真的後端
 
-後端（NestJS）完成後，**頁面不用改**，只要部署時設定環境變數：
-
-```
-NUXT_PUBLIC_API_MODE=http
-NUXT_PUBLIC_API_BASE=https://<後端網址>/api/v1
-```
+**頁面不用改**，切換 `NUXT_PUBLIC_API_MODE` 就好：`mock` 是瀏覽器內的假後端，`http` 是連 NestJS（網址用 `NUXT_PUBLIC_API_BASE` 指定）。部署環境要設的值見「部署（Vercel）」→「接上後端」。
 
 `app/mock/` 整個資料夾可以保留給前端單獨開發用，或之後刪除。
 
@@ -101,8 +112,41 @@ NUXT_PUBLIC_API_BASE=https://<後端網址>/api/v1
 - **E**：錯誤代碼的完整清單（前端先列了一版，見 `app/lib/api-error.ts`）
 - **A**：共用版型（側欄、手機底部導覽、右下角＋）與整體視覺風格
 
-## 部署
+## 部署（Vercel）
 
-推到 `main` 後，GitHub Actions 自動執行 `nuxt generate` 並部署到 GitHub Pages（`.github/workflows/deploy.yml`）。
-Nitro preset 用環境變數 `NITRO_PRESET` 切換（`github_pages`／`vercel`／`node_server`），之後搬到 Vercel 或 AWS 不用改程式（PRD §19）。
-`ci-artifacts` 分支只是 CI 自動推的建置紀錄，方便除錯，可以忽略。
+PRD 第二十九節第 4 項：W1–W5 前端部署在 Vercel。一個 Vercel 專案分成兩個環境：
+
+| 環境 | 分支 | 什麼時候更新 |
+|---|---|---|
+| 測試機 | `dev` | PR 合併進 `dev`，而且有改到 `frontend/` |
+| 正式 | `main` | 週會確認後，把 `dev` 合併進 `main` |
+
+其他分支與 PR 不會部署；要給大家看畫面，就合併進 `dev` 用測試機看，或在本機 `npm run dev`。
+
+### `vercel.json`
+
+建置不需要設定，Vercel 會自動偵測 Nuxt；`vercel.json` 只管哪些分支要部署。
+
+- `git.deploymentEnabled`：只有 `main`、`dev` 會部署，其他分支（包括 PR）都關掉。
+- `ignoreCommand`：這次合併沒有改到 `frontend/` 就跳過，例如只改後端的 PR 合併進 `dev` 時，測試機不會重新部署。Vercel 在 Root Directory 執行這個指令，所以 `.` 指的就是 `frontend/`。
+
+### Vercel 專案設定（只需設定一次）
+
+| 設定 | 值 | 說明 |
+|---|---|---|
+| Root Directory | `frontend` | repo 根目錄是前後端一起的 monorepo |
+| Framework Preset | Nuxt.js | 自動偵測；Build Command、Output Directory 用預設 |
+| Node.js Version | 24.x | 與 `.nvmrc` 一致；`package.json` 的 `engines` 也寫了 `24.x` |
+| Production Branch | `main` | Settings → Environments → Production → Branch Tracking。**預設是 repo 的預設分支 `dev`，一定要改** |
+| Vercel Authentication | 關閉 | Settings → Deployment Protection。測試機在 Vercel 算 Preview，預設要登入專案擁有者的 Vercel 帳號才看得到，不關的話組員打不開 |
+| 環境變數 | 先不用設 | 預設 `NUXT_PUBLIC_API_MODE=mock`（瀏覽器內假後端） |
+
+### 接上後端
+
+測試機和正式環境共用同一個後端（Render）和資料庫（Supabase）。
+
+1. Vercel 的 Settings → Environment Variables，Production 和 Preview 都設：
+   - `NUXT_PUBLIC_API_MODE=http`
+   - `NUXT_PUBLIC_API_BASE=https://moneymate-sclr.onrender.com/api/v1`
+2. 改了環境變數要重新部署才會生效（Deployments → 最新一筆 → Redeploy）
+3. 請 E 在 Render 的 `CORS_ORIGIN` 加上測試機和正式的網址，用逗號分隔。每一項都要寫完整，例如 `https://<專案名>.vercel.app`（包含 `https://`）；漏掉哪個環境，那個環境呼叫 API 就會被瀏覽器擋掉

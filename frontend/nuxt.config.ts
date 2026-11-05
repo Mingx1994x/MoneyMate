@@ -13,7 +13,7 @@ export default defineNuxtConfig({
   },
 
   app: {
-    // GitHub Pages 部署時用環境變數 NUXT_APP_BASE_URL=/frontend-moneymate-demo/（建置時就要讀到，不能寫死）
+    // 部署在網域根目錄（Vercel）不用設定；放在子路徑時用環境變數 NUXT_APP_BASE_URL 指定（建置時就要讀到，不能寫死）
     baseURL: process.env.NUXT_APP_BASE_URL || '/',
     head: {
       title: 'Money Mate',
@@ -32,10 +32,14 @@ export default defineNuxtConfig({
       // 'mock'：瀏覽器內假後端（現在）；'http'：連 NestJS 後端（之後）
       // 部署時用 NUXT_PUBLIC_API_MODE、NUXT_PUBLIC_API_BASE 覆蓋
       apiMode: 'mock',
-      apiBase: 'http://localhost:3000/api/v1',
+      // 後端本機開發的 port 是 3001（backend/.env.example）；前端 nuxt dev 用 3000
+      apiBase: 'http://localhost:3001/api/v1',
+      // ⚠️ 暫時的開關：問卷 API（POST /onboarding）還是 501，打開後登入保護不會把人導去問卷頁，
+      // 才能先測其他頁面。預設關閉，只在本機 .env 打開；問卷 API 完成後連同 middleware 的判斷一起移除
+      skipOnboarding: false,
     },
   },
 
-  // Nitro preset 用環境變數 NITRO_PRESET 切換（github_pages／vercel／node_server），程式不綁平台（PRD §19）
+  // Nitro preset 不寫死（PRD §19）：Vercel 上自動偵測成 vercel，其他平台用環境變數 NITRO_PRESET 指定（例如 EC2 用 node_server）
   devtools: { enabled: false },
 })

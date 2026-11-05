@@ -75,5 +75,11 @@ export function useAuth() {
 
   const displayName = computed(() => me.value?.displayName || me.value?.email.split('@')[0] || '')
 
-  return { token, me, displayName, fetchMe, login, register, logout }
+  /** 登入、註冊後要去哪：沒完成問卷就去問卷頁（暫時的 skipOnboarding 打開時直接去首頁） */
+  const config = useRuntimeConfig()
+  function homePath(user: Me) {
+    return user.hasCompletedOnboarding || config.public.skipOnboarding ? '/' : '/onboarding'
+  }
+
+  return { token, me, displayName, fetchMe, login, register, logout, homePath }
 }

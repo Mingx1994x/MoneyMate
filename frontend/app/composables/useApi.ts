@@ -1,4 +1,4 @@
-import { ApiError } from '~/lib/api-error'
+import { ApiError, type ErrorDetail } from '~/lib/api-error'
 import { mockRequest } from '~/mock/client'
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE'
@@ -54,9 +54,26 @@ export function useApi() {
 
 function toApiError(e: unknown): ApiError {
   if (e instanceof ApiError) return e
-  // $fetch 的錯誤：e.data 是後端回傳的 { statusCode, code, message, ... }
-  const fe = e as { data?: { statusCode?: number; code?: string; message?: string }; statusCode?: number }
-  if (fe?.data?.code) return new ApiError(fe.data.statusCode ?? fe.statusCode ?? 500, fe.data.code, fe.data.message ?? '')
-  if (fe?.statusCode) return new ApiError(fe.statusCode, 'INTERNAL_ERROR', '伺服器錯誤')
-  return new ApiError(0, 'NETWORK_ERROR', '連線失敗')
+  // $fetch 的錯誤：e.data 是後端回傳的錯誤格式（docs/error-codes.md）
+  const fe = e as {
+    data?: {
+      statusCode?: number
+      code?: string
+      message?: string
+      details?: ErrorDetail[]
+      requestId?: string
+      retryAfterSeconds?: number
+    }
+    statusCode?: number
+  }
+  const d = fe?.data
+  if (d?.code) {
+    return new ApiError(d.statusCode ?? fe.statusCode ?? 500, d.code, d.message ?? '', Array.isArray(d.details) ? d.details : [], {
+      requestId: d.requestId,
+      retryAfterSeconds: d.retryAfterSeconds,
+    })
+  }
+  // 不是後端的錯誤格式（例如部署平台回的 502／503／504）
+  if (fe?.statusCode) return new ApiError(fe.statusCode, 'INTERNAL_ERROR', '系統發生錯誤，請稍後再試')
+  return new ApiError(0, 'NETWORK_ERROR', '') // 文字在 ERROR_MESSAGES.NETWORK_ERROR
 }
