@@ -29,13 +29,13 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      // 'mock'：瀏覽器內假後端（現在）；'http'：連 NestJS 後端（之後）
+      // 'http'：連 NestJS 後端（預設）；'mock'：瀏覽器內假後端，不用開後端
       // 部署時用 NUXT_PUBLIC_API_MODE、NUXT_PUBLIC_API_BASE 覆蓋
-      apiMode: 'mock',
+      apiMode: 'http',
       // 後端本機開發的 port 是 3001（backend/.env.example）；前端 nuxt dev 用 3000
       apiBase: 'http://localhost:3001/api/v1',
       // ⚠️ 暫時的開關：問卷 API（POST /onboarding）還是 501，打開後登入保護不會把人導去問卷頁，
-      // 才能先測其他頁面。預設關閉，只在本機 .env 打開；問卷 API 完成後連同 middleware 的判斷一起移除
+      // 才能先測其他頁面。預設關閉，只在本機 .env 和 Vercel 的 Preview（測試機）打開；問卷 API 完成後連同 middleware 的判斷一起移除
       skipOnboarding: false,
     },
   },
