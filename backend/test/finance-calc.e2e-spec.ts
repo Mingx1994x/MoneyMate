@@ -22,7 +22,7 @@ const TODAY = '2026-11-20';
 /**
  * FinanceCalcService 驗算案例（PRD 15.1、AC-16、AC-22；Issue #59）。
  * 計算寫在 SQL 裡，所以直接連 app_test 資料庫呼叫 service，不經 HTTP。
- * E 的 getLoanSummary 還沒實作，這裡換成固定回傳的假 LoansService，只測 C 這邊的公式。
+ * 貸款換成固定回傳的假 LoansService（不受 E 的實作影響），只測 C 這邊的公式。
  */
 describe('FinanceCalcService 驗算（e2e）', () => {
   let app: INestApplication<App>;
@@ -308,6 +308,32 @@ describe('FinanceCalcService 驗算（e2e）', () => {
     it('換一天算淨資產：貸款也用同一個 today', async () => {
       await calc.getNetWorth(userId, '2026-12-01');
       expect(getLoanSummary).toHaveBeenCalledWith(userId, '2026-12-01');
+    });
+
+    it('傳入 loanOutstanding（dashboard 已查過貸款）：直接用它扣，不再呼叫 getLoanSummary', async () => {
+      await account(userId, '銀行', AccountType.bank, 100000);
+      outstanding = new Prisma.Decimal(999999); // 假 service 的值，這次不應該被用到
+      const netWorth = await calc.getNetWorth(
+        userId,
+        TODAY,
+        undefined,
+        new Prisma.Decimal('30000.5'),
+      );
+      expect(s(netWorth)).toBe('69999.50');
+      expect(getLoanSummary).not.toHaveBeenCalled();
+    });
+
+    it('傳入的 loanOutstanding 是 0：也不再查（沒有貸款不代表要重查）', async () => {
+      await account(userId, '銀行', AccountType.bank, 100000);
+      outstanding = new Prisma.Decimal(999999);
+      const netWorth = await calc.getNetWorth(
+        userId,
+        TODAY,
+        undefined,
+        new Prisma.Decimal(0),
+      );
+      expect(s(netWorth)).toBe('100000.00');
+      expect(getLoanSummary).not.toHaveBeenCalled();
     });
 
     it('月收支只算該月：上個月、下個月的交易都不算', async () => {
