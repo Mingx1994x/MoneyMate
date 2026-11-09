@@ -6,8 +6,8 @@ type Query = Record<string, string | number | boolean | null | undefined>
 
 /**
  * API client。所有頁面都只透過它呼叫後端。
- * - apiMode = 'mock'：呼叫瀏覽器內的假後端（現在的 Demo）
- * - apiMode = 'http'：呼叫 NestJS（設定 NUXT_PUBLIC_API_MODE=http、NUXT_PUBLIC_API_BASE）
+ * - apiMode = 'http'：呼叫 NestJS（預設；網址用 NUXT_PUBLIC_API_BASE 設定）
+ * - apiMode = 'mock'：呼叫瀏覽器內的假後端（設定 NUXT_PUBLIC_API_MODE=mock）
  * 兩種模式的路徑、欄位、錯誤格式都一樣，頁面不用改。
  */
 export function useApi() {

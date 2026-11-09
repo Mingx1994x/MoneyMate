@@ -11,25 +11,32 @@ import {
   ApiErrors,
   ApiNotImplemented,
 } from '../../common/swagger/api-decorators.js';
+import { ClockService } from '../../clock/clock.service.js';
+import { CurrentUser, type AuthUser } from '../auth/index.js';
 import { GoalProgressDto } from './dto/goal-progress.dto.js';
 import { GoalDto } from './dto/goal.dto.js';
 import { UpdateGoalDto } from './dto/update-goal.dto.js';
+import { GoalsService } from './goals.service.js';
 
 /**
- * GOAL 空殼：單數資源，沒有 :id。實作在 W4（等 C 的 FinanceCalcService）。
+ * GOAL：單數資源，沒有 :id。progress 還是空殼（等 E 的 getLoanSummary）。
  * 還沒完成問卷（沒有目標資料）時三支都回 409 ONBOARDING_REQUIRED。
  */
 @ApiTags('goal')
 @ApiAuth()
 @Controller('goal')
 export class GoalsController {
+  constructor(
+    private readonly goals: GoalsService,
+    private readonly clock: ClockService,
+  ) {}
+
   @Get()
   @ApiOperation({ summary: '取得目標設定' })
   @ApiOkResponse({ type: GoalDto })
   @ApiErrors('ONBOARDING_REQUIRED')
-  @ApiNotImplemented()
-  findOne(): GoalDto {
-    throw new NotImplementedException();
+  findOne(@CurrentUser() user: AuthUser): Promise<GoalDto> {
+    return this.goals.findOne(user.id);
   }
 
   @Patch()
@@ -43,9 +50,11 @@ export class GoalsController {
   })
   @ApiOkResponse({ type: GoalDto })
   @ApiErrors('VALIDATION_FAILED', 'AMOUNT_INVALID', 'ONBOARDING_REQUIRED')
-  @ApiNotImplemented()
-  update(@Body() _dto: UpdateGoalDto): GoalDto {
-    throw new NotImplementedException();
+  update(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateGoalDto,
+  ): Promise<GoalDto> {
+    return this.goals.update(user.id, dto, this.clock.today());
   }
 
   @Get('progress')
