@@ -99,12 +99,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 【未實作】試算建議每月還款與預估總利息
+         * 試算建議每月還款與預估總利息
          * @description 本息平均攤還（PRD 15.8）：每期月付四捨五入到元，最後一期吸收尾差。只計算，不讀寫資料庫。
          *
-         *     期數從台北本月算到結清日所在月份（含頭尾），至少 1，所以同一組參數的結果會隨月份改變。
+         *     期數（D-E-002）：台北今天（含）到結清日（含）之間的還款日個數，至少 1。每月還款日是 paymentDay，29–31 遇短月用當月最後一天；本月的還款日已過就從下個月算，今天剛好是還款日時算一期；晚於結清日的還款日不算。同一組參數的結果會隨日期改變。
          *
-         *     前端呼叫條件：餘額 > 0、利率有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。建議 debounce 300ms，並取消前一次請求。
+         *     結清日早於台北今天時期數視為 1，不報錯；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。
+         *
+         *     前端呼叫條件：餘額 > 0、利率有填、繳款日有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。改了繳款日也要重新試算。建議 debounce 300ms，並取消前一次請求。
          */
         get: operations["Loans_paymentPreview"];
         put?: never;
@@ -337,81 +339,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/goal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 【未實作】取得目標設定 */
-        get: operations["Goals_findOne"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * 【未實作】修改目標（每月花費、出生年、自估每月儲蓄）
-         * @description 沒傳的欄位保持原值；birthYear、estMonthlySaving 傳 null 代表清空，monthlySpending 傳 null 回 400。
-         *
-         *     改了 monthlySpending 時，targetAmount 由後端重算為 × 300（前端不能直接改目標金額）。
-         *
-         *     birthYear 晚於台北的今年回 VALIDATION_FAILED（field: birthYear）。
-         */
-        patch: operations["Goals_update"];
-        trace?: never;
-    };
-    "/api/v1/goal/progress": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 【未實作】目標進度與財富自由年齡
-         * @description 目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。
-         *
-         *     里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。
-         *
-         *     年儲蓄：有 3 個以上完整月的記帳時，用最近最多 6 個完整月的平均（savingSource: actual）；否則用 estMonthlySaving（estimate）；都沒有時 fireAgeStatus 是 need_saving。
-         *
-         *     狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。
-         */
-        get: operations["Goals_progress"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/categories": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 列出分類
-         * @description 系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。
-         *
-         *     只回 isActive = true 的分類。排序：先類型（income 在前、expense 在後），同類型依 sortOrder 由小到大，再依 id（「其他」的 sortOrder 是 99，排在該類型最後）。
-         *
-         *     type 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。
-         */
-        get: operations["Categories_findAll"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/accounts": {
         parameters: {
             query?: never;
@@ -478,6 +405,81 @@ export interface paths {
          *     修改 openingBalance 後目前餘額跟著變動；credit_card 與估計帳戶可以是負數，其他類型改成負數回 OPENING_BALANCE_NEGATIVE。
          */
         patch: operations["Accounts_update"];
+        trace?: never;
+    };
+    "/api/v1/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 列出分類
+         * @description 系統分類，不分頁，回傳 { items }。可帶 type=income|expense 只取其中一種；不帶就回全部。
+         *
+         *     只回 isActive = true 的分類。排序：先類型（income 在前、expense 在後），同類型依 sortOrder 由小到大，再依 id（「其他」的 sortOrder 是 99，排在該類型最後）。
+         *
+         *     type 不是 income／expense 時回 400 VALIDATION_FAILED（field: type）。
+         */
+        get: operations["Categories_findAll"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/goal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 取得目標設定 */
+        get: operations["Goals_findOne"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 修改目標（每月花費、出生年、自估每月儲蓄）
+         * @description 沒傳的欄位保持原值；birthYear、estMonthlySaving 傳 null 代表清空，monthlySpending 傳 null 回 400。
+         *
+         *     改了 monthlySpending 時，targetAmount 由後端重算為 × 300（前端不能直接改目標金額）。
+         *
+         *     birthYear 晚於台北的今年回 VALIDATION_FAILED（field: birthYear）。
+         */
+        patch: operations["Goals_update"];
+        trace?: never;
+    };
+    "/api/v1/goal/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 【未實作】目標進度與財富自由年齡
+         * @description 目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。
+         *
+         *     里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。
+         *
+         *     年儲蓄：有 3 個以上完整月的記帳時，用最近最多 6 個完整月的平均（savingSource: actual）；否則用 estMonthlySaving（estimate）；都沒有時 fireAgeStatus 是 need_saving。
+         *
+         *     狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。
+         */
+        get: operations["Goals_progress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/transactions": {
@@ -697,7 +699,7 @@ export interface components {
              */
             totalInterest: string;
             /**
-             * @description 剩餘期數：台北本月到結清日所在月份（含頭尾），至少 1
+             * @description 剩餘期數：台北今天（含）到結清日（含）之間的還款日個數，至少 1（D-E-002）
              * @example 60
              */
             installments: number;
@@ -1193,73 +1195,6 @@ export interface components {
              */
             activeLoanTotal: string;
         };
-        GoalDto: {
-            /** @example 財富自由 */
-            name: string;
-            /**
-             * @description 財富自由後每月想花多少，金額字串（一定是整數元）
-             * @example 40000.00
-             */
-            monthlySpending: string;
-            /**
-             * @description 目標金額 ＝ 每月花費 × 300，金額字串，由後端計算
-             * @example 12000000.00
-             */
-            targetAmount: string;
-            /**
-             * @description 出生年，算財富自由年齡用；沒填時是 null
-             * @example 1990
-             */
-            birthYear: number | null;
-            /**
-             * @description 自估的每月儲蓄，金額字串；只有記帳不滿 3 個完整月時才用到。沒填時是 null
-             * @example 15000.00
-             */
-            estMonthlySaving: string | null;
-        };
-        UpdateGoalDto: {
-            /**
-             * @description 每月花費，整數 1,000–333,000；目標金額自動重算為 × 300
-             * @example 40000
-             */
-            monthlySpending?: number;
-            /**
-             * @description 出生年，1900 到台北的今年（今年的上限由 service 檢查，超過回 VALIDATION_FAILED，field: birthYear）；null 代表清空
-             * @example 1990
-             */
-            birthYear?: number | null;
-            /**
-             * @description 自估的每月儲蓄，金額字串，可以是 0 或負數（入不敷出）；null 代表清空
-             * @example 15000.00
-             */
-            estMonthlySaving?: string | null;
-        };
-        /** @enum {string} */
-        CategoryType: "income" | "expense";
-        CategoryResponseDto: {
-            /**
-             * Format: uuid
-             * @example 7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d
-             */
-            id: string;
-            /**
-             * @description 系統分類代碼，唯一，seed 用它 upsert
-             * @example food
-             */
-            code: string;
-            /** @example 飲食 */
-            name: string;
-            /** @example expense */
-            type: components["schemas"]["CategoryType"];
-            /**
-             * @description 下拉選單順序，由小到大
-             * @example 10
-             */
-            sortOrder: number;
-        };
-        CategoryListResponseDto: {
-            items: components["schemas"]["CategoryResponseDto"][];
-        };
         /** @enum {string} */
         AccountType: "cash" | "bank" | "investment" | "credit_card";
         AccountResponseDto: {
@@ -1369,6 +1304,73 @@ export interface components {
              * @example false
              */
             isActive?: boolean;
+        };
+        /** @enum {string} */
+        CategoryType: "income" | "expense";
+        CategoryResponseDto: {
+            /**
+             * Format: uuid
+             * @example 7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d
+             */
+            id: string;
+            /**
+             * @description 系統分類代碼，唯一，seed 用它 upsert
+             * @example food
+             */
+            code: string;
+            /** @example 飲食 */
+            name: string;
+            /** @example expense */
+            type: components["schemas"]["CategoryType"];
+            /**
+             * @description 下拉選單順序，由小到大
+             * @example 10
+             */
+            sortOrder: number;
+        };
+        CategoryListResponseDto: {
+            items: components["schemas"]["CategoryResponseDto"][];
+        };
+        GoalDto: {
+            /** @example 財富自由 */
+            name: string;
+            /**
+             * @description 財富自由後每月想花多少，金額字串（一定是整數元）
+             * @example 40000.00
+             */
+            monthlySpending: string;
+            /**
+             * @description 目標金額 ＝ 每月花費 × 300，金額字串，由後端計算
+             * @example 12000000.00
+             */
+            targetAmount: string;
+            /**
+             * @description 出生年，算財富自由年齡用；沒填時是 null
+             * @example 1990
+             */
+            birthYear: number | null;
+            /**
+             * @description 自估的每月儲蓄，金額字串；只有記帳不滿 3 個完整月時才用到。沒填時是 null
+             * @example 15000.00
+             */
+            estMonthlySaving: string | null;
+        };
+        UpdateGoalDto: {
+            /**
+             * @description 每月花費，整數 1,000–333,000；目標金額自動重算為 × 300
+             * @example 40000
+             */
+            monthlySpending?: number;
+            /**
+             * @description 出生年，1900 到台北的今年（今年的上限由 service 檢查，超過回 VALIDATION_FAILED，field: birthYear）；null 代表清空
+             * @example 1990
+             */
+            birthYear?: number | null;
+            /**
+             * @description 自估的每月儲蓄，金額字串，可以是 0 或負數（入不敷出）；null 代表清空
+             * @example 15000.00
+             */
+            estMonthlySaving?: string | null;
         };
         /** @enum {string} */
         TransactionType: "income" | "expense" | "transfer";
@@ -1899,7 +1901,9 @@ export interface operations {
                 outstandingBalance: string;
                 /** @description 年利率 %，最多 3 位小數；空字串回 400，不會被當成 0% */
                 interestRate: number;
-                /** @description 結清日。早於本月時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED */
+                /** @description 每月繳款日，用來數剩餘期數（D-E-002）；29–31 遇短月用當月最後一天 */
+                paymentDay: number;
+                /** @description 結清日。早於台北今天時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED */
                 endDate: string;
             };
             header?: never;
@@ -1933,15 +1937,6 @@ export interface operations {
             };
             /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2804,201 +2799,6 @@ export interface operations {
             };
         };
     };
-    Goals_findOne: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoalDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
-    Goals_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateGoalDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoalDto"];
-                };
-            };
-            /**
-             * @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位
-             *
-             *     `AMOUNT_INVALID`：金額格式不正確
-             */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
-    Goals_progress: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoalProgressDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
-    Categories_findAll: {
-        parameters: {
-            query?: {
-                /** @description 只取收入或支出分類；不帶就回全部 */
-                type?: components["schemas"]["CategoryType"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CategoryListResponseDto"];
-                };
-            };
-            /** @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
     Accounts_findAll: {
         parameters: {
             query?: {
@@ -3257,6 +3057,183 @@ export interface operations {
              *
              *     `ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用
              */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Categories_findAll: {
+        parameters: {
+            query?: {
+                /** @description 只取收入或支出分類；不帶就回全部 */
+                type?: components["schemas"]["CategoryType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryListResponseDto"];
+                };
+            };
+            /** @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Goals_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Goals_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGoalDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalDto"];
+                };
+            };
+            /**
+             * @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位
+             *
+             *     `AMOUNT_INVALID`：金額格式不正確
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Goals_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalProgressDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
             409: {
                 headers: {
                     [name: string]: unknown;
