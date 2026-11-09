@@ -18,6 +18,7 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { ClockService } from '../../clock/clock.service.js';
 import { ParseIdPipe } from '../../common/id.js';
 import {
   ApiAuth,
@@ -34,9 +35,11 @@ import {
   LoanResponseDto,
 } from './dto/loan-response.dto.js';
 import { UpdateLoanDto } from './dto/update-loan.dto.js';
+import { LoansService } from './loans.service.js';
 
 /**
- * LOAN-1 空殼：簽名、DTO 與 Swagger 標註是給 C、D 照著寫的完整範例。
+ * 貸款端點。payment-preview 已實作（LOAN-4）；其他端點還是 LOAN-1 空殼，在 LOAN-2 實作。
+ * 空殼的寫法（簽名、DTO 與 Swagger 標註是給 C、D 照著寫的範例）：
  * - 空殼的 handler 只丟 NotImplementedException（501），不寫 async（沒有 await 時 oxlint 會擋）。
  * - 沒用到的參數加 _ 前綴，實作時拿掉；@CurrentUser() 由 AUTH-1 提供，實作時再加。
  * - 實作 PR 要拿掉 @ApiNotImplemented()。
@@ -46,23 +49,28 @@ import { UpdateLoanDto } from './dto/update-loan.dto.js';
 @ApiAuth()
 @Controller('loans')
 export class LoansController {
+  constructor(
+    private readonly loans: LoansService,
+    private readonly clock: ClockService,
+  ) {}
+
   // 固定路徑要宣告在 :id 之前，否則會被 :id 接走、回 404 LOAN_NOT_FOUND
   @Get('payment-preview')
   @ApiOperation({
     summary: '試算建議每月還款與預估總利息',
     description: [
       '本息平均攤還（PRD 15.8）：每期月付四捨五入到元，最後一期吸收尾差。只計算，不讀寫資料庫。',
-      '期數從台北本月算到結清日所在月份（含頭尾），至少 1，所以同一組參數的結果會隨月份改變。',
-      '前端呼叫條件：餘額 > 0、利率有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。建議 debounce 300ms，並取消前一次請求。',
+      '期數（D-E-002）：台北今天（含）到結清日（含）之間的還款日個數，至少 1。每月還款日是 paymentDay，29–31 遇短月用當月最後一天；本月的還款日已過就從下個月算，今天剛好是還款日時算一期；晚於結清日的還款日不算。同一組參數的結果會隨日期改變。',
+      '結清日早於台北今天時期數視為 1，不報錯；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。',
+      '前端呼叫條件：餘額 > 0、利率有填、繳款日有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。改了繳款日也要重新試算。建議 debounce 300ms，並取消前一次請求。',
     ].join('\n\n'),
   })
   @ApiOkResponse({ type: LoanPaymentPreviewResponseDto })
   @ApiErrors('VALIDATION_FAILED', 'AMOUNT_INVALID', 'AMOUNT_NOT_POSITIVE')
-  @ApiNotImplemented()
   paymentPreview(
-    @Query() _query: LoanPaymentPreviewQueryDto,
+    @Query() query: LoanPaymentPreviewQueryDto,
   ): LoanPaymentPreviewResponseDto {
-    throw new NotImplementedException();
+    return this.loans.paymentPreview(query, this.clock.today());
   }
 
   @Get()

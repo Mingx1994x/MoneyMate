@@ -1,5 +1,8 @@
 import {
   addDays,
+  addYears,
+  dayInMonth,
+  daysBetween,
   fromDbDate,
   isDateOnly,
   isMonthString,
@@ -157,5 +160,67 @@ describe('monthOf／monthStart／nextMonthStart', () => {
     expect(nextMonthStart('2999-11')).toBe('2999-12-01');
     expect(isMonthString(202610)).toBe(false);
     expect(isMonthString(null)).toBe(false);
+  });
+});
+
+describe('dayInMonth', () => {
+  it.each([
+    ['2026-10', 5, '2026-10-05'],
+    ['2026-10', 31, '2026-10-31'],
+    ['2026-11', 31, '2026-11-30'],
+    ['2026-02', 29, '2026-02-28'],
+    ['2026-02', 31, '2026-02-28'],
+    ['2024-02', 29, '2024-02-29'],
+    ['2024-02', 30, '2024-02-29'],
+    ['2026-12', 31, '2026-12-31'],
+    ['2026-01', 1, '2026-01-01'],
+  ])('%s 第 %i 天 → %s（短月用最後一天）', (m, day, expected) => {
+    expect(dayInMonth(m, day)).toBe(expected);
+  });
+
+  it.each([0, 32, 1.5, -1, Number.NaN])(
+    '日不是 1–31 的整數（%s）丟錯',
+    (day) => {
+      expect(() => dayInMonth('2026-10', day)).toThrow(Error);
+    },
+  );
+
+  it('月份不合法時丟錯', () => {
+    expect(() => dayInMonth('2026-13', 1)).toThrow(Error);
+  });
+});
+
+describe('daysBetween', () => {
+  it.each([
+    ['2026-10-28', '2026-10-28', 0],
+    ['2026-10-28', '2026-11-11', 14],
+    ['2026-12-28', '2027-01-05', 8],
+    ['2024-02-28', '2024-03-01', 2],
+    ['2026-11-11', '2026-10-28', -14],
+  ])('%s 到 %s 是 %i 天', (from, to, n) => {
+    expect(daysBetween(from, to)).toBe(n);
+  });
+
+  it('日期不合法時丟錯', () => {
+    expect(() => daysBetween('2026-02-30', '2026-03-01')).toThrow(Error);
+  });
+});
+
+describe('addYears', () => {
+  it.each([
+    ['2026-10-28', 50, '2076-10-28'],
+    ['2024-02-29', 50, '2074-02-28'],
+    ['2024-02-29', 4, '2028-02-29'],
+    ['2026-10-28', -1, '2025-10-28'],
+  ])('%s 加 %i 年是 %s', (d, n, expected) => {
+    expect(addYears(d, n)).toBe(expected);
+  });
+
+  it.each([
+    ['日期不合法', '2026-02-30', 1],
+    ['年數不是整數', '2026-10-28', 1.5],
+    ['結果超出 2999', '2990-01-01', 10],
+  ])('%s時丟錯', (_label, d, n) => {
+    expect(() => addYears(d, n)).toThrow(Error);
   });
 });

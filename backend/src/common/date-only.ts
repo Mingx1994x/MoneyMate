@@ -96,3 +96,36 @@ export function nextMonthStart(m: MonthString): DateOnly {
     ? `${year + 1}-01-01`
     : `${year}-${String(month + 1).padStart(2, '0')}-01`;
 }
+
+/**
+ * 某月的第 day 天；29–31 遇到短月用當月最後一天（貸款 paymentDay、帳單 dueDay，PRD 16.4）。
+ * 例：dayInMonth('2026-11', 31) → '2026-11-30'。day 不是 1–31 的整數或月份不合法時丟錯。
+ */
+export function dayInMonth(m: MonthString, day: number): DateOnly {
+  if (!Number.isInteger(day) || day < 1 || day > 31) {
+    throw new Error('dayInMonth: 日必須是 1–31 的整數');
+  }
+  const lastDay = Number(addDays(nextMonthStart(m), -1).slice(8, 10));
+  return `${monthStart(m).slice(0, 8)}${String(Math.min(day, lastDay)).padStart(2, '0')}`;
+}
+
+/**
+ * 加減年數（n 為整數，可為負）；2/29 遇到平年用 2/28。用在「不可晚於台北今天加 50 年」這類上限。
+ * 日期不合法或結果超出 1900–2999 時丟錯。
+ */
+export function addYears(d: DateOnly, n: number): DateOnly {
+  if (!Number.isInteger(n)) {
+    throw new Error('addYears: 年數必須是整數');
+  }
+  const year = Number(monthOf(d).slice(0, 4)) + n;
+  const m = `${year}-${d.slice(5, 7)}`;
+  if (!isMonthString(m)) {
+    throw new Error('addYears: 結果超出 1900–2999');
+  }
+  return dayInMonth(m, Number(d.slice(8, 10)));
+}
+
+/** to − from 的天數（to 較早時為負）。日期不合法時丟錯。 */
+export function daysBetween(from: DateOnly, to: DateOnly): number {
+  return (toDbDate(to).getTime() - toDbDate(from).getTime()) / DAY_MS;
+}
