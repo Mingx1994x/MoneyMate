@@ -13,6 +13,11 @@ import {
 import { AccountsService } from '../accounts/index.js';
 import { CategoriesService } from '../categories/index.js';
 import type { CreateTransactionDto } from './dto/create-transaction.dto.js';
+import type { TransactionListQueryDto } from './dto/transaction-list-query.dto.js';
+import type {
+  TransactionListResponseDto,
+  TransactionResponseDto,
+} from './dto/transaction-response.dto.js';
 
 /** createBillTransaction 的輸入（E 的帳單繳費，PRD 16.1） */
 export interface BillTransactionData {
@@ -25,13 +30,9 @@ export interface BillTransactionData {
   amount: Prisma.Decimal;
   /** 實繳日期 paidDate；不晚於今天由 E 檢查（PAID_DATE_IN_FUTURE） */
   transactionDate: DateOnly;
-  note?: string | null;
+  /** 帳單名稱（繳費當下的名稱，之後改帳單名稱不同步；Q14）。交易沒有名稱欄位，交易頁靠它分辨是哪張帳單 */
+  note: string;
 }
-import type { TransactionListQueryDto } from './dto/transaction-list-query.dto.js';
-import type {
-  TransactionListResponseDto,
-  TransactionResponseDto,
-} from './dto/transaction-response.dto.js';
 
 @Injectable()
 export class TransactionsService {
@@ -235,7 +236,7 @@ export class TransactionsService {
         amount: data.amount,
         categoryId: data.categoryId,
         transactionDate: toDbDate(data.transactionDate),
-        note: data.note ?? null,
+        note: data.note,
         billId: data.billId,
       },
       select: { id: true },
