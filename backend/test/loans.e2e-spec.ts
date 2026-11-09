@@ -15,10 +15,10 @@ const CREATE_BODY = {
   endDate: '2031-09-30',
 };
 const PREVIEW =
-  '/api/v1/loans/payment-preview?outstandingBalance=1000000.00&interestRate=3&endDate=2031-09-30';
+  '/api/v1/loans/payment-preview?outstandingBalance=1000000.00&interestRate=3&paymentDay=31&endDate=2031-09-30';
 
 /**
- * LOAN-1 空殼：全部端點回 501。
+ * LOAN-1 空殼：payment-preview 以外的端點回 501（試算的測試在 loan-payment-preview.e2e-spec.ts）。
  * AUTH-1 之後要帶 token，否則 guard 先回 401（沒帶 token 的情況在 auth.e2e-spec.ts）。
  */
 describe('貸款空殼（e2e）', () => {
@@ -35,7 +35,6 @@ describe('貸款空殼（e2e）', () => {
   });
 
   it.each([
-    ['get', PREVIEW, undefined],
     ['get', '/api/v1/loans', undefined],
     ['post', '/api/v1/loans', CREATE_BODY],
     ['get', `/api/v1/loans/${ID}`, undefined],
@@ -54,11 +53,11 @@ describe('貸款空殼（e2e）', () => {
     });
   });
 
-  it('payment-preview 宣告在 :id 之前：回 501，不是被 :id 接走的 404', async () => {
+  it('payment-preview 宣告在 :id 之前：回 200，不是被 :id 接走的 404', async () => {
     await request(app.getHttpServer())
       .get(PREVIEW)
       .set('Authorization', auth)
-      .expect(501);
+      .expect(200);
   });
 
   it.each([

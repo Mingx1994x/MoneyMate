@@ -203,7 +203,7 @@
     },
     "/api/v1/loans/payment-preview": {
       "get": {
-        "description": "本息平均攤還（PRD 15.8）：每期月付四捨五入到元，最後一期吸收尾差。只計算，不讀寫資料庫。\n\n期數從台北本月算到結清日所在月份（含頭尾），至少 1，所以同一組參數的結果會隨月份改變。\n\n前端呼叫條件：餘額 > 0、利率有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。建議 debounce 300ms，並取消前一次請求。",
+        "description": "本息平均攤還（PRD 15.8）：每期月付四捨五入到元，最後一期吸收尾差。只計算，不讀寫資料庫。\n\n期數（D-E-002）：台北今天（含）到結清日（含）之間的還款日個數，至少 1。每月還款日是 paymentDay，29–31 遇短月用當月最後一天；本月的還款日已過就從下個月算，今天剛好是還款日時算一期；晚於結清日的還款日不算。同一組參數的結果會隨日期改變。\n\n結清日早於台北今天時期數視為 1，不報錯；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。\n\n前端呼叫條件：餘額 > 0、利率有填、繳款日有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。改了繳款日也要重新試算。建議 debounce 300ms，並取消前一次請求。",
         "operationId": "Loans_paymentPreview",
         "parameters": [
           {
@@ -229,10 +229,22 @@
             }
           },
           {
+            "name": "paymentDay",
+            "required": true,
+            "in": "query",
+            "description": "每月繳款日，用來數剩餘期數（D-E-002）；29–31 遇短月用當月最後一天",
+            "schema": {
+              "minimum": 1,
+              "maximum": 31,
+              "example": 31,
+              "type": "integer"
+            }
+          },
+          {
             "name": "endDate",
             "required": true,
             "in": "query",
-            "description": "結清日。早於本月時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED",
+            "description": "結清日。早於台北今天時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED",
             "schema": {
               "format": "date",
               "example": "2031-09-30",
@@ -270,16 +282,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -287,7 +289,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】試算建議每月還款與預估總利息",
+        "summary": "試算建議每月還款與預估總利息",
         "tags": [
           "loans"
         ]
@@ -2732,7 +2734,7 @@
           "installments": {
             "type": "integer",
             "minimum": 1,
-            "description": "剩餘期數：台北本月到結清日所在月份（含頭尾），至少 1",
+            "description": "剩餘期數：台北今天（含）到結清日（含）之間的還款日個數，至少 1（D-E-002）",
             "example": 60
           }
         },

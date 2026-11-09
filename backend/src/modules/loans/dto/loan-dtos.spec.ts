@@ -118,14 +118,22 @@ describe('LoanPaymentPreviewQueryDto', () => {
   const query = {
     outstandingBalance: '1000000',
     interestRate: '3',
+    paymentDay: '31',
     endDate: '2031-09-30',
   };
 
-  it('query 字串通過，利率轉成數字', async () => {
+  it('query 字串通過，利率與繳款日轉成數字', async () => {
     expect(await invalidFields(LoanPaymentPreviewQueryDto, query)).toEqual([]);
-    expect(
-      plainToInstance(LoanPaymentPreviewQueryDto, query).interestRate,
-    ).toBe(3);
+    const dto = plainToInstance(LoanPaymentPreviewQueryDto, query);
+    expect(dto.interestRate).toBe(3);
+    expect(dto.paymentDay).toBe(31);
+  });
+
+  it('沒帶 paymentDay 失敗（D-E-002 改成必填）', async () => {
+    const { paymentDay: _p, ...rest } = query;
+    expect(await invalidFields(LoanPaymentPreviewQueryDto, rest)).toEqual([
+      'paymentDay',
+    ]);
   });
 
   it.each([
@@ -134,6 +142,10 @@ describe('LoanPaymentPreviewQueryDto', () => {
     ['interestRate', '1e1'],
     ['outstandingBalance', '0'],
     ['endDate', '2031-02-30'],
+    ['paymentDay', '0'],
+    ['paymentDay', '32'],
+    ['paymentDay', '5.5'],
+    ['paymentDay', ''],
   ])('%s = %j 失敗（空字串不會被當成 0%）', async (field, value) => {
     expect(
       await invalidFields(LoanPaymentPreviewQueryDto, {
