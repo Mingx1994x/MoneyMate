@@ -7,11 +7,26 @@ import {
   Prisma,
   PrismaService,
   TransactionType,
+  type PrismaTx,
   type Transaction,
 } from '../../prisma/index.js';
 import { AccountsService } from '../accounts/index.js';
 import { CategoriesService } from '../categories/index.js';
 import type { CreateTransactionDto } from './dto/create-transaction.dto.js';
+
+/** createBillTransaction 的輸入（E 的帳單繳費，PRD 16.1） */
+export interface BillTransactionData {
+  billId: string;
+  /** 帳單的扣款帳戶 */
+  accountId: string;
+  /** 帳單的支出分類（建立帳單時已用 assertAccountAndCategoryOwned 檢查過） */
+  categoryId: string;
+  /** 實繳金額 paidAmount，> 0 */
+  amount: Prisma.Decimal;
+  /** 實繳日期 paidDate；不晚於今天由 E 檢查（PAID_DATE_IN_FUTURE） */
+  transactionDate: DateOnly;
+  note?: string | null;
+}
 import type { TransactionListQueryDto } from './dto/transaction-list-query.dto.js';
 import type {
   TransactionListResponseDto,
@@ -185,6 +200,67 @@ export class TransactionsService {
       },
     });
     return toResponse(row);
+  }
+
+  /**
+   * 給 E 的帳單繳費（PRD 16.1、16.7）：在 E 開的資料庫交易內建立一筆 expense，bill_id 指向帳單。
+   * - 扣款帳戶停用：409 ACCOUNT_INACTIVE，details 是 []（扣款帳戶不是 body 的欄位，D-010）。
+   * - 扣款帳戶不存在或不屬於這位使用者：程式錯誤（帳單建立時已檢查，複合外鍵也擋），丟 Error → 500。
+   * - bill_id 有唯一約束：同一張帳單重複建立會撞約束（E 鎖住系列並確認 pending 後才呼叫，正常不會發生）。
+   */
+  async createBillTransaction(
+    tx: PrismaTx,
+    userId: string,
+    data: BillTransactionData,
+  ): Promise<{ id: string }> {
+    if (!data.amount.gt(0)) {
+      throw new Error('createBillTransaction: 金額必須大於 0');
+    }
+    const account = await tx.account.findFirst({
+      where: { id: data.accountId, userId },
+      select: { isActive: true },
+    });
+    if (!account) {
+      throw new Error(
+        'createBillTransaction: 扣款帳戶不存在或不屬於這位使用者',
+      );
+    }
+    if (!account.isActive) throw new AppException('ACCOUNT_INACTIVE');
+
+    return tx.transaction.create({
+      data: {
+        userId,
+        accountId: data.accountId,
+        transactionType: TransactionType.expense,
+        amount: data.amount,
+        categoryId: data.categoryId,
+        transactionDate: toDbDate(data.transactionDate),
+        note: data.note ?? null,
+        billId: data.billId,
+      },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * 給 E 的取消繳費（PRD 16.2、16.7）：在 E 開的資料庫交易內刪除這張帳單產生的支出。
+   * - 扣款帳戶停用：409 ACCOUNT_INACTIVE，details 是 []（PRD 15.11、D-010）。
+   * - 找不到這張帳單的交易：已繳帳單一定有交易，找不到代表資料不一致，丟 Error → 500。
+   */
+  async deleteBillTransaction(
+    tx: PrismaTx,
+    userId: string,
+    billId: string,
+  ): Promise<void> {
+    const row = await tx.transaction.findFirst({
+      where: { billId, userId },
+      select: { id: true, account: { select: { isActive: true } } },
+    });
+    if (!row) {
+      throw new Error('deleteBillTransaction: 找不到這張帳單產生的交易');
+    }
+    if (!row.account.isActive) throw new AppException('ACCOUNT_INACTIVE');
+    await tx.transaction.delete({ where: { id: row.id } });
   }
 }
 

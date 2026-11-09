@@ -4,7 +4,7 @@ import { CategoriesModule } from '../categories/index.js';
 import { TransactionsController } from './transactions.controller.js';
 import { TransactionsService } from './transactions.service.js';
 
-// 匯出 TransactionsService 給 E 的帳單（createBillTransaction／deleteBillTransaction 在 W3 加入）
+// 匯出 TransactionsService 給 E 的帳單（createBillTransaction、deleteBillTransaction）
 @Module({
   imports: [AccountsModule, CategoriesModule],
   controllers: [TransactionsController],
