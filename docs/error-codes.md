@@ -30,7 +30,7 @@
 
 | 代碼                     | HTTP | 訊息                             | 何時發生                                                                   | details.field | 測試位置                                                                                               |
 | ------------------------ | ---- | -------------------------------- | -------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
-| `AUTH_UNAUTHENTICATED`   | 401  | 請先登入                         | 沒帶 token、token 無效或過期；沒指定代碼的 401                             | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
+| `AUTH_UNAUTHENTICATED`   | 401  | 請先登入                         | 沒帶 token、token 無效或過期；沒指定代碼的 401                             | `[]`          | `all-exceptions.filter.spec.ts`、`test/auth.e2e-spec.ts`、`test/auth-guard-coverage.e2e-spec.ts`       |
 | `BAD_REQUEST`            | 400  | 請求格式不正確                   | JSON 解析失敗、body-parser 的 400；沒指定代碼的 400                        | `[]`          | `test/errors.e2e-spec.ts`                                                                              |
 | `CONFLICT`               | 409  | 資料狀態已變更，請重新整理後再試 | 沒指定代碼的 409                                                           | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
 | `FORBIDDEN`              | 403  | 沒有權限執行這個操作             | guard 回 `false` 時 Nest 丟的 `ForbiddenException`                         | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
@@ -44,13 +44,13 @@
 
 ## 共用驗證（INF-4）
 
-| 代碼                  | HTTP | 訊息                  | 何時發生                   | details.field | 測試位置                                            |
-| --------------------- | ---- | --------------------- | -------------------------- | ------------- | --------------------------------------------------- |
-| `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`    | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
-| `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議） | 金額欄位      | `validation.spec.ts`                                |
-| `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`            | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
+| 代碼                  | HTTP | 訊息                  | 何時發生                                                                                                                | details.field | 測試位置                                                                                    |
+| --------------------- | ---- | --------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------- |
+| `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`                                                                                                 | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts`                                         |
+| `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議）                                                                                              | 金額欄位      | `validation.spec.ts`                                                                        |
+| `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`                                                                                                         | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts`                                         |
 | `AMOUNT_OVERFLOW`     | 400  | 金額超出可記錄的範圍  | 寫入時資料庫數值溢位（PostgreSQL 22003、Prisma P2020）。金額超過 `numeric(14,2)` 是其中一種；利率、整數溢位也會看到這句 | `[]`          | `database-exception.spec.ts`、`all-exceptions.filter.spec.ts`、`test/db-errors.e2e-spec.ts` |
-| `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`      | `name`        | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
+| `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`                                                                                                   | `name`        | `validation.spec.ts`、`test/validation.e2e-spec.ts`                                         |
 
 ## auth（D）
 
@@ -61,10 +61,10 @@
 
 ## onboarding（D）
 
-| 代碼                      | HTTP | 訊息           | 何時發生                                             | details.field | 測試位置 |
-| ------------------------- | ---- | -------------- | ---------------------------------------------------- | ------------- | -------- |
-| `ONBOARDING_ALREADY_DONE` | 409  | 已經完成問卷了 | 問卷重送；第二個估計帳戶（含把既有帳戶改成估計） | `[]`          | `database-exception.spec.ts`、`test/db-errors.e2e-spec.ts` |
-| `ONBOARDING_REQUIRED`     | 409  | 請先完成問卷   | 還沒完成問卷就呼叫 `/goal`、`/goal/progress`（提議） | `[]`          | —        |
+| 代碼                      | HTTP | 訊息           | 何時發生                                             | details.field | 測試位置                                                   |
+| ------------------------- | ---- | -------------- | ---------------------------------------------------- | ------------- | ---------------------------------------------------------- |
+| `ONBOARDING_ALREADY_DONE` | 409  | 已經完成問卷了 | 問卷重送；第二個估計帳戶（含把既有帳戶改成估計）     | `[]`          | `database-exception.spec.ts`、`test/db-errors.e2e-spec.ts` |
+| `ONBOARDING_REQUIRED`     | 409  | 請先完成問卷   | 還沒完成問卷就呼叫 `/goal`、`/goal/progress`（提議） | `[]`          | —                                                          |
 
 ## accounts（C）
 
