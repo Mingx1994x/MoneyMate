@@ -2,7 +2,12 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { ClockService } from '../src/clock/clock.service.js';
-import { CategoryType, PrismaService } from '../src/prisma/index.js';
+import {
+  BillStatus,
+  CategoryType,
+  PrismaService,
+  type PrismaTx,
+} from '../src/prisma/index.js';
 import { createTestApp } from './utils/create-test-app.js';
 import {
   createCategory,
@@ -115,6 +120,8 @@ describe('帳單繳費、取消繳費、停止重複（e2e）', () => {
       orderBy: { dueDate: 'asc' },
       select: { id: true, status: true, recurrence: true, dueMonth: true },
     });
+  const pendingCount = (seriesId: string) =>
+    prisma.bill.count({ where: { seriesId, status: BillStatus.pending } });
   const txCount = (billId: string) =>
     prisma.transaction.count({ where: { billId } });
 
@@ -839,5 +846,273 @@ describe('帳單繳費、取消繳費、停止重複（e2e）', () => {
         expectError(res, 404, 'BILL_NOT_FOUND');
       },
     );
+  });
+
+  /**
+   * 規格 6：鎖定系列之後要重新讀取。這裡由測試自己先鎖住系列、在鎖內改掉帳單，
+   * 等 app 的請求確實卡在鎖上之後才提交，所以結果是確定的（不靠兩個請求剛好撞在一起）。
+   * 只看鎖之前讀到的狀態的話：繳費會用「待繳」判斷而建立支出（回 200），被刪掉的帳單會 500。
+   */
+  describe('等鎖期間帳單被改掉（規格 6，鎖定後重新讀取）', () => {
+    /** 等到有連線在等 FOR UPDATE 的鎖（app 的請求已經卡在鎖上） */
+    const waitForLockWaiter = async () => {
+      for (let i = 0; i < 200; i += 1) {
+        const [{ n }] = await prisma.$queryRaw<{ n: bigint }[]>`
+          SELECT count(*)::bigint AS n FROM pg_stat_activity
+          WHERE datname = current_database()
+            AND wait_event_type = 'Lock'
+            AND query LIKE '%FOR UPDATE%'`;
+        if (n > 0n) return;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      throw new Error('app 的請求沒有在等系列的鎖');
+    };
+
+    /** 測試持有系列的鎖、在鎖內執行 change，等 app 的請求卡在鎖上之後才提交 */
+    const whileLocked = async (
+      seriesId: string,
+      change: (tx: PrismaTx) => Promise<unknown>,
+      send: () => Promise<request.Response>,
+    ) => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      const holder = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM bills WHERE series_id = ${seriesId}::uuid FOR UPDATE`;
+          await change(tx);
+          await gate;
+        },
+        { timeout: 15_000 },
+      );
+      // supertest 要呼叫 then 才會送出
+      const pending = send().then((r) => r);
+      await waitForLockWaiter();
+      release();
+      await holder;
+      return pending;
+    };
+
+    it('繳費時帳單在等鎖期間被繳掉 → 409 BILL_ALREADY_PAID，沒有建立支出', async () => {
+      const bill = await create();
+      const res = await whileLocked(
+        bill.seriesId,
+        (tx) =>
+          tx.$executeRaw`UPDATE bills SET status = 'paid', paid_amount = amount, paid_date = due_date WHERE id = ${bill.id}::uuid`,
+        () => payReq(bill.id),
+      );
+      expectError(res, 409, 'BILL_ALREADY_PAID');
+      // 是重新讀取擋下的，不是 bill_id 唯一約束：舊狀態會建立支出、回 200
+      expect(await txCount(bill.id)).toBe(0);
+      expect(await series(bill.seriesId)).toHaveLength(1);
+    });
+
+    it.each([
+      ['pay', (id: string) => payReq(id)],
+      ['stop-recurrence', (id: string) => stopReq(id, { keepCurrent: true })],
+    ] as const)(
+      '%s 時帳單在等鎖期間被刪掉 → 404 BILL_NOT_FOUND，不是 500',
+      async (_name, send) => {
+        const bill = await create();
+        const res = await whileLocked(
+          bill.seriesId,
+          (tx) => tx.bill.delete({ where: { id: bill.id } }),
+          () => send(bill.id),
+        );
+        expectError(res, 404, 'BILL_NOT_FOUND');
+      },
+    );
+
+    it('取消繳費時帳單在等鎖期間被改回待繳 → 409 BILL_NOT_PAID，不會 500', async () => {
+      const bill = await create({ recurrence: 'none' });
+      await pay(bill.id);
+      const res = await whileLocked(
+        bill.seriesId,
+        async (tx) => {
+          await tx.transaction.deleteMany({ where: { billId: bill.id } });
+          await tx.bill.update({
+            where: { id: bill.id },
+            data: { status: 'pending', paidAmount: null, paidDate: null },
+          });
+        },
+        () => unpayReq(bill.id),
+      );
+      expectError(res, 409, 'BILL_NOT_PAID');
+    });
+  });
+
+  /**
+   * BILL-8：同一個系列同時送兩個寫入，結果要等同某一種依序執行，而且任何時候都不會有兩張待繳、不會 500。
+   * 兩個請求之間沒有 await，用 Promise.all 同時送出；不硬寫哪一個先到，兩種順序都接受。每種組合跑 20 次。
+   */
+  describe('同時送出的請求（BILL-8，US-B5、B28）', () => {
+    const ROUNDS = 20;
+    const statuses = (rs: request.Response[]) => rs.map((r) => r.status);
+
+    it('同時繳兩次：一個 200、一個 409 BILL_ALREADY_PAID，只有一筆支出、一張下一期', async () => {
+      for (let i = 0; i < ROUNDS; i += 1) {
+        const bill = await create();
+        const results = await Promise.all([payReq(bill.id), payReq(bill.id)]);
+        expect(statuses(results).sort((a, b) => a - b)).toEqual([200, 409]);
+        const loser = results.find((r) => r.status === 409)!;
+        expect(loser.body).toMatchObject({ code: 'BILL_ALREADY_PAID' });
+        expect(await txCount(bill.id)).toBe(1);
+        expect(await series(bill.seriesId)).toMatchObject([
+          { status: 'paid' },
+          { status: 'pending' },
+        ]);
+      }
+      expect(await balance()).toBe(`${100000 - 15000 * ROUNDS}.00`);
+    });
+
+    it('繳費＋取消繳費：先繳再取消（都 200，回到待繳），或先取消（409 BILL_NOT_PAID）再繳', async () => {
+      for (let i = 0; i < ROUNDS; i += 1) {
+        const bill = await create();
+        const [paid, unpaid] = await Promise.all([
+          payReq(bill.id),
+          unpayReq(bill.id),
+        ]);
+        expect(paid.status).toBe(200);
+        const rows = await series(bill.seriesId);
+        if (unpaid.status === 200) {
+          // 先繳再取消：下一期還是每月，這張就不改（1109 案例 4）
+          expect(unpaid.body).toMatchObject({
+            status: 'pending',
+            recurrence: 'monthly',
+            paidAmount: null,
+          });
+          expect(rows).toMatchObject([{ id: bill.id, status: 'pending' }]);
+          expect(await txCount(bill.id)).toBe(0);
+        } else {
+          expectError(unpaid, 409, 'BILL_NOT_PAID');
+          expect(rows).toMatchObject([
+            { id: bill.id, status: 'paid' },
+            { status: 'pending' },
+          ]);
+          expect(await txCount(bill.id)).toBe(1);
+        }
+      }
+    });
+
+    it('同時取消繳費兩次：一個 200、一個 409 BILL_NOT_PAID，支出刪掉、下一期刪掉', async () => {
+      for (let i = 0; i < ROUNDS; i += 1) {
+        const bill = await create();
+        await pay(bill.id);
+        const results = await Promise.all([
+          unpayReq(bill.id),
+          unpayReq(bill.id),
+        ]);
+        expect(statuses(results).sort((a, b) => a - b)).toEqual([200, 409]);
+        expect(results.find((r) => r.status === 409)?.body).toMatchObject({
+          code: 'BILL_NOT_PAID',
+        });
+        expect(await series(bill.seriesId)).toMatchObject([
+          { id: bill.id, status: 'pending', recurrence: 'monthly' },
+        ]);
+        expect(await txCount(bill.id)).toBe(0);
+      }
+      expect(await balance()).toBe('100000.00');
+    });
+
+    it('繳費＋停止重複（刪除）：先繳再停（下一期被刪），或先停（帳單被刪，繳費 404）', async () => {
+      for (let i = 0; i < ROUNDS; i += 1) {
+        const bill = await create();
+        const [paid, stopped] = await Promise.all([
+          payReq(bill.id),
+          stopReq(bill.id, { keepCurrent: false }),
+        ]);
+        expect(stopped.status).toBe(200);
+        expect(stopped.body).toEqual({ stopped: true, bill: null });
+        const rows = await series(bill.seriesId);
+        if (paid.status === 200) {
+          expect(rows).toMatchObject([{ id: bill.id, status: 'paid' }]);
+          expect(await txCount(bill.id)).toBe(1);
+        } else {
+          expectError(paid, 404, 'BILL_NOT_FOUND');
+          expect(rows).toHaveLength(0);
+        }
+      }
+    });
+
+    it('繳費＋停止重複（保留）：先繳再停（下一期改成不重複），或先停（繳費不產生下一期）', async () => {
+      for (let i = 0; i < ROUNDS; i += 1) {
+        const bill = await create();
+        const [paid, stopped] = await Promise.all([
+          payReq(bill.id),
+          stopReq(bill.id, { keepCurrent: true }),
+        ]);
+        expect(paid.status).toBe(200);
+        expect(stopped.status).toBe(200);
+        const { nextBill } = paid.body as PayResult;
+        const rows = await series(bill.seriesId);
+        if (nextBill === null) {
+          // 先停：這張改成不重複後才繳
+          expect((stopped.body as StopResult).bill?.id).toBe(bill.id);
+          expect(rows).toMatchObject([
+            { id: bill.id, status: 'paid', recurrence: 'none' },
+          ]);
+        } else {
+          // 先繳：停止的是新產生的下一期
+          expect((stopped.body as StopResult).bill?.id).toBe(nextBill.id);
+          expect(rows).toMatchObject([
+            { id: bill.id, status: 'paid', recurrence: 'monthly' },
+            { id: nextBill.id, status: 'pending', recurrence: 'none' },
+          ]);
+        }
+      }
+    });
+
+    it('繳費＋刪除：先繳再刪（刪除 409，已繳不能刪），或先刪（繳費 404）', async () => {
+      for (let i = 0; i < ROUNDS; i += 1) {
+        const bill = await create();
+        const [paid, deleted] = await Promise.all([
+          payReq(bill.id),
+          deleteReq(bill.id),
+        ]);
+        const rows = await series(bill.seriesId);
+        if (paid.status === 200) {
+          expectError(deleted, 409, 'BILL_ALREADY_PAID');
+          expect(rows).toMatchObject([
+            { id: bill.id, status: 'paid' },
+            { status: 'pending' },
+          ]);
+        } else {
+          expectError(paid, 404, 'BILL_NOT_FOUND');
+          expect(deleted.status).toBe(204);
+          expect(rows).toHaveLength(0);
+          expect(await txCount(bill.id)).toBe(0);
+        }
+      }
+    });
+
+    it('上一期取消繳費＋下一期繳費：只有一個成功，另一個 409，不會出現兩張待繳', async () => {
+      for (let i = 0; i < ROUNDS; i += 1) {
+        const nov = await create();
+        const dec = (await pay(nov.id)).nextBill!;
+        const [unpaid, paid] = await Promise.all([
+          unpayReq(nov.id),
+          payReq(dec.id),
+        ]);
+        const rows = await series(nov.seriesId);
+        if (unpaid.status === 200) {
+          // 先取消：12 月被刪掉，繳 12 月 404
+          expectError(paid, 404, 'BILL_NOT_FOUND');
+          expect(rows).toMatchObject([{ id: nov.id, status: 'pending' }]);
+          expect(await txCount(nov.id)).toBe(0);
+        } else {
+          // 先繳 12 月：11 月不能取消
+          expectError(unpaid, 409, 'NEXT_BILL_ALREADY_PAID');
+          expect(paid.status).toBe(200);
+          expect(rows).toMatchObject([
+            { id: nov.id, status: 'paid' },
+            { id: dec.id, status: 'paid' },
+            { status: 'pending' },
+          ]);
+          expect(await txCount(dec.id)).toBe(1);
+        }
+        expect(await pendingCount(nov.seriesId)).toBe(1);
+      }
+    });
   });
 });
