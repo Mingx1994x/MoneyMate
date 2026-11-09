@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
  * 登入頁（B）— PRD US-01、FR-02；後端 POST /auth/login
- * 帳號或密碼錯誤時後端回 401 AUTH_INVALID_CREDENTIALS（不會指出是哪一個錯）；
+ * 帳號或密碼錯誤時後端回 401 AUTH_INVALID_CREDENTIALS（不會指出是哪一個錯），畫面顯示後端的 message；
+ * 後端 LoginDto 只檢查有沒有填，Email 格式不對也回 401、details 是空的，所以欄位提示由前端在送出前檢查；
  * 次數太多回 429 TOO_MANY_REQUESTS（帶 retryAfterSeconds）。
  */
 import { errorText } from '~/lib/api-error'
+import { validateEmail } from '~/lib/email'
 import { DEMO_EMAIL, DEMO_PASSWORD } from '~/mock/seed'
 
 definePageMeta({ layout: 'auth' })
@@ -22,7 +24,8 @@ const loading = ref(false)
 
 async function submit() {
   errors.value = {
-    email: !email.value.trim() ? '請輸入 Email' : undefined,
+    email: validateEmail(email.value),
+    // 密碼只檢查有沒有填：登入頁不提示密碼規則，太短的密碼交給後端回「Email 或密碼錯誤」
     password: !password.value ? '請輸入密碼' : undefined,
   }
   if (loading.value || errors.value.email || errors.value.password) return
