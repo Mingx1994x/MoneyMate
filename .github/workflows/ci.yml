@@ -26,6 +26,7 @@ jobs:
     outputs:
       backend: ${{ steps.result.outputs.backend }}
       frontend: ${{ steps.result.outputs.frontend }}
+      frontend_code: ${{ steps.filter.outputs.frontend_code }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -42,6 +43,9 @@ jobs:
               - 'frontend/**'
               - 'backend/openapi.json' # 前端型別從這裡產生
               - '.github/workflows/**'
+            # 只有改了 frontend/ 才算前端 PR：型別檔過期時直接失敗
+            frontend_code:
+              - 'frontend/**'
       # 該側的 lockfile 不存在就不跑（前端骨架合併前 frontend/ 只有 .gitkeep）。
       # hashFiles() 不能用在 job 層級的 if:，所以在這裡判斷。
       - id: result
@@ -154,12 +158,20 @@ jobs:
       - run: npm ci
       # 用這個 PR 的 openapi.json 重新產生型別，接著的 typecheck 就是檢查前端跟不跟得上。
       # 後端 PR 也會跑這一步：新增欄位不影響，改名或刪掉前端還在用的欄位才會失敗。
-      # 進版控的型別檔過期只提醒、不擋（後端 PR 先合併，前端再開 PR 更新，CLAUDE.md 協作規則）。
+      # 進版控的型別檔過期時（PRD 第二十節「不一致時 CI 會失敗」）：
+      # - PR 有改 frontend/：失敗。合併最新的 dev、執行 npm run api:types 後 commit 就會過。
+      # - 只改 openapi.json（後端 PR）：只提醒、不擋。後端 PR 先合併，下一個前端 PR 再更新型別檔（CLAUDE.md 協作規則）。
       - name: 用最新的 openapi.json 產生 API 型別
+        env:
+          FRONTEND_CODE_CHANGED: ${{ needs.changes.outputs.frontend_code }}
         run: |
           npm run api:types
           if ! git diff --quiet -- app/types/openapi.ts; then
-            echo "::warning file=frontend/app/types/openapi.ts::API 型別和 backend/openapi.json 不一致，請在 frontend/ 執行 npm run api:types 後 commit"
+            if [ "$FRONTEND_CODE_CHANGED" = true ]; then
+              echo "::error file=frontend/app/types/openapi.ts::API 型別和 backend/openapi.json 不一致。請合併最新的 dev，在 frontend/ 執行 npm run api:types 後 commit"
+              exit 1
+            fi
+            echo "::warning file=frontend/app/types/openapi.ts::API 型別和 backend/openapi.json 不一致，下一個前端 PR 請在 frontend/ 執行 npm run api:types 後 commit"
           fi
       - run: npm run lint
       - run: npm run typecheck
