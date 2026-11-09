@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   HttpCode,
-  NotImplementedException,
   Param,
   Patch,
   Post,
@@ -20,11 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ParseIdPipe } from '../../common/id.js';
-import {
-  ApiAuth,
-  ApiErrors,
-  ApiNotImplemented,
-} from '../../common/swagger/api-decorators.js';
+import { ApiAuth, ApiErrors } from '../../common/swagger/api-decorators.js';
 import { CurrentUser, type AuthUser } from '../auth/index.js';
 import { BillsService } from './bills.service.js';
 import { BillListQueryDto } from './dto/bill-list-query.dto.js';
@@ -42,7 +37,7 @@ import { UpdateBillDto } from './dto/update-bill.dto.js';
 
 /**
  * 帳單端點。各端點的行為約定寫在 @ApiOperation 的 description（前端在 Swagger UI 看得到）。
- * CRUD 與列表已實作（BILL-2、BILL-3）；繳費、取消繳費、停止重複還是空殼（BILL-5～7），實作時拿掉 @ApiNotImplemented()。
+ * CRUD 與列表（BILL-2、BILL-3）、繳費、取消繳費、停止重複（BILL-5～7）。
  * 修改、刪除、繳費、取消繳費、停止重複都要先鎖定整個系列（FOR UPDATE），鎖定後重新讀取帳單再判斷。
  * 只能讀寫登入者自己的帳單；:id 不是 UUID、不存在、屬於他人一律 404 BILL_NOT_FOUND。
  */
@@ -185,12 +180,12 @@ export class BillsController {
     'ACCOUNT_INACTIVE',
     'BILL_NOT_FOUND',
   )
-  @ApiNotImplemented()
   pay(
-    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) _id: string,
-    @Body() _dto: PayBillDto,
-  ): PayBillResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) id: string,
+    @Body() dto: PayBillDto,
+  ): Promise<PayBillResponseDto> {
+    return this.bills.pay(user.id, id, dto);
   }
 
   @Post(':id/unpay')
@@ -211,11 +206,11 @@ export class BillsController {
     'ACCOUNT_INACTIVE',
     'BILL_NOT_FOUND',
   )
-  @ApiNotImplemented()
   unpay(
-    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) _id: string,
-  ): BillResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) id: string,
+  ): Promise<BillResponseDto> {
+    return this.bills.unpay(user.id, id);
   }
 
   @Post(':id/stop-recurrence')
@@ -230,11 +225,11 @@ export class BillsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ type: StopRecurrenceResponseDto })
   @ApiErrors('VALIDATION_FAILED', 'BILL_NOT_FOUND')
-  @ApiNotImplemented()
   stopRecurrence(
-    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) _id: string,
-    @Body() _dto: StopRecurrenceDto,
-  ): StopRecurrenceResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) id: string,
+    @Body() dto: StopRecurrenceDto,
+  ): Promise<StopRecurrenceResponseDto> {
+    return this.bills.stopRecurrence(user.id, id, dto);
   }
 }

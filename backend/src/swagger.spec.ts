@@ -275,31 +275,23 @@ describe('Swagger 文件', () => {
     const bills = '/api/v1/bills';
     const bill = '/api/v1/bills/{id}';
 
-    it('8 個端點都在、都要登入；CRUD 與列表已實作（BILL-2、BILL-3），繳費、取消繳費、停止重複還標【未實作】', () => {
-      const implemented = [
+    it('8 個端點都在、都要登入、都已實作（BILL-2、3、5～7）', () => {
+      const ops = [
         doc.paths[bills]?.get,
         doc.paths[bills]?.post,
         doc.paths[bill]?.get,
         doc.paths[bill]?.patch,
         doc.paths[bill]?.delete,
-      ];
-      const stubs = [
         doc.paths[`${bill}/pay`]?.post,
         doc.paths[`${bill}/unpay`]?.post,
         doc.paths[`${bill}/stop-recurrence`]?.post,
       ];
-      for (const op of [...implemented, ...stubs]) {
+      for (const op of ops) {
         if (op === undefined) throw new Error('缺少帳單端點');
         expect(op.security).toEqual([{ bearer: [] }]);
         expect(op.responses['401']).toBeDefined();
-      }
-      for (const op of implemented) {
-        expect(op?.summary).not.toMatch(/^【未實作】/);
-        expect(op?.responses['501']).toBeUndefined();
-      }
-      for (const op of stubs) {
-        expect(op?.summary).toMatch(/^【未實作】/);
-        expect(op?.responses['501']).toBeDefined();
+        expect(op.summary).not.toMatch(/^【未實作】/);
+        expect(op.responses['501']).toBeUndefined();
       }
     });
 
