@@ -3,20 +3,45 @@
  * Dashboard —— 第一屏（3 個問題＋一句下一步）由 A 負責；往下的報表區塊（收支、帳單、貸款）由 B 負責。
  * 所有數字都來自一支 API：GET /dashboard/summary（PRD FR-19）。還沒完成的區塊會列在 unavailable，顯示「準備中」。
  * ⚠️ 開發中：目前只接上 W2 最小流程需要的「本月收支」，其他區塊之後再逐一接上。
- *    原本照 mock 資料寫的版本先註解保留（script 在下方、template 在 <template> 最後），對照完再刪。
+ *    原本照 mock 資料寫的版本先註解保留（script 在下方，template 留在各區塊原本的位置），對照完再刪；
+ *    收支區塊已改寫完，原本的版本已刪除。
  */
-import { formatMoney } from '~/lib/money'
+import { addMonthsClamped, monthOf } from '~/lib/date'
+import { formatMoney, toCents } from '~/lib/money'
 import type { DashboardSummary } from '~/types/api'
 
 const api = useApi()
-// 不帶 month：後端預設用台北今天的月份
+const quick = useQuickAdd()
+// 要看的月份（YYYY-MM）；undefined 時不帶 month，後端用台北本月。month 只影響收支區塊
+const month = ref<string>()
 // 拆成最上層的 ref，template 裡可以直接寫 data.income，不用 .value
-const { data, loading, error, reload } = useResource(() => api.get<DashboardSummary>('/dashboard/summary'))
+const { data, loading, error, reload } = useResource(
+  () => api.get<DashboardSummary>('/dashboard/summary', { month: month.value }),
+  { watch: [month] },
+)
 
-// 月份從 API 的 month（YYYY-MM）取，不在前端自己算今天；用查表不用 Date，避免時區問題
+// 「當月」用 API 回傳的 today（後端 ClockService 的台北今天）判斷，前端不自己取今天
+const currentMonth = computed(() => (data.value ? monthOf(data.value.today) : null))
+const isCurrentMonth = computed(() => !!data.value && data.value.month === currentMonth.value)
+const shiftMonth = (n: number) => {
+  // 以「要看的月份」為準，不用 data.month：連點時舊資料還沒更新，會少切一個月
+  const base = month.value ?? currentMonth.value
+  if (base) month.value = monthOf(addMonthsClamped(`${base}-01`, n))
+}
+const backToCurrentMonth = () => (month.value = undefined)
+
+// 月份從 API 的 month（YYYY-MM）取；用查表不用 Date，避免時區問題
 const MONTH_ABBR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
 const monthNumber = computed(() => (data.value ? Number(data.value.month.slice(5)) : null))
 const monthAbbr = computed(() => (monthNumber.value ? MONTH_ABBR[monthNumber.value - 1] : ''))
+// 標題與空狀態用：當月顯示「當月」，其他月份顯示「10月」
+const monthLabel = computed(() => (isCurrentMonth.value ? '當月' : `${monthNumber.value}月`))
+
+// API 沒有「這個月有沒有交易」的欄位：收入、支出都是 0 就當成還沒有收支資料（只有轉帳的月份也算）。
+// 金額用 toCents 比較，不用字串比 '0.00'
+const hasMonthlyRecords = computed(
+  () => !!data.value && (toCents(data.value.income) !== 0 || toCents(data.value.expense) !== 0),
+)
 
 // ===== 原本的寫法（照 mock 資料寫的，暫時保留對照）=====
 // import { addMonthsClamped, formatDateShort, monthOf, relativeDue, todayTaipei } from '~/lib/date'
@@ -26,12 +51,8 @@ const monthAbbr = computed(() => (monthNumber.value ? MONTH_ABBR[monthNumber.val
 // const api = useApi()
 // const { displayName } = useAuth()
 //
-// const month = ref(monthOf(todayTaipei()))
-// const thisMonth = monthOf(todayTaipei())
 // const r = useResource(() => api.get<DashboardSummary>('/dashboard/summary', { month: month.value }), { watch: [month] })
 // const d = computed(() => r.data.value)
-// const shiftMonth = (n: number) => (month.value = monthOf(addMonthsClamped(`${month.value}-01`, n)))
-// const monthLabel = computed(() => `${Number(month.value.slice(5))} 月`)
 // const unavailable = (k: string) => d.value?.unavailable.includes(k)
 //
 // /** 今天要處理：逾期＋今天到期 */
@@ -55,32 +76,10 @@ const monthAbbr = computed(() => (monthNumber.value ? MONTH_ABBR[monthNumber.val
   <div>
     <StateView :loading="loading" :error="error" :has-data="!!data" @retry="reload">
       <template v-if="data">
-        <!-- 本月收支（W2 最小流程 ④） -->
-        <section class="card mb-4 p-5">
-          <div class="flex items-center gap-2">
-            <h3 class="font-semibold">當月收支 - {{ monthNumber }}月</h3>
-            <AppBadge>{{ monthAbbr }}</AppBadge>
-          </div>
-          <div class="mt-3 grid grid-cols-3 gap-3">
-            <div><p class="text-xs text-slate-500">收入</p><p class="num text-base font-bold text-emerald-700 sm:text-xl">{{ formatMoney(data.income) }}</p></div>
-            <div><p class="text-xs text-slate-500">支出</p><p class="num text-base font-bold sm:text-xl">{{ formatMoney(data.expense) }}</p></div>
-            <div>
-              <p class="text-xs text-slate-500">儲蓄率</p>
-              <p class="num text-base font-bold sm:text-xl" :class="(data.savingsRate ?? 0) < 0 ? 'text-rose-600' : ''">{{ data.savingsRate === null ? '—' : `${data.savingsRate}%` }}</p>
-            </div>
-          </div>
-          <p class="mt-2 text-xs text-slate-400">轉帳、繳卡費不算收支；未來日期的交易不算</p>
-        </section>
-      </template>
-    </StateView>
+        <!--
+        ===== 原本的第一屏（照 mock 資料寫的，暫時保留對照）=====
+        HTML 註解不能巢狀，所以裡面原本的區塊註解改寫成 <!- … -> 。
 
-  <!--
-  ===== 原本的 template（照 mock 資料寫的，暫時保留對照）=====
-  HTML 註解不能巢狀，所以裡面原本的區塊註解改寫成 <!- … -> 。
-
-  <div>
-    <StateView :loading="r.loading.value" :error="r.error.value" :has-data="!!d" @retry="r.reload">
-      <template v-if="d">
         <p class="mb-3 text-sm text-slate-500">{{ greeting }}，{{ displayName }} 👋</p>
         <OwnerNote owner="A" text="第一屏（3 個問題＋一句下一步）由 A 負責，這裡是暫時版本；下方的報表區塊由 B 負責。" />
 
@@ -131,30 +130,48 @@ const monthAbbr = computed(() => (monthNumber.value ? MONTH_ABBR[monthNumber.val
             <p v-if="d.hasCashAccounts" class="mt-2 text-xs text-slate-500">可用現金（現金＋銀行）{{ formatMoney(d.availableCash) }}；不含投資、信用卡與估計帳戶</p>
           </section>
         </div>
+        -->
 
-        <!- ===== 以下報表區塊：B 負責 ===== ->
-        <h2 class="mt-8 mb-3 text-lg font-bold text-slate-900">報表</h2>
+        <!-- ===== 以下報表區塊：B 負責 ===== -->
+        <!-- 原本是 mt-8（和上面的第一屏隔開），第一屏還沒接上，先拿掉 -->
+        <h2 class="mb-3 text-lg font-bold text-slate-900">報表</h2>
 
+        <!-- 月收支（W2 最小流程 ④）。順序：有收支 → 顯示數字；沒有現金／銀行帳戶 → 引導建立帳戶；都沒有 → 尚未有收支資料 -->
         <section class="card mb-4 p-5">
-          <div class="flex items-center justify-between">
-            <h3 class="font-semibold">{{ monthLabel }}收支</h3>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <h3 class="font-semibold">{{ monthLabel }}收支</h3>
+              <AppBadge>{{ monthAbbr }}</AppBadge>
+              <AppButton v-if="!isCurrentMonth" size="sm" variant="soft" @click="backToCurrentMonth">回到當月</AppButton>
+            </div>
             <div class="flex items-center gap-1">
               <AppButton size="sm" variant="ghost" aria-label="上個月" @click="shiftMonth(-1)">‹</AppButton>
-              <span class="num text-sm text-slate-600">{{ month }}</span>
-              <AppButton size="sm" variant="ghost" aria-label="下個月" :disabled="month >= thisMonth" @click="shiftMonth(1)">›</AppButton>
+              <span class="num text-sm text-slate-600">{{ data.month }}</span>
+              <AppButton size="sm" variant="ghost" aria-label="下個月" :disabled="isCurrentMonth" @click="shiftMonth(1)">›</AppButton>
             </div>
           </div>
-          <div v-if="unavailable('monthly')" class="py-6 text-center text-sm text-slate-400">準備中</div>
+          <div v-if="!hasMonthlyRecords && !data.hasCashAccounts" class="py-6 text-center">
+            <p class="text-sm text-slate-500">還沒有現金或銀行帳戶，先建立一個帳戶再開始記帳</p>
+            <NuxtLink to="/accounts?new=1" class="mt-3 inline-block"><AppButton variant="secondary">前往建立帳戶</AppButton></NuxtLink>
+          </div>
+          <div v-else-if="!hasMonthlyRecords" class="py-6 text-center">
+            <p class="text-sm text-slate-500">{{ monthLabel }}尚未有收支資料</p>
+            <!-- 快速記帳預設記在今天，看其他月份時按了也不會記到那個月，所以只在當月顯示 -->
+            <AppButton v-if="isCurrentMonth" class="mt-3" @click="quick.open()">＋ 快速記帳</AppButton>
+          </div>
           <div v-else class="mt-3 grid grid-cols-3 gap-3">
-            <div><p class="text-xs text-slate-500">收入</p><p class="num text-base font-bold text-emerald-700 sm:text-xl">{{ formatMoney(d.income) }}</p></div>
-            <div><p class="text-xs text-slate-500">支出</p><p class="num text-base font-bold sm:text-xl">{{ formatMoney(d.expense) }}</p></div>
+            <div><p class="text-xs text-slate-500">收入</p><p class="num text-base font-bold text-emerald-700 sm:text-xl">{{ formatMoney(data.income) }}</p></div>
+            <div><p class="text-xs text-slate-500">支出</p><p class="num text-base font-bold sm:text-xl">{{ formatMoney(data.expense) }}</p></div>
             <div>
               <p class="text-xs text-slate-500">儲蓄率</p>
-              <p class="num text-base font-bold sm:text-xl" :class="(d.savingsRate ?? 0) < 0 ? 'text-rose-600' : ''">{{ d.savingsRate === null ? '—' : `${d.savingsRate}%` }}</p>
+              <p class="num text-base font-bold sm:text-xl" :class="(data.savingsRate ?? 0) < 0 ? 'text-rose-600' : ''">{{ data.savingsRate === null ? '—' : `${data.savingsRate}%` }}</p>
             </div>
           </div>
-          <p class="mt-2 text-xs text-slate-400">轉帳、繳卡費不算收支；未來日期的交易不算</p>
+          <p v-if="hasMonthlyRecords" class="mt-2 text-xs text-slate-400">轉帳、繳卡費不算收支；未來日期的交易不算</p>
         </section>
+
+        <!--
+        ===== 原本的其他報表區塊（照 mock 資料寫的，暫時保留對照）=====
 
         <div class="mb-4 grid gap-4 sm:grid-cols-2">
           <section class="card p-5">
@@ -204,11 +221,10 @@ const monthAbbr = computed(() => (monthNumber.value ? MONTH_ABBR[monthNumber.val
             </template>
           </section>
         </div>
+        -->
       </template>
     </StateView>
 
     <div class="h-4" />
-  </div>
-  -->
   </div>
 </template>
