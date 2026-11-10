@@ -2,47 +2,89 @@
 /**
  * Dashboard —— 第一屏（3 個問題＋一句下一步）由 A 負責；往下的報表區塊（收支、帳單、貸款）由 B 負責。
  * 所有數字都來自一支 API：GET /dashboard/summary（PRD FR-19）。還沒完成的區塊會列在 unavailable，顯示「準備中」。
+ * ⚠️ 開發中：目前只接上 W2 最小流程需要的「本月收支」，其他區塊之後再逐一接上。
+ *    原本照 mock 資料寫的版本先註解保留（script 在下方、template 在 <template> 最後），對照完再刪。
  */
-import { addMonthsClamped, formatDateShort, monthOf, relativeDue, todayTaipei } from '~/lib/date'
-import { formatMoney, formatWan, toCents } from '~/lib/money'
+import { formatMoney } from '~/lib/money'
 import type { DashboardSummary } from '~/types/api'
 
 const api = useApi()
-const { displayName } = useAuth()
+// 不帶 month：後端預設用台北今天的月份
+// 拆成最上層的 ref，template 裡可以直接寫 data.income，不用 .value
+const { data, loading, error, reload } = useResource(() => api.get<DashboardSummary>('/dashboard/summary'))
 
-const month = ref(monthOf(todayTaipei()))
-const thisMonth = monthOf(todayTaipei())
-const r = useResource(() => api.get<DashboardSummary>('/dashboard/summary', { month: month.value }), { watch: [month] })
-const d = computed(() => r.data.value)
-const shiftMonth = (n: number) => (month.value = monthOf(addMonthsClamped(`${month.value}-01`, n)))
-const monthLabel = computed(() => `${Number(month.value.slice(5))} 月`)
-const unavailable = (k: string) => d.value?.unavailable.includes(k)
+// 月份從 API 的 month（YYYY-MM）取，不在前端自己算今天；用查表不用 Date，避免時區問題
+const MONTH_ABBR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+const monthNumber = computed(() => (data.value ? Number(data.value.month.slice(5)) : null))
+const monthAbbr = computed(() => (monthNumber.value ? MONTH_ABBR[monthNumber.value - 1] : ''))
 
-/** 今天要處理：逾期＋今天到期 */
-const todayBills = computed(() => [
-  ...(d.value?.billsOverdue ?? []),
-  ...(d.value?.billsDueSoon ?? []).filter((b) => b.daysUntilDue === 0),
-])
-const nextStepTone = computed(() => {
-  const t = d.value?.nextStep.type
-  if (t === 'overdue_bills') return 'from-rose-500 to-rose-600'
-  if (t === 'funding_gap') return 'from-amber-500 to-orange-500'
-  return 'from-brand-600 to-brand-800'
-})
-const greeting = computed(() => {
-  const h = new Date().getHours()
-  return h < 11 ? '早安' : h < 18 ? '午安' : '晚安'
-})
+// ===== 原本的寫法（照 mock 資料寫的，暫時保留對照）=====
+// import { addMonthsClamped, formatDateShort, monthOf, relativeDue, todayTaipei } from '~/lib/date'
+// import { formatMoney, formatWan, toCents } from '~/lib/money'
+// import type { DashboardSummary } from '~/types/api'
+//
+// const api = useApi()
+// const { displayName } = useAuth()
+//
+// const month = ref(monthOf(todayTaipei()))
+// const thisMonth = monthOf(todayTaipei())
+// const r = useResource(() => api.get<DashboardSummary>('/dashboard/summary', { month: month.value }), { watch: [month] })
+// const d = computed(() => r.data.value)
+// const shiftMonth = (n: number) => (month.value = monthOf(addMonthsClamped(`${month.value}-01`, n)))
+// const monthLabel = computed(() => `${Number(month.value.slice(5))} 月`)
+// const unavailable = (k: string) => d.value?.unavailable.includes(k)
+//
+// /** 今天要處理：逾期＋今天到期 */
+// const todayBills = computed(() => [
+//   ...(d.value?.billsOverdue ?? []),
+//   ...(d.value?.billsDueSoon ?? []).filter((b) => b.daysUntilDue === 0),
+// ])
+// const nextStepTone = computed(() => {
+//   const t = d.value?.nextStep.type
+//   if (t === 'overdue_bills') return 'from-rose-500 to-rose-600'
+//   if (t === 'funding_gap') return 'from-amber-500 to-orange-500'
+//   return 'from-brand-600 to-brand-800'
+// })
+// const greeting = computed(() => {
+//   const h = new Date().getHours()
+//   return h < 11 ? '早安' : h < 18 ? '午安' : '晚安'
+// })
 </script>
 
 <template>
+  <div>
+    <StateView :loading="loading" :error="error" :has-data="!!data" @retry="reload">
+      <template v-if="data">
+        <!-- 本月收支（W2 最小流程 ④） -->
+        <section class="card mb-4 p-5">
+          <div class="flex items-center gap-2">
+            <h3 class="font-semibold">當月收支 - {{ monthNumber }}月</h3>
+            <AppBadge>{{ monthAbbr }}</AppBadge>
+          </div>
+          <div class="mt-3 grid grid-cols-3 gap-3">
+            <div><p class="text-xs text-slate-500">收入</p><p class="num text-base font-bold text-emerald-700 sm:text-xl">{{ formatMoney(data.income) }}</p></div>
+            <div><p class="text-xs text-slate-500">支出</p><p class="num text-base font-bold sm:text-xl">{{ formatMoney(data.expense) }}</p></div>
+            <div>
+              <p class="text-xs text-slate-500">儲蓄率</p>
+              <p class="num text-base font-bold sm:text-xl" :class="(data.savingsRate ?? 0) < 0 ? 'text-rose-600' : ''">{{ data.savingsRate === null ? '—' : `${data.savingsRate}%` }}</p>
+            </div>
+          </div>
+          <p class="mt-2 text-xs text-slate-400">轉帳、繳卡費不算收支；未來日期的交易不算</p>
+        </section>
+      </template>
+    </StateView>
+
+  <!--
+  ===== 原本的 template（照 mock 資料寫的，暫時保留對照）=====
+  HTML 註解不能巢狀，所以裡面原本的區塊註解改寫成 <!- … -> 。
+
   <div>
     <StateView :loading="r.loading.value" :error="r.error.value" :has-data="!!d" @retry="r.reload">
       <template v-if="d">
         <p class="mb-3 text-sm text-slate-500">{{ greeting }}，{{ displayName }} 👋</p>
         <OwnerNote owner="A" text="第一屏（3 個問題＋一句下一步）由 A 負責，這裡是暫時版本；下方的報表區塊由 B 負責。" />
 
-        <!-- ③ 一句下一步＋1 個大數字 -->
+        <!- ③ 一句下一步＋1 個大數字 ->
         <section class="mb-4 rounded-3xl bg-gradient-to-br p-6 text-white shadow-lg" :class="nextStepTone">
           <p class="text-sm font-medium text-white/80">現在只需要做這一件事</p>
           <p class="mt-2 text-2xl leading-snug font-bold sm:text-3xl">{{ d.nextStep.message }}</p>
@@ -57,7 +99,7 @@ const greeting = computed(() => {
         </section>
 
         <div class="grid gap-4 md:grid-cols-2">
-          <!-- ① 今天有什麼帳單要處理？ -->
+          <!- ① 今天有什麼帳單要處理？ ->
           <section class="card p-5">
             <h2 class="text-sm font-semibold text-slate-500">今天有什麼帳單要處理？</h2>
             <p v-if="todayBills.length === 0" class="mt-3 font-semibold text-emerald-700">✓ 今天沒有要處理的帳單</p>
@@ -73,7 +115,7 @@ const greeting = computed(() => {
             </ul>
           </section>
 
-          <!-- ② 這個月的錢夠不夠用？（14 天資金缺口） -->
+          <!- ② 這個月的錢夠不夠用？（14 天資金缺口） ->
           <section class="card p-5">
             <h2 class="text-sm font-semibold text-slate-500">接下來的錢夠不夠用？</h2>
             <template v-if="!d.hasCashAccounts">
@@ -90,7 +132,7 @@ const greeting = computed(() => {
           </section>
         </div>
 
-        <!-- ===== 以下報表區塊：B 負責 ===== -->
+        <!- ===== 以下報表區塊：B 負責 ===== ->
         <h2 class="mt-8 mb-3 text-lg font-bold text-slate-900">報表</h2>
 
         <section class="card mb-4 p-5">
@@ -166,5 +208,7 @@ const greeting = computed(() => {
     </StateView>
 
     <div class="h-4" />
+  </div>
+  -->
   </div>
 </template>
