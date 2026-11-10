@@ -3,6 +3,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { ClockService } from '../src/clock/clock.service.js';
 import { PrismaService } from '../src/prisma/index.js';
+import { registerUser, uniqueEmail } from './utils/auth.js';
 import { FakeClock } from './utils/fake-clock.js';
 
 const PASSWORD = 'correct-horse-battery';
@@ -98,5 +99,40 @@ describe('每個 Email 的登入失敗限制（e2e，PRD FR-03）', () => {
     await login('ghost@example.com', 'wrong').expect(401);
     const res = await login('ghost@example.com', 'wrong').expect(429);
     expect(res.body).toMatchObject({ code: 'TOO_MANY_REQUESTS' });
+  });
+
+  // AUTH-1（E）：固定視窗。FakeClock 是整個檔案共用的，這裡用新的時間與 Email
+  describe('視窗從第一次失敗起算（AUTH-1）', () => {
+    it('後面的失敗不會延長視窗：T 失敗、T+14 分再失敗，只鎖到 T+15 分', async () => {
+      const user = await registerUser(app, { email: uniqueEmail('window') });
+      clock.set('2026-10-29T05:00:00Z');
+      await login(user.email, 'wrong').expect(401);
+      clock.set('2026-10-29T05:14:00Z');
+      await login(user.email, 'wrong').expect(401);
+
+      const blocked = await login(user.email, user.password).expect(429);
+      expect(blocked.body).toMatchObject({
+        code: 'TOO_MANY_REQUESTS',
+        retryAfterSeconds: 60,
+      });
+
+      clock.set('2026-10-29T05:15:00Z');
+      await login(user.email, user.password).expect(200);
+    });
+
+    it('鎖住期間的嘗試不會延長鎖定', async () => {
+      const user = await registerUser(app, { email: uniqueEmail('locked') });
+      clock.set('2026-10-29T06:00:00Z');
+      await login(user.email, 'wrong').expect(401);
+      await login(user.email, 'wrong').expect(401);
+
+      clock.set('2026-10-29T06:05:00Z');
+      await login(user.email, 'wrong').expect(429);
+      clock.set('2026-10-29T06:10:00Z');
+      await login(user.email, 'wrong').expect(429);
+
+      clock.set('2026-10-29T06:15:00Z');
+      await login(user.email, user.password).expect(200);
+    });
   });
 });

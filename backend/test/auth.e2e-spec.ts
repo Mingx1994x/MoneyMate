@@ -2,8 +2,11 @@ import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { PrismaService } from '../src/prisma/index.js';
+import { registerUser } from './utils/auth.js';
 import { createTestApp } from './utils/create-test-app.js';
-import { bearer, TEST_USER_ID } from './utils/test-token.js';
+import { resetDb } from './utils/db.js';
+import { bearer } from './utils/test-token.js';
 
 const UNAUTHENTICATED = {
   statusCode: 401,
@@ -23,6 +26,7 @@ const NOT_IMPLEMENTED = {
 
 /**
  * AUTH-1：全域 JWT guard，以及問卷、目標還沒實作的空殼（W4 實作後，501 的測試改成實際行為）。
+ * GET／PATCH /goal 已實作：測試用的使用者沒有目標，帶 token 會回 409 ONBOARDING_REQUIRED（行為在 goals.e2e-spec.ts）。
  * 註冊、登入、/auth/me 的行為在 auth-flow.e2e-spec.ts。
  */
 describe('登入驗證與問卷、目標空殼（e2e）', () => {
@@ -75,7 +79,7 @@ describe('登入驗證與問卷、目標空殼（e2e）', () => {
       },
     );
 
-    it.each(protectedRoutes.slice(1, 5))(
+    it.each([protectedRoutes[1], protectedRoutes[4]])(
       '%s %s 帶 token 回 501（還沒實作）',
       async (method, path, body) => {
         const res = await request(app.getHttpServer())
@@ -86,9 +90,48 @@ describe('登入驗證與問卷、目標空殼（e2e）', () => {
         expect(res.body).toMatchObject(NOT_IMPLEMENTED);
       },
     );
+
+    it.each(protectedRoutes.slice(2, 4))(
+      '%s %s 帶 token、沒做問卷 → 409 ONBOARDING_REQUIRED（不是 401）',
+      async (method, path, body) => {
+        const res = await request(app.getHttpServer())
+          [method](path)
+          .set('Authorization', auth)
+          .send(body)
+          .expect(409);
+        expect(res.body).toMatchObject({ code: 'ONBOARDING_REQUIRED' });
+      },
+    );
   });
 
   describe('不合格的 token 一律回 401 AUTH_UNAUTHENTICATED', () => {
+    // AUTH-1（E）：token 的 sub 用資料庫裡真的有的使用者。用 TEST_USER_ID 的話，就算 guard 放行，
+    // /auth/me 也會因為「使用者不存在」回 401，測試會在 guard 壞掉時照樣通過。
+    let userId: string;
+    const sign = (
+      payload: object,
+      options?: { algorithm: 'HS512' },
+    ): Promise<string> =>
+      new JwtService({ secret: process.env.JWT_SECRET }).signAsync(
+        payload,
+        options,
+      );
+
+    beforeAll(async () => {
+      userId = (await registerUser(app)).id;
+    });
+
+    afterAll(async () => {
+      await resetDb(app.get(PrismaService));
+    });
+
+    it('對照組：同一把金鑰、HS256、真的使用者 → 200', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${await sign({ sub: userId })}`)
+        .expect(200);
+    });
+
     async function expect401(authorization: string): Promise<void> {
       const res = await request(app.getHttpServer())
         .get('/api/v1/auth/me')
@@ -108,17 +151,28 @@ describe('登入驗證與問卷、目標空殼（e2e）', () => {
     it('別的金鑰簽的', async () => {
       const token = await new JwtService({
         secret: 'someone-else-insecure',
-      }).signAsync({ sub: TEST_USER_ID });
+      }).signAsync({ sub: userId });
       await expect401(`Bearer ${token}`);
     });
 
     it('已經過期', async () => {
-      const token = await new JwtService({
-        secret: process.env.JWT_SECRET,
-      }).signAsync({
-        sub: TEST_USER_ID,
+      const token = await sign({
+        sub: userId,
         exp: Math.floor(Date.now() / 1000) - 10,
       });
+      await expect401(`Bearer ${token}`);
+    });
+
+    // AUTH-1（E）：簽章正確，但內容或演算法不對
+    it.each([
+      ['沒有 sub', { foo: 'bar' }],
+      ['sub 是空字串', { sub: '' }],
+    ])('簽章正確但%s', async (_, payload) => {
+      await expect401(`Bearer ${await sign(payload)}`);
+    });
+
+    it('同一把金鑰、但用 HS512 簽（只接受 HS256）', async () => {
+      const token = await sign({ sub: userId }, { algorithm: 'HS512' });
       await expect401(`Bearer ${token}`);
     });
   });
@@ -127,7 +181,7 @@ describe('登入驗證與問卷、目標空殼（e2e）', () => {
     await request(app.getHttpServer())
       .get('/api/v1/goal')
       .set('Authorization', auth.replace('Bearer', 'bearer'))
-      .expect(501);
+      .expect(409);
   });
 
   it('不存在的路徑仍然回 404，不是 401（guard 只在找到端點後才執行）', async () => {
