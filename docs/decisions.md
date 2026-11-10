@@ -272,11 +272,10 @@
   - 晚於結清日的還款日不算，跟 Dashboard 不列結清日之後的還款日一致。
 - **沒有採用的方案：**
   - 照 PRD 原文，從本月算到結清月：上面「原因」第一點的問題。
-- **誰同意：** E 提出，待 B（貸款表單、mock）確認
+- **誰同意：** E 提出，B 同意
 - **影響：**
-  - A：修改 PRD 15.8 的期數寫法。
-  - B：`LoanForm.vue` 試算帶 `paymentDay`、改繳款日時重新試算；mock 的 `loanPaymentPreview()` 改成數還款日。
-  - E：`LoanPaymentPreviewQueryDto` 加 `paymentDay`、Swagger description，`openapi.json` 在 LOAN-3／LOAN-4 的 PR 更新。
+  - B：`LoanForm.vue` 試算帶 `paymentDay`、改繳款日時重新試算。
+  - E：`LoanPaymentPreviewQueryDto` 加 `paymentDay`、Swagger description，`openapi.json` 在 LOAN-3／LOAN-4 的 PR 更新。修改 PRD 15.8 的期數寫法與第十三節試算的參數。
 
 ### D-E-001 `PATCH /loans/:id` 不自動重算每月還款，只有新增時自動算
 
@@ -294,9 +293,9 @@
 - **沒有採用的方案：**
   - 照 PRD 原文，`PATCH` 沒帶月付就重算：上面「原因」第一點的問題。
   - 請求帶了餘額、年利率或結清日，而且沒帶月付時才重算：每月更新餘額時一樣會蓋掉使用者填的月付。
-- **誰同意：** E 提出，待 A（PRD）、B（貸款表單）確認
+- **誰同意：** E 提出，A B 同意
 - **影響：**
-  - A：修改 PRD 第十三節第 407 行。
+  - E：修改 PRD 第十三節第 407 行。
   - B：修改貸款時一律帶上 `monthlyPayment`；想用新的建議值就用「套用建議值」。
 
 ### D-E-003 貸款改成已結清時不檢查未償餘額
@@ -322,10 +321,9 @@
     - `balanceUpdatedAt` 會被刷新，45 天提醒也跟著重置，把「這個 0 是假的」藏起來。
     - 使用者沒有要求改的欄位被改掉，跟「沒傳的欄位保持原值」不一致。
   - 前端在狀態切成已結清時提示使用者順便把餘額改成 0 或"已結清"：上面「原因」第三點的問題。
-- **誰同意：** E 提出，待 B（貸款頁）確認
+- **誰同意：** E 提出，B 同意
 - **影響：**
-  - B：`pages/loans.vue:85` 的未償餘額，已結清的貸款顯示 0 或"已結清"；`LoanForm.vue` 照舊顯示真實餘額，不加提示。前端 demo 目前可以存，只差列表的顯示。
-  - C、D：不用改，淨資產和 `activeLoanTotal` 本來就只算 `active`。
+  - B：`pages/loans.vue:85` 的未償餘額，已結清的貸款顯示為"已結清"；`LoanForm.vue` 照舊顯示真實餘額，不加提示。前端 demo 目前可以存，只差列表的顯示。另外已結清的貸款會一併隱藏「餘額 xx 天前更新／該更新一下了」的提醒。
 
 ### D-E-004 修改貸款時，結清日或狀態有變更才檢查結清日已過
 
@@ -335,7 +333,7 @@
   - `PATCH /loans/:id`：用原值合併請求後的值檢查同一條規則，但只有 `endDate` 或 `status` **跟原值不同**時才檢查。只改其他欄位（名稱、類型、餘額、月付、還款日、年利率、備註）不擋。
   - 比對的是值，不是請求有沒有帶這個欄位：前端整份送出時，`endDate` 寫同一天不算改。
   - 把 `closed` 改回 `active` 但結清日已過（US-L17），`status` 有變更，照樣擋。
-  - 前端表單與 mock 用同一條規則。
+  - 前端表單用同一條規則。
   - PRD 第十三節第 418 行（`endDate` 可以早於今天，但 `status` 必須是 `closed`）補上「修改時只在 `endDate` 或 `status` 有變更時檢查」。
 - **原因：**
   - 結清日會隨時間自然過去。一筆 `active` 的貸款過了結清日、使用者還沒改成已結清時，原規則讓她連備註、未償餘額都改不了，錯誤訊息跟她要做的事無關。
@@ -343,8 +341,7 @@
 - **沒有採用的方案：**
   - 維持合併後一律檢查（逼使用者先結清）：上面「原因」第一點的問題。
   - 請求有帶 `endDate` 或 `status` 才檢查：前端修改時送整份 body，這兩個欄位每次都會帶，結果跟一律檢查一樣。
-- **誰同意：** E 提出，待 B（貸款表單、mock）確認
+- **誰同意：** E 提出，B 同意
 - **影響：**
-  - A：修改 PRD 第十三節第 418 行。
-  - B：`LoanForm.vue` 送出前的結清日檢查、mock 的 `buildLoan`，修改時只在 `endDate` 或 `status` 跟原值不同才檢查。
-  - E：LOAN-2 的 PATCH 照這條實作；`docs/error-codes.md` 的「何時發生」與 PATCH 的 Swagger 說明一起更新。
+  - B：`LoanForm.vue` 送出前的結清日檢查，修改時只在 `endDate` 或 `status` 跟原值不同才檢查。
+  - E：LOAN-2 的 PATCH 照這條實作；`docs/error-codes.md` 的「何時發生」與 PATCH 的 Swagger 說明一起更新。修改 PRD 第十三節第 418 行。
