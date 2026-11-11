@@ -87,7 +87,7 @@
 
 | 代碼                          | HTTP | 訊息                             | 何時發生                                                           | details.field | 測試位置                        |
 | ----------------------------- | ---- | -------------------------------- | ------------------------------------------------------------------ | ------------- | ------------------------------- |
-| `BILL_LINKED_TRANSACTION`     | 409  | 這筆交易由帳單產生，請到帳單修改 | 修改或刪除帳單產生的交易                                           | `[]`          | —                               |
+| `BILL_LINKED_TRANSACTION`     | 409  | 這筆交易由帳單產生，請到帳單修改 | 修改或刪除帳單產生的交易                                           | `[]`          | `test/transactions.e2e-spec.ts` |
 | `TRANSACTION_FIELDS_MISMATCH` | 400  | 這種交易類型不能帶這個欄位       | 轉帳帶了分類、收入或支出帶了轉入帳戶；缺少該類型必填的欄位（提議） | 不符合的欄位  | `test/transactions.e2e-spec.ts` |
 | `TRANSACTION_NOT_FOUND`       | 404  | 找不到這筆交易                   |                                                                    | `[]`          | `test/transactions.e2e-spec.ts` |
 | `TRANSFER_SAME_ACCOUNT`       | 400  | 不能轉帳給同一個帳戶             |                                                                    | `toAccountId` | `test/transactions.e2e-spec.ts` |
