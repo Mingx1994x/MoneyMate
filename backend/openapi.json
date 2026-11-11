@@ -203,7 +203,7 @@
     },
     "/api/v1/loans/payment-preview": {
       "get": {
-        "description": "本息平均攤還（PRD 15.8）：每期月付四捨五入到元，最後一期吸收尾差。只計算，不讀寫資料庫。\n\n期數從台北本月算到結清日所在月份（含頭尾），至少 1，所以同一組參數的結果會隨月份改變。\n\n前端呼叫條件：餘額 > 0、利率有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。建議 debounce 300ms，並取消前一次請求。",
+        "description": "本息平均攤還（PRD 15.8）：每期月付四捨五入到元，最後一期吸收尾差。只計算，不讀寫資料庫。\n\n期數（D-E-002）：台北今天（含）到結清日（含）之間的還款日個數，至少 1。每月還款日是 paymentDay，29–31 遇短月用當月最後一天；本月的還款日已過就從下個月算，今天剛好是還款日時算一期；晚於結清日的還款日不算。同一組參數的結果會隨日期改變。\n\n結清日早於台北今天時期數視為 1，不報錯；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。\n\n前端呼叫條件：餘額 > 0、利率有填、繳款日有填、結清日合法而且不早於台北今天才呼叫；其他情況不呼叫，也不顯示總利息。改了繳款日也要重新試算。建議 debounce 300ms，並取消前一次請求。",
         "operationId": "Loans_paymentPreview",
         "parameters": [
           {
@@ -229,10 +229,22 @@
             }
           },
           {
+            "name": "paymentDay",
+            "required": true,
+            "in": "query",
+            "description": "每月繳款日，用來數剩餘期數（D-E-002）；29–31 遇短月用當月最後一天",
+            "schema": {
+              "minimum": 1,
+              "maximum": 31,
+              "example": 31,
+              "type": "integer"
+            }
+          },
+          {
             "name": "endDate",
             "required": true,
             "in": "query",
-            "description": "結清日。早於本月時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED",
+            "description": "結清日。早於台北今天時期數視為 1；晚於台北今天加 50 年回 400 VALIDATION_FAILED",
             "schema": {
               "format": "date",
               "example": "2031-09-30",
@@ -270,16 +282,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -287,7 +289,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】試算建議每月還款與預估總利息",
+        "summary": "試算建議每月還款與預估總利息",
         "tags": [
           "loans"
         ]
@@ -318,16 +320,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -335,13 +327,13 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出貸款",
+        "summary": "列出貸款",
         "tags": [
           "loans"
         ]
       },
       "post": {
-        "description": "沒帶 monthlyPayment 時，後端依年利率自動計算。以下情況回 LOAN_MONTHLY_PAYMENT_REQUIRED：沒帶 monthlyPayment，而且 interestRate 沒帶或為 null；或 outstandingBalance 是 0（算不出大於 0 的月付）。前端表單一律帶 monthlyPayment（用試算結果預填）。\n\n結清日早於台北今天時 status 必須是 closed，否則回 LOAN_END_DATE_IN_PAST；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。",
+        "description": "沒帶 monthlyPayment 時，後端依年利率自動計算（期數規則同試算，用 body 的 paymentDay）。以下情況回 LOAN_MONTHLY_PAYMENT_REQUIRED：沒帶 monthlyPayment，而且 interestRate 沒帶或為 null；或算不出大於 0 的月付（例如 outstandingBalance 是 0）。前端表單一律帶 monthlyPayment（用試算結果預填）。\n\n有帶 monthlyPayment 就照存，不檢查是否等於試算結果，也不要求小於未償餘額。\n\n結清日早於台北今天時 status 必須是 closed，否則回 LOAN_END_DATE_IN_PAST；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。\n\nstatus 是 closed 時不檢查 outstandingBalance，照存使用者填的值；已結清的貸款不算進淨資產與 Dashboard（D-E-003）。",
         "operationId": "Loans_create",
         "parameters": [],
         "requestBody": {
@@ -384,16 +376,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -401,7 +383,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】新增貸款",
+        "summary": "新增貸款",
         "tags": [
           "loans"
         ]
@@ -409,7 +391,7 @@
     },
     "/api/v1/loans/{id}": {
       "get": {
-        "description": "不存在、屬於他人或 id 不是 UUID，一律回 404。",
+        "description": "已結清的貸款也查得到。不存在、屬於他人或 id 不是 UUID，一律回 404。",
         "operationId": "Loans_findOne",
         "parameters": [
           {
@@ -452,16 +434,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -469,13 +441,13 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得單筆貸款",
+        "summary": "取得單筆貸款",
         "tags": [
           "loans"
         ]
       },
       "patch": {
-        "description": "沒傳的欄位保持原值；interestRate、note 傳 null 代表清空，其他欄位傳 null 回 400。\n\n不自動重算 monthlyPayment：前端改了餘額、利率或結清日時，自己重新試算並帶上新的月付。\n\n用「原值合併請求」後的結果檢查：status 不是 closed 而且結清日早於台北今天，回 LOAN_END_DATE_IN_PAST（包含把 closed 改回 active 但結清日沒改）；結清日晚於台北今天加 50 年回 VALIDATION_FAILED。\n\n請求有帶 outstandingBalance 就更新 balanceUpdatedAt，即使數字相同。",
+        "description": "沒傳的欄位保持原值；interestRate、note 傳 null 代表清空，其他欄位傳 null 回 400。\n\n不自動重算 monthlyPayment（D-E-001）：沒帶就保持原值。前端改了餘額、利率、結清日或繳款日時，自己重新試算，讓使用者決定要不要套用新的月付。\n\nendDate 或 status 跟原值不同時，才用「原值合併請求」後的結果檢查：status 不是 closed 而且結清日早於台北今天，回 LOAN_END_DATE_IN_PAST（包含把 closed 改回 active 但結清日沒改）。比對的是值：整份送出、endDate 寫同一天不算改；結清日已過但只改其他欄位不擋（D-E-004）。\n\n合併後的結清日晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。\n\nstatus 是 closed 時不檢查、也不自動改 outstandingBalance（D-E-003）。\n\noutstandingBalance 跟原值不同才更新 balanceUpdatedAt；沒帶或數字相同（\"317200\" 和 \"317200.00\" 視為相同）都不動。",
         "operationId": "Loans_update",
         "parameters": [
           {
@@ -538,16 +510,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -555,7 +517,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】修改貸款",
+        "summary": "修改貸款",
         "tags": [
           "loans"
         ]
@@ -597,16 +559,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -614,7 +566,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】刪除貸款（不會刪除帳單）",
+        "summary": "刪除貸款（不會刪除帳單）",
         "tags": [
           "loans"
         ]
@@ -713,16 +665,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -730,7 +672,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】列出帳單",
+        "summary": "列出帳單",
         "tags": [
           "bills"
         ]
@@ -789,16 +731,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -806,7 +738,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】新增帳單",
+        "summary": "新增帳單",
         "tags": [
           "bills"
         ]
@@ -857,16 +789,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -874,7 +796,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取得單筆帳單",
+        "summary": "取得單筆帳單",
         "tags": [
           "bills"
         ]
@@ -953,16 +875,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -970,7 +882,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】修改帳單",
+        "summary": "修改帳單",
         "tags": [
           "bills"
         ]
@@ -1022,16 +934,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1039,7 +941,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】刪除帳單（只限待繳）",
+        "summary": "刪除帳單（只限待繳）",
         "tags": [
           "bills"
         ]
@@ -1306,84 +1208,6 @@
         "summary": "【未實作】停止重複",
         "tags": [
           "bills"
-        ]
-      }
-    },
-    "/api/v1/onboarding": {
-      "post": {
-        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
-        "operationId": "Onboarding_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateOnboardingDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GoalProgressDto"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`ONBOARDING_ALREADY_DONE`：已經完成問卷了",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "【未實作】送出問卷（建立目標與估計帳戶）",
-        "tags": [
-          "onboarding"
         ]
       }
     },
@@ -1807,6 +1631,84 @@
         "summary": "列出分類",
         "tags": [
           "categories"
+        ]
+      }
+    },
+    "/api/v1/onboarding": {
+      "post": {
+        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
+        "operationId": "Onboarding_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOnboardingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalProgressDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_ALREADY_DONE`：已經完成問卷了",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】送出問卷（建立目標與估計帳戶）",
+        "tags": [
+          "onboarding"
         ]
       }
     },
@@ -2732,7 +2634,7 @@
           "installments": {
             "type": "integer",
             "minimum": 1,
-            "description": "剩餘期數：台北本月到結清日所在月份（含頭尾），至少 1",
+            "description": "剩餘期數：台北今天（含）到結清日（含）之間的還款日個數，至少 1（D-E-002）",
             "example": 60
           }
         },
@@ -2819,7 +2721,7 @@
           "balanceUpdatedAt": {
             "type": "string",
             "format": "date-time",
-            "description": "最後一次更新未償餘額的時間（請求有帶 outstandingBalance 就更新，即使數字相同）",
+            "description": "最後一次更新未償餘額的時間：新增時，或修改時 outstandingBalance 跟原值不同時更新。前端用它算「X 天前」，超過 45 天提醒",
             "example": "2026-10-24T02:30:00.000Z"
           },
           "note": {
@@ -3378,244 +3280,6 @@
           "bill"
         ]
       },
-      "CreateOnboardingDto": {
-        "type": "object",
-        "properties": {
-          "monthlySpending": {
-            "type": "integer",
-            "minimum": 1000,
-            "maximum": 333000,
-            "description": "財富自由後每月想花多少，整數 1,000–333,000",
-            "example": 40000
-          },
-          "currentAssets": {
-            "type": "integer",
-            "nullable": true,
-            "minimum": 0,
-            "maximum": 100000000,
-            "description": "現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）",
-            "example": 800000
-          }
-        },
-        "required": [
-          "monthlySpending"
-        ]
-      },
-      "MilestoneDto": {
-        "type": "object",
-        "properties": {
-          "index": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "第幾站，從 1 開始",
-            "example": 1
-          },
-          "amount": {
-            "type": "string",
-            "description": "這一站的金額，金額字串",
-            "example": "100000.00"
-          },
-          "label": {
-            "type": "string",
-            "example": "緊急預備金"
-          },
-          "reached": {
-            "type": "boolean",
-            "description": "目前金額 ≥ 這一站",
-            "example": true
-          }
-        },
-        "required": [
-          "index",
-          "amount",
-          "label",
-          "reached"
-        ]
-      },
-      "NextMilestoneDto": {
-        "type": "object",
-        "properties": {
-          "index": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "第幾站，從 1 開始",
-            "example": 1
-          },
-          "amount": {
-            "type": "string",
-            "description": "這一站的金額，金額字串",
-            "example": "100000.00"
-          },
-          "label": {
-            "type": "string",
-            "example": "緊急預備金"
-          },
-          "reached": {
-            "type": "boolean",
-            "description": "目前金額 ≥ 這一站",
-            "example": true
-          },
-          "remaining": {
-            "type": "string",
-            "description": "再存多少就到這一站，金額字串，> 0",
-            "example": "200000.00"
-          }
-        },
-        "required": [
-          "index",
-          "amount",
-          "label",
-          "reached",
-          "remaining"
-        ]
-      },
-      "FireAgeStatus": {
-        "type": "string",
-        "enum": [
-          "ok",
-          "achieved",
-          "need_birth_year",
-          "need_saving",
-          "unreachable",
-          "over_100"
-        ]
-      },
-      "SavingSource": {
-        "type": "string",
-        "enum": [
-          "actual",
-          "estimate"
-        ],
-        "description": "年儲蓄的來源；annualSaving 是 null 時也是 null"
-      },
-      "FireAssumptionsDto": {
-        "type": "object",
-        "properties": {
-          "annualSpending": {
-            "type": "string",
-            "description": "年支出 ＝ 每月花費 × 12，金額字串",
-            "example": "480000.00"
-          },
-          "annualSaving": {
-            "type": "string",
-            "nullable": true,
-            "description": "年儲蓄，金額字串；沒有實際記帳也沒有自估值時是 null",
-            "example": "180000.00"
-          },
-          "savingSource": {
-            "nullable": true,
-            "description": "年儲蓄的來源；annualSaving 是 null 時也是 null",
-            "example": "estimate",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SavingSource"
-              }
-            ]
-          },
-          "currentAssets": {
-            "type": "string",
-            "description": "現在資產 ＝ 帳戶合計（未扣除貸款），金額字串",
-            "example": "800000.00"
-          },
-          "age": {
-            "type": "integer",
-            "nullable": true,
-            "description": "年齡 ＝ 台北的今年 − 出生年；沒有出生年時是 null",
-            "example": 36
-          }
-        },
-        "required": [
-          "annualSpending",
-          "annualSaving",
-          "savingSource",
-          "currentAssets",
-          "age"
-        ]
-      },
-      "GoalProgressDto": {
-        "type": "object",
-        "properties": {
-          "targetAmount": {
-            "type": "string",
-            "description": "目標金額，金額字串",
-            "example": "12000000.00"
-          },
-          "currentAmount": {
-            "type": "string",
-            "description": "目前金額 ＝ 帳戶合計（PRD 15.1），可為負，金額字串",
-            "example": "800000.00"
-          },
-          "remaining": {
-            "type": "string",
-            "description": "還差多少 ＝ max(0, 目標 − 目前)，金額字串",
-            "example": "11200000.00"
-          },
-          "percent": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100,
-            "description": "達成百分比，小數一位；≤ 0 時 0，≥ 目標時 100",
-            "example": 6.7
-          },
-          "achieved": {
-            "type": "boolean",
-            "description": "目前金額 ≥ 目標金額",
-            "example": false
-          },
-          "milestones": {
-            "description": "由小到大，最後一站是目標金額",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MilestoneDto"
-            }
-          },
-          "nextMilestone": {
-            "nullable": true,
-            "description": "下一個還沒到的站；全部達成時是 null",
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/NextMilestoneDto"
-              }
-            ]
-          },
-          "fireAge": {
-            "type": "integer",
-            "nullable": true,
-            "description": "財富自由年齡；fireAgeStatus 不是 ok 時是 null",
-            "example": 51
-          },
-          "fireAgeStatus": {
-            "example": "ok",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/FireAgeStatus"
-              }
-            ]
-          },
-          "fireAssumptions": {
-            "$ref": "#/components/schemas/FireAssumptionsDto"
-          },
-          "activeLoanTotal": {
-            "type": "string",
-            "description": "active 貸款的未償餘額合計，金額字串；> 0 時前端顯示「目前資產未扣除貸款 X 元」",
-            "example": "0.00"
-          }
-        },
-        "required": [
-          "targetAmount",
-          "currentAmount",
-          "remaining",
-          "percent",
-          "achieved",
-          "milestones",
-          "nextMilestone",
-          "fireAge",
-          "fireAgeStatus",
-          "fireAssumptions",
-          "activeLoanTotal"
-        ]
-      },
       "AccountType": {
         "type": "string",
         "enum": [
@@ -3857,6 +3521,244 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "CreateOnboardingDto": {
+        "type": "object",
+        "properties": {
+          "monthlySpending": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 333000,
+            "description": "財富自由後每月想花多少，整數 1,000–333,000",
+            "example": 40000
+          },
+          "currentAssets": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100000000,
+            "description": "現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）",
+            "example": 800000
+          }
+        },
+        "required": [
+          "monthlySpending"
+        ]
+      },
+      "MilestoneDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "第幾站，從 1 開始",
+            "example": 1
+          },
+          "amount": {
+            "type": "string",
+            "description": "這一站的金額，金額字串",
+            "example": "100000.00"
+          },
+          "label": {
+            "type": "string",
+            "example": "緊急預備金"
+          },
+          "reached": {
+            "type": "boolean",
+            "description": "目前金額 ≥ 這一站",
+            "example": true
+          }
+        },
+        "required": [
+          "index",
+          "amount",
+          "label",
+          "reached"
+        ]
+      },
+      "NextMilestoneDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "第幾站，從 1 開始",
+            "example": 1
+          },
+          "amount": {
+            "type": "string",
+            "description": "這一站的金額，金額字串",
+            "example": "100000.00"
+          },
+          "label": {
+            "type": "string",
+            "example": "緊急預備金"
+          },
+          "reached": {
+            "type": "boolean",
+            "description": "目前金額 ≥ 這一站",
+            "example": true
+          },
+          "remaining": {
+            "type": "string",
+            "description": "再存多少就到這一站，金額字串，> 0",
+            "example": "200000.00"
+          }
+        },
+        "required": [
+          "index",
+          "amount",
+          "label",
+          "reached",
+          "remaining"
+        ]
+      },
+      "FireAgeStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "achieved",
+          "need_birth_year",
+          "need_saving",
+          "unreachable",
+          "over_100"
+        ]
+      },
+      "SavingSource": {
+        "type": "string",
+        "enum": [
+          "actual",
+          "estimate"
+        ],
+        "description": "年儲蓄的來源；annualSaving 是 null 時也是 null"
+      },
+      "FireAssumptionsDto": {
+        "type": "object",
+        "properties": {
+          "annualSpending": {
+            "type": "string",
+            "description": "年支出 ＝ 每月花費 × 12，金額字串",
+            "example": "480000.00"
+          },
+          "annualSaving": {
+            "type": "string",
+            "nullable": true,
+            "description": "年儲蓄，金額字串；沒有實際記帳也沒有自估值時是 null",
+            "example": "180000.00"
+          },
+          "savingSource": {
+            "nullable": true,
+            "description": "年儲蓄的來源；annualSaving 是 null 時也是 null",
+            "example": "estimate",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SavingSource"
+              }
+            ]
+          },
+          "currentAssets": {
+            "type": "string",
+            "description": "現在資產 ＝ 帳戶合計（未扣除貸款），金額字串",
+            "example": "800000.00"
+          },
+          "age": {
+            "type": "integer",
+            "nullable": true,
+            "description": "年齡 ＝ 台北的今年 − 出生年；沒有出生年時是 null",
+            "example": 36
+          }
+        },
+        "required": [
+          "annualSpending",
+          "annualSaving",
+          "savingSource",
+          "currentAssets",
+          "age"
+        ]
+      },
+      "GoalProgressDto": {
+        "type": "object",
+        "properties": {
+          "targetAmount": {
+            "type": "string",
+            "description": "目標金額，金額字串",
+            "example": "12000000.00"
+          },
+          "currentAmount": {
+            "type": "string",
+            "description": "目前金額 ＝ 帳戶合計（PRD 15.1），可為負，金額字串",
+            "example": "800000.00"
+          },
+          "remaining": {
+            "type": "string",
+            "description": "還差多少 ＝ max(0, 目標 − 目前)，金額字串",
+            "example": "11200000.00"
+          },
+          "percent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "達成百分比，小數一位；≤ 0 時 0，≥ 目標時 100",
+            "example": 6.7
+          },
+          "achieved": {
+            "type": "boolean",
+            "description": "目前金額 ≥ 目標金額",
+            "example": false
+          },
+          "milestones": {
+            "description": "由小到大，最後一站是目標金額",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MilestoneDto"
+            }
+          },
+          "nextMilestone": {
+            "nullable": true,
+            "description": "下一個還沒到的站；全部達成時是 null",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NextMilestoneDto"
+              }
+            ]
+          },
+          "fireAge": {
+            "type": "integer",
+            "nullable": true,
+            "description": "財富自由年齡；fireAgeStatus 不是 ok 時是 null",
+            "example": 51
+          },
+          "fireAgeStatus": {
+            "example": "ok",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FireAgeStatus"
+              }
+            ]
+          },
+          "fireAssumptions": {
+            "$ref": "#/components/schemas/FireAssumptionsDto"
+          },
+          "activeLoanTotal": {
+            "type": "string",
+            "description": "active 貸款的未償餘額合計，金額字串；> 0 時前端顯示「目前資產未扣除貸款 X 元」",
+            "example": "0.00"
+          }
+        },
+        "required": [
+          "targetAmount",
+          "currentAmount",
+          "remaining",
+          "percent",
+          "achieved",
+          "milestones",
+          "nextMilestone",
+          "fireAge",
+          "fireAgeStatus",
+          "fireAssumptions",
+          "activeLoanTotal"
         ]
       },
       "GoalDto": {

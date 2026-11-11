@@ -30,7 +30,7 @@
 
 | 代碼                     | HTTP | 訊息                             | 何時發生                                                                   | details.field | 測試位置                                                                                               |
 | ------------------------ | ---- | -------------------------------- | -------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
-| `AUTH_UNAUTHENTICATED`   | 401  | 請先登入                         | 沒帶 token、token 無效或過期；沒指定代碼的 401                             | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
+| `AUTH_UNAUTHENTICATED`   | 401  | 請先登入                         | 沒帶 token、token 無效或過期；沒指定代碼的 401                             | `[]`          | `all-exceptions.filter.spec.ts`、`test/auth.e2e-spec.ts`、`test/auth-guard-coverage.e2e-spec.ts`       |
 | `BAD_REQUEST`            | 400  | 請求格式不正確                   | JSON 解析失敗、body-parser 的 400；沒指定代碼的 400                        | `[]`          | `test/errors.e2e-spec.ts`                                                                              |
 | `CONFLICT`               | 409  | 資料狀態已變更，請重新整理後再試 | 沒指定代碼的 409                                                           | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
 | `FORBIDDEN`              | 403  | 沒有權限執行這個操作             | guard 回 `false` 時 Nest 丟的 `ForbiddenException`                         | `[]`          | `all-exceptions.filter.spec.ts`                                                                        |
@@ -44,13 +44,13 @@
 
 ## 共用驗證（INF-4）
 
-| 代碼                  | HTTP | 訊息                  | 何時發生                   | details.field | 測試位置                                            |
-| --------------------- | ---- | --------------------- | -------------------------- | ------------- | --------------------------------------------------- |
-| `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`    | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
-| `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議） | 金額欄位      | `validation.spec.ts`                                |
-| `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`            | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
+| 代碼                  | HTTP | 訊息                  | 何時發生                                                                                                                | details.field | 測試位置                                                                                    |
+| --------------------- | ---- | --------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------- |
+| `AMOUNT_INVALID`      | 400  | 金額格式不正確        | `@IsMoney` 的 `isMoney`                                                                                                 | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts`                                         |
+| `AMOUNT_NEGATIVE`     | 400  | 金額不可為負數        | `moneyNonNegative`（提議）                                                                                              | 金額欄位      | `validation.spec.ts`                                                                        |
+| `AMOUNT_NOT_POSITIVE` | 400  | 金額必須大於 0        | `moneyPositive`                                                                                                         | 金額欄位      | `validation.spec.ts`、`test/validation.e2e-spec.ts`                                         |
 | `AMOUNT_OVERFLOW`     | 400  | 金額超出可記錄的範圍  | 寫入時資料庫數值溢位（PostgreSQL 22003、Prisma P2020）。金額超過 `numeric(14,2)` 是其中一種；利率、整數溢位也會看到這句 | `[]`          | `database-exception.spec.ts`、`all-exceptions.filter.spec.ts`、`test/db-errors.e2e-spec.ts` |
-| `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`      | `name`        | `validation.spec.ts`、`test/validation.e2e-spec.ts` |
+| `NAME_INVALID`        | 400  | 名稱需為 1 到 30 個字 | `@IsName` 的 `isName`                                                                                                   | `name`        | `validation.spec.ts`、`test/validation.e2e-spec.ts`                                         |
 
 ## auth（D）
 
@@ -61,10 +61,10 @@
 
 ## onboarding（D）
 
-| 代碼                      | HTTP | 訊息           | 何時發生                                             | details.field | 測試位置 |
-| ------------------------- | ---- | -------------- | ---------------------------------------------------- | ------------- | -------- |
-| `ONBOARDING_ALREADY_DONE` | 409  | 已經完成問卷了 | 問卷重送；第二個估計帳戶（含把既有帳戶改成估計） | `[]`          | `database-exception.spec.ts`、`test/db-errors.e2e-spec.ts` |
-| `ONBOARDING_REQUIRED`     | 409  | 請先完成問卷   | 還沒完成問卷就呼叫 `/goal`、`/goal/progress`（提議） | `[]`          | —        |
+| 代碼                      | HTTP | 訊息           | 何時發生                                             | details.field | 測試位置                                                   |
+| ------------------------- | ---- | -------------- | ---------------------------------------------------- | ------------- | ---------------------------------------------------------- |
+| `ONBOARDING_ALREADY_DONE` | 409  | 已經完成問卷了 | 問卷重送；第二個估計帳戶（含把既有帳戶改成估計）     | `[]`          | `database-exception.spec.ts`、`test/db-errors.e2e-spec.ts` |
+| `ONBOARDING_REQUIRED`     | 409  | 請先完成問卷   | 還沒完成問卷就呼叫 `/goal`、`/goal/progress`（提議） | `[]`          | —                                                          |
 
 ## accounts（C）
 
@@ -94,18 +94,18 @@
 
 ## bills（E）
 
-| 代碼                     | HTTP | 訊息                               | 何時發生                                                                           | details.field | 測試位置 |
-| ------------------------ | ---- | ---------------------------------- | ---------------------------------------------------------------------------------- | ------------- | -------- |
-| `BILL_ALREADY_PAID`      | 409  | 這張帳單已經繳過了                 | 重複繳費；修改已繳帳單名稱與備註以外的欄位（值和現值相同的欄位不算）；刪除已繳帳單 | `[]`          | —        |
-| `BILL_NOT_FOUND`         | 404  | 找不到這張帳單                     | 路徑的 `:id` 不存在、屬於他人或不是 UUID                                           | `[]`          | BILL-1   |
-| `BILL_NOT_PAID`          | 409  | 這張帳單還沒繳費                   | 對待繳帳單取消繳費                                                                 | `[]`          | —        |
-| `NEXT_BILL_ALREADY_PAID` | 409  | 下一期帳單已經繳費，不能取消這一期 | 取消繳費，但同系列之後的帳單已繳                                                   | `[]`          | —        |
-| `PAID_DATE_IN_FUTURE`    | 400  | 繳費日期不可晚於今天               | 繳費時 `paidDate` 晚於台北今天                                                     | `paidDate`    | —        |
+| 代碼                     | HTTP | 訊息                               | 何時發生                                                                           | details.field | 測試位置                                       |
+| ------------------------ | ---- | ---------------------------------- | ---------------------------------------------------------------------------------- | ------------- | ---------------------------------------------- |
+| `BILL_ALREADY_PAID`      | 409  | 這張帳單已經繳過了                 | 重複繳費；修改已繳帳單名稱與備註以外的欄位（值和現值相同的欄位不算）；刪除已繳帳單 | `[]`          | `test/bills.e2e-spec.ts`（修改、刪除已繳帳單） |
+| `BILL_NOT_FOUND`         | 404  | 找不到這張帳單                     | 路徑的 `:id` 不存在、屬於他人或不是 UUID                                           | `[]`          | `test/bills.e2e-spec.ts`                       |
+| `BILL_NOT_PAID`          | 409  | 這張帳單還沒繳費                   | 對待繳帳單取消繳費                                                                 | `[]`          | —                                              |
+| `NEXT_BILL_ALREADY_PAID` | 409  | 下一期帳單已經繳費，不能取消這一期 | 取消繳費，但同系列之後的帳單已繳                                                   | `[]`          | —                                              |
+| `PAID_DATE_IN_FUTURE`    | 400  | 繳費日期不可晚於今天               | 繳費時 `paidDate` 晚於台北今天                                                     | `paidDate`    | —                                              |
 
 ## loans（E）
 
-| 代碼                            | HTTP | 訊息                                             | 何時發生                                                                                                                      | details.field    | 測試位置 |
-| ------------------------------- | ---- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ---------------- | -------- |
-| `LOAN_END_DATE_IN_PAST`         | 400  | 結清日已經過了，請修改結清日，或把狀態設為已結清 | 新增或修改（合併後）時 `endDate` 早於台北今天，但 `status` 不是 `closed`；包含把 `closed` 改回 `active` 但結清日沒改（提議）  | `endDate`        | —        |
-| `LOAN_MONTHLY_PAYMENT_REQUIRED` | 400  | 沒有填年利率時，請自己填每月還款                 | 新增時沒帶 `monthlyPayment`，而且 `interestRate` 沒帶或為 `null`，或 `outstandingBalance` 是 0（算不出大於 0 的月付）（提議） | `monthlyPayment` | —        |
-| `LOAN_NOT_FOUND`                | 404  | 找不到這筆貸款                                   | 路徑的 `:id` 不存在、屬於他人或不是 UUID                                                                                      | `[]`             | LOAN-1   |
+| 代碼                            | HTTP | 訊息                                             | 何時發生                                                                                                                                                       | details.field    | 測試位置                 |
+| ------------------------------- | ---- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------ |
+| `LOAN_END_DATE_IN_PAST`         | 400  | 結清日已經過了，請修改結清日，或把狀態設為已結清 | 新增時，或修改時 `endDate`、`status` 跟原值不同（D-E-004），合併後 `endDate` 早於台北今天但 `status` 不是 `closed`；包含把 `closed` 改回 `active` 但結清日沒改 | `endDate`        | `test/loans.e2e-spec.ts` |
+| `LOAN_MONTHLY_PAYMENT_REQUIRED` | 400  | 沒有填年利率時，請自己填每月還款                 | 新增時沒帶 `monthlyPayment`，而且 `interestRate` 沒帶或為 `null`，或算不出大於 0 的月付（例如 `outstandingBalance` 是 0）                                      | `monthlyPayment` | `test/loans.e2e-spec.ts` |
+| `LOAN_NOT_FOUND`                | 404  | 找不到這筆貸款                                   | 路徑的 `:id` 不存在、屬於他人或不是 UUID                                                                                                                       | `[]`             | `test/loans.e2e-spec.ts` |

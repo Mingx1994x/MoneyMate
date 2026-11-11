@@ -5,6 +5,7 @@
  * 前端驗證只為體驗，規則跟後端 RegisterDto 一致；後端回的欄位錯誤（details）顯示在對應欄位下面。
  */
 import { errorText, fieldErrors } from '~/lib/api-error'
+import { validateEmail } from '~/lib/email'
 
 definePageMeta({ layout: 'auth' })
 
@@ -17,14 +18,12 @@ const errors = ref<{ email?: string; password?: string; displayName?: string }>(
 const error = ref<string | null>(null)
 const loading = ref(false)
 
-// 後端規則：Email 只接受 ASCII；密碼 8 字元以上、72 bytes 以內（bcrypt 上限，一個中文字佔 3 bytes）
-const EMAIL_RE = /^[\x21-\x7e]+@[\x21-\x7e]+\.[\x21-\x7e]+$/
+// 後端規則：Email 只接受 ASCII（~/lib/email）；密碼 8 字元以上、72 bytes 以內（bcrypt 上限，一個中文字佔 3 bytes）
 const passwordBytes = computed(() => new TextEncoder().encode(password.value).length)
 
 function validate() {
-  const e = email.value.trim()
   errors.value = {
-    email: !e ? '請輸入 Email' : !EMAIL_RE.test(e) || e.length > 254 ? 'Email 格式不正確（只能用英文、數字和符號）' : undefined,
+    email: validateEmail(email.value),
     password:
       password.value.length < 8 ? '密碼至少 8 個字元' : passwordBytes.value > 72 ? '密碼太長了（中文字每個算 3 個字元，上限 72）' : undefined,
     displayName: displayName.value.trim().length > 30 ? '名稱最多 30 個字' : undefined,

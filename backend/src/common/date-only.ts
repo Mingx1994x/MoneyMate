@@ -109,6 +109,22 @@ export function dayInMonth(m: MonthString, day: number): DateOnly {
   return `${monthStart(m).slice(0, 8)}${String(Math.min(day, lastDay)).padStart(2, '0')}`;
 }
 
+/**
+ * 加減年數（n 為整數，可為負）；2/29 遇到平年用 2/28。用在「不可晚於台北今天加 50 年」這類上限。
+ * 日期不合法或結果超出 1900–2999 時丟錯。
+ */
+export function addYears(d: DateOnly, n: number): DateOnly {
+  if (!Number.isInteger(n)) {
+    throw new Error('addYears: 年數必須是整數');
+  }
+  const year = Number(monthOf(d).slice(0, 4)) + n;
+  const m = `${year}-${d.slice(5, 7)}`;
+  if (!isMonthString(m)) {
+    throw new Error('addYears: 結果超出 1900–2999');
+  }
+  return dayInMonth(m, Number(d.slice(8, 10)));
+}
+
 /** to − from 的天數（to 較早時為負）。日期不合法時丟錯。 */
 export function daysBetween(from: DateOnly, to: DateOnly): number {
   return (toDbDate(to).getTime() - toDbDate(from).getTime()) / DAY_MS;

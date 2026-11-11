@@ -279,3 +279,38 @@ describe('JWT_SECRET', () => {
     expect(message).not.toContain(secret);
   });
 });
+
+// AUTH-1（E）：e2e 都用 vi.stubEnv 調過門檻，這裡確認正式環境不設時就是 PRD FR-03 的數字
+describe('登入次數限制（PRD FR-03）', () => {
+  it('沒設時預設每個 IP 每分鐘 10 次、每個 Email 15 分鐘失敗 5 次', () => {
+    const env = validateEnv(valid);
+    expect(env.AUTH_IP_LIMIT_PER_MINUTE).toBe(10);
+    expect(env.LOGIN_FAILURE_LIMIT).toBe(5);
+    expect(env.LOGIN_FAILURE_WINDOW_SECONDS).toBe(900);
+  });
+
+  it('有設時照設定（字串轉成數字）', () => {
+    const env = validateEnv({
+      ...valid,
+      AUTH_IP_LIMIT_PER_MINUTE: '1000',
+      LOGIN_FAILURE_LIMIT: '2',
+      LOGIN_FAILURE_WINDOW_SECONDS: '60',
+    });
+    expect(env.AUTH_IP_LIMIT_PER_MINUTE).toBe(1000);
+    expect(env.LOGIN_FAILURE_LIMIT).toBe(2);
+    expect(env.LOGIN_FAILURE_WINDOW_SECONDS).toBe(60);
+  });
+
+  it.each([
+    ['AUTH_IP_LIMIT_PER_MINUTE', '0'],
+    ['AUTH_IP_LIMIT_PER_MINUTE', 'abc'],
+    ['LOGIN_FAILURE_LIMIT', '-1'],
+    ['LOGIN_FAILURE_LIMIT', '1.5'],
+    ['LOGIN_FAILURE_WINDOW_SECONDS', '0'],
+    ['LOGIN_FAILURE_WINDOW_SECONDS', 'abc'],
+  ])('%s=%j 失敗', (key, raw) => {
+    expect(() => validateEnv({ ...valid, [key]: raw })).toThrow(
+      new RegExp(key),
+    );
+  });
+});

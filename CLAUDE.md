@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 專案概要
 
-Money Mate：5 人小組課程專案的個人財務網站（記帳、帳戶、貸款、帳單、財富自由目標）。需求以 `docs/PRD-v0.5.10-完整版.md` 為準，角色代號 A–E 的分工見 PRD 第二十節。
+Money Mate：5 人小組課程專案的個人財務網站（記帳、帳戶、貸款、帳單、財富自由目標）。需求以 `docs/PRD-v0.5.11-完整版.md` 為準，角色代號 A–E 的分工見 PRD 第二十節。
 
 - `backend/`：NestJS 12（ESM）＋ Prisma 7 ＋ PostgreSQL 16。
 - `frontend/`：Nuxt，尚未建立。
