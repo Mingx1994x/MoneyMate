@@ -1,6 +1,11 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ClockService } from '../../clock/clock.service.js';
-import { fromDbDate, toDbDate, type DateOnly } from '../../common/date-only.js';
+import {
+  addDays,
+  fromDbDate,
+  toDbDate,
+  type DateOnly,
+} from '../../common/date-only.js';
 import { AppException } from '../../common/errors/app.exception.js';
 import { toMoney } from '../../common/money.js';
 import {
@@ -14,6 +19,7 @@ import {
 } from '../../prisma/index.js';
 import { AccountsService } from '../accounts/index.js';
 import { CategoriesService } from '../categories/index.js';
+import { DUE_SOON_DAYS, summarizeBillAlerts } from './bill-alerts.js';
 import type { BillAlerts } from './bill-alerts.types.js';
 import { toBillResponse } from './bill-mapper.js';
 import {
@@ -32,7 +38,7 @@ import type { CreateBillDto } from './dto/create-bill.dto.js';
 import type { UpdateBillDto } from './dto/update-bill.dto.js';
 
 /**
- * 帳單：CRUD（BILL-2）、列表（BILL-3）。繳費、取消繳費、停止重複在 BILL-5～7 加入。
+ * 帳單：CRUD（BILL-2）、列表（BILL-3），以及 Dashboard 的帳單區塊（BILL-9）。繳費、取消繳費、停止重複在 BILL-5～7 加入。
  * - 端點方法開頭從 ClockService 取一次今天，往下傳。
  * - 查詢一律帶 userId；不存在、屬於他人一律 404 BILL_NOT_FOUND。
  * - 修改、刪除先鎖定整個系列（FOR UPDATE），鎖定後重新讀取再判斷：等鎖的期間狀態可能已經變了。
@@ -251,11 +257,29 @@ export class BillsService {
   }
 
   /**
-   * Dashboard 的帳單區塊（規則見 bill-alerts.types.ts）。today 由呼叫端用 ClockService 取得，這裡不取時間。
-   * 只讀帳單表，不呼叫 C 的 service；資金缺口由 C 用 dueTotal 計算（Q3）。
+   * Dashboard 的帳單區塊（BILL-9，規則見 bill-alerts.types.ts）。today 由呼叫端用 ClockService 取得，這裡不取時間。
+   * 只讀這位使用者待繳、到期日不晚於今天＋14 天的帳單（逾期的不論多久都算）；計算在 summarizeBillAlerts。
+   * 不呼叫 C 的 service；資金缺口由 C 用 dueTotal 計算（Q3）。
    */
-  getBillAlerts(_userId: string, _today: DateOnly): Promise<BillAlerts> {
-    throw new NotImplementedException();
+  async getBillAlerts(userId: string, today: DateOnly): Promise<BillAlerts> {
+    const rows = await this.prisma.bill.findMany({
+      where: {
+        userId,
+        status: BillStatus.pending,
+        dueDate: { lte: toDbDate(addDays(today, DUE_SOON_DAYS)) },
+      },
+      select: {
+        id: true,
+        name: true,
+        amount: true,
+        dueDate: true,
+        accountId: true,
+      },
+    });
+    return summarizeBillAlerts(
+      rows.map((r) => ({ ...r, dueDate: fromDbDate(r.dueDate) })),
+      today,
+    );
   }
 
   private async findOwned(userId: string, id: string): Promise<Bill> {
