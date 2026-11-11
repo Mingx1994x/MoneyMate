@@ -2,10 +2,10 @@ import type { INestApplication } from '@nestjs/common';
 import type { App } from 'supertest/types.js';
 import { databaseException } from '../src/common/errors/database-exception.js';
 import {
-  ESTIMATE_ACCOUNT_NAME,
+  SAVINGS_ACCOUNT_NAME,
   OnboardingService,
 } from '../src/modules/onboarding/onboarding.service.js';
-import { AccountType, Prisma, PrismaService } from '../src/prisma/index.js';
+import { AccountType, PrismaService } from '../src/prisma/index.js';
 import { createTestApp } from './utils/create-test-app.js';
 import { createUser, resetDb } from './utils/db.js';
 
@@ -41,7 +41,7 @@ describe('問卷寫入（OnboardingService，e2e）', () => {
     await app.close();
   });
 
-  it('AC-15：建立目標（每月 4 萬 → 1,200 萬）與估計帳戶（80 萬）', async () => {
+  it('AC-15：建立目標（每月 4 萬 → 1,200 萬）與一般的銀行帳戶「現有存款」（80 萬，D-D-004）', async () => {
     await onboarding.submit(userId, {
       monthlySpending: 40000,
       currentAssets: 800000,
@@ -57,9 +57,9 @@ describe('問卷寫入（OnboardingService，e2e）', () => {
     const accounts = await prisma.account.findMany({ where: { userId } });
     expect(accounts).toHaveLength(1);
     expect(accounts[0]).toMatchObject({
-      name: ESTIMATE_ACCOUNT_NAME,
+      name: SAVINGS_ACCOUNT_NAME,
       accountType: AccountType.bank,
-      isEstimate: true,
+      isEstimate: false,
       isActive: true,
       deductedFromEstimate: null,
     });
@@ -69,20 +69,38 @@ describe('問卷寫入（OnboardingService，e2e）', () => {
   it.each([
     ['省略', {}],
     ['null', { currentAssets: null }],
-  ])('跳過 Q2（currentAssets %s）→ 估計帳戶 0 元', async (_, q2) => {
-    await onboarding.submit(userId, { monthlySpending: 30000, ...q2 });
+    ['0', { currentAssets: 0 }],
+  ])(
+    '跳過 Q2（currentAssets %s）→ 只建目標，不建帳戶（D-D-004）',
+    async (_, q2) => {
+      await onboarding.submit(userId, { monthlySpending: 30000, ...q2 });
 
-    const account = await prisma.account.findFirstOrThrow({
-      where: { userId, isEstimate: true },
+      expect(await counts()).toEqual({ goals: 1, accounts: 0 });
+    },
+  );
+
+  it('不再建立估計帳戶（D-D-004）', async () => {
+    await onboarding.submit(userId, {
+      monthlySpending: 40000,
+      currentAssets: 800000,
     });
-    expect(account.openingBalance.toFixed(2)).toBe('0.00');
+
+    expect(
+      await prisma.account.count({ where: { userId, isEstimate: true } }),
+    ).toBe(0);
   });
 
   it('已經完成問卷再送一次 → ONBOARDING_ALREADY_DONE，不會多一筆', async () => {
-    await onboarding.submit(userId, { monthlySpending: 40000 });
+    await onboarding.submit(userId, {
+      monthlySpending: 40000,
+      currentAssets: 100000,
+    });
 
     await expect(
-      onboarding.submit(userId, { monthlySpending: 50000 }),
+      onboarding.submit(userId, {
+        monthlySpending: 50000,
+        currentAssets: 100000,
+      }),
     ).rejects.toMatchObject({ code: 'ONBOARDING_ALREADY_DONE' });
 
     expect(await counts()).toEqual({ goals: 1, accounts: 1 });
@@ -93,7 +111,7 @@ describe('問卷寫入（OnboardingService，e2e）', () => {
   it('同時送出 5 次 → 只有 1 次成功，其他都是 ONBOARDING_ALREADY_DONE', async () => {
     const results = await Promise.allSettled(
       [30000, 40000, 50000, 80000, 100000].map((monthlySpending) =>
-        onboarding.submit(userId, { monthlySpending }),
+        onboarding.submit(userId, { monthlySpending, currentAssets: 100000 }),
       ),
     );
 
@@ -106,30 +124,26 @@ describe('問卷寫入（OnboardingService，e2e）', () => {
     expect(await counts()).toEqual({ goals: 1, accounts: 1 });
   });
 
-  it('估計帳戶建立失敗 → 目標也不會留下（同一個交易）', async () => {
-    // 先放一個估計帳戶，問卷建第二個時 createAccount 會丟 CONFLICT
-    await prisma.account.create({
-      data: {
-        userId,
-        name: '舊的估計帳戶',
-        accountType: AccountType.bank,
-        openingBalance: new Prisma.Decimal(0),
-        isEstimate: true,
-      },
-    });
-
+  it('帳戶建立失敗 → 目標也不會留下（同一個交易）', async () => {
+    // 繞過 DTO 傳負數：銀行帳戶的初始餘額不能是負的，createAccount 會丟 OPENING_BALANCE_NEGATIVE
     await expect(
-      onboarding.submit(userId, { monthlySpending: 40000 }),
-    ).rejects.toMatchObject({ code: 'CONFLICT' });
+      onboarding.submit(userId, { monthlySpending: 40000, currentAssets: -1 }),
+    ).rejects.toMatchObject({ code: 'OPENING_BALANCE_NEGATIVE' });
 
-    expect(await counts()).toEqual({ goals: 0, accounts: 1 });
+    expect(await counts()).toEqual({ goals: 0, accounts: 0 });
   });
 
   it('只寫入自己的資料：別人已完成問卷不影響我', async () => {
     const otherId = await createUser(prisma, 'd-onboarding-other@example.com');
-    await onboarding.submit(otherId, { monthlySpending: 40000 });
+    await onboarding.submit(otherId, {
+      monthlySpending: 40000,
+      currentAssets: 100000,
+    });
 
-    await onboarding.submit(userId, { monthlySpending: 30000 });
+    await onboarding.submit(userId, {
+      monthlySpending: 30000,
+      currentAssets: 100000,
+    });
 
     expect(await counts()).toEqual({ goals: 1, accounts: 1 });
   });

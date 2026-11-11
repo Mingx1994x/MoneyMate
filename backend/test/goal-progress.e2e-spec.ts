@@ -185,7 +185,7 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
       ).toEqual(['100000.00', '750000.00', '1000000.00', '1500000.00']);
     });
 
-    it('目前金額只算啟用帳戶，含估計帳戶；停用帳戶不算', async () => {
+    it('目前金額只算啟用帳戶（含問卷建立的「現有存款」）；停用帳戶不算', async () => {
       await onboard(userId, { monthlySpending: 40000, currentAssets: 800000 });
       await createAccount(userId, AccountType.investment, '200000.00');
       await createAccount(userId, AccountType.bank, '0.00', false);

@@ -1636,7 +1636,7 @@
     },
     "/api/v1/onboarding": {
       "post": {
-        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
+        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300）；currentAssets > 0 時，再呼叫 C 的 createAccount 建立一般的銀行帳戶「現有存款」（餘額 ＝ currentAssets）。不建立估計帳戶；跳過 Q2（省略、null）或填 0 時不建立帳戶（D-D-004）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
         "operationId": "Onboarding_create",
         "parameters": [],
         "requestBody": {
@@ -1696,7 +1696,7 @@
             "bearer": []
           }
         ],
-        "summary": "送出問卷（建立目標與估計帳戶）",
+        "summary": "送出問卷（建立目標與「現有存款」帳戶）",
         "tags": [
           "onboarding"
         ]
@@ -3518,7 +3518,7 @@
             "nullable": true,
             "minimum": 0,
             "maximum": 100000000,
-            "description": "現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）",
+            "description": "現在大概有多少存款，整數 0–100,000,000。> 0 時建立一般的銀行帳戶「現有存款」（不是估計帳戶，D-D-004）；省略、null 或 0 時不建立帳戶",
             "example": 800000
           }
         },
