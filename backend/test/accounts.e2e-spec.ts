@@ -398,18 +398,390 @@ describe('帳戶 API（e2e）', () => {
     });
   });
 
-  describe('還沒實作的端點（W3）', () => {
-    it.each([
-      ['patch', { name: '台新銀行' }],
-      ['delete', undefined],
-    ] as const)('%s 回 501 NOT_IMPLEMENTED', async (method, body) => {
-      await api()
-        [method](`/api/v1/accounts/${NOT_EXIST}`)
+  describe('PATCH /accounts/:id', () => {
+    let bankId: string;
+    let foodId: string;
+    const patch = (id: string, body: Record<string, unknown>) =>
+      api()
+        .patch(`/api/v1/accounts/${id}`)
         .set('Authorization', auth)
-        .send(body)
-        .expect(501);
+        .send(body);
+    const make = async (
+      accountType: AccountType,
+      openingBalance: string,
+      isActive = true,
+    ) =>
+      (
+        await prisma.account.create({
+          data: {
+            userId,
+            name: accountType,
+            accountType,
+            openingBalance: new Prisma.Decimal(openingBalance),
+            isActive,
+          },
+        })
+      ).id;
+    const expense = (accountId: string, amount: string, date = TODAY) =>
+      createTransaction(prisma, {
+        userId,
+        accountId,
+        transactionType: TransactionType.expense,
+        amount,
+        categoryId: foodId,
+        transactionDate: date,
+      });
+
+    beforeEach(async () => {
+      bankId = await make(AccountType.bank, '10000');
+      foodId = await createCategory(prisma, 'food', CategoryType.expense);
     });
 
+    it('改名稱、備註：沒傳的欄位保持原值', async () => {
+      const res = await patch(bankId, { name: ' 台新 ', note: '薪轉' }).expect(
+        200,
+      );
+      expect(res.body).toMatchObject({
+        id: bankId,
+        name: '台新',
+        note: '薪轉',
+        accountType: 'bank',
+        openingBalance: '10000.00',
+        isActive: true,
+      });
+      const res2 = await patch(bankId, { note: null }).expect(200);
+      expect(res2.body).toMatchObject({ name: '台新', note: null });
+    });
+
+    it('改初始餘額：目前餘額跟著變（PRD 15.11）', async () => {
+      await expense(bankId, '3000');
+      const res = await patch(bankId, { openingBalance: '20000' }).expect(200);
+      expect(res.body).toMatchObject({
+        openingBalance: '20000.00',
+        currentBalance: '17000.00',
+      });
+    });
+
+    it.each([
+      ['bank', AccountType.bank, 400],
+      ['cash', AccountType.cash, 400],
+      ['investment', AccountType.investment, 400],
+      ['credit_card', AccountType.credit_card, 200],
+    ])('%s 初始餘額改成負數：%i', async (_name, type, status) => {
+      const id = await make(type, '0');
+      const res = await patch(id, { openingBalance: '-100' }).expect(status);
+      if (status === 400) {
+        expect(res.body).toMatchObject({
+          code: 'OPENING_BALANCE_NEGATIVE',
+          details: [{ field: 'openingBalance' }],
+        });
+      }
+    });
+
+    it('估計帳戶的初始餘額可以改成負數', async () => {
+      const estimate = await createEstimate('1000');
+      await patch(estimate.id, { openingBalance: '-100' }).expect(200);
+    });
+
+    it.each([
+      ['name', 'NAME_INVALID'],
+      ['openingBalance', 'AMOUNT_INVALID'],
+      ['isActive', 'VALIDATION_FAILED'],
+    ])('%s 傳 null：400 %s', async (field, code) => {
+      const res = await patch(bankId, { [field]: null }).expect(400);
+      expect(res.body).toMatchObject({ code, details: [{ field }] });
+    });
+
+    it('accountType 不能改：400', async () => {
+      await patch(bankId, { accountType: 'cash' }).expect(400);
+    });
+
+    it('停用：餘額 0、沒有未來交易 → 停用成功，GET 預設不列出', async () => {
+      await expense(bankId, '10000');
+      const res = await patch(bankId, { isActive: false }).expect(200);
+      expect(res.body).toMatchObject({
+        isActive: false,
+        currentBalance: '0.00',
+      });
+      const list = await api()
+        .get('/api/v1/accounts')
+        .set('Authorization', auth)
+        .expect(200);
+      expect(names(list.body)).not.toContain('bank');
+    });
+
+    it('停用：還有餘額 → 409 ACCOUNT_DEACTIVATE_BLOCKED（field isActive），帳戶照舊', async () => {
+      const res = await patch(bankId, { isActive: false }).expect(409);
+      expect(res.body).toMatchObject({
+        code: 'ACCOUNT_DEACTIVATE_BLOCKED',
+        details: [{ field: 'isActive' }],
+      });
+      const row = await prisma.account.findUniqueOrThrow({
+        where: { id: bankId },
+      });
+      expect(row.isActive).toBe(true);
+    });
+
+    it('停用：餘額 0 但有未來日期的交易 → 409（AC-03）', async () => {
+      await expense(bankId, '10000');
+      await createTransaction(prisma, {
+        userId,
+        accountId: await make(AccountType.cash, '500'),
+        toAccountId: bankId,
+        transactionType: TransactionType.transfer,
+        amount: '500',
+        transactionDate: '2026-11-05',
+      });
+      await patch(bankId, { isActive: false }).expect(409);
+    });
+
+    it('同一個請求把初始餘額改成 0 再停用：用改完的餘額判斷', async () => {
+      const res = await patch(bankId, {
+        openingBalance: '0',
+        isActive: false,
+      }).expect(200);
+      expect(res.body).toMatchObject({
+        isActive: false,
+        openingBalance: '0.00',
+      });
+    });
+
+    it('停用被擋時，同一個請求的其他修改也不生效', async () => {
+      await patch(bankId, { name: '新名稱', isActive: false }).expect(409);
+      const row = await prisma.account.findUniqueOrThrow({
+        where: { id: bankId },
+      });
+      expect(row.name).toBe('bank');
+    });
+
+    it('信用卡欠款還沒繳清（餘額負數）也不能停用', async () => {
+      const card = await make(AccountType.credit_card, '-500');
+      await patch(card, { isActive: false }).expect(409);
+    });
+
+    it('停用的帳戶：只帶 isActive = true → 重新啟用', async () => {
+      const id = await make(AccountType.bank, '0', false);
+      const res = await patch(id, { isActive: true }).expect(200);
+      expect(res.body).toMatchObject({ isActive: true });
+    });
+
+    it('停用的帳戶：帶了其他欄位 → 409 ACCOUNT_INACTIVE，什麼都沒改（先重新啟用再修改）', async () => {
+      const id = await make(AccountType.bank, '0', false);
+      for (const body of [
+        { name: '改名' },
+        { openingBalance: '100' },
+        { name: '改名', isActive: true },
+      ]) {
+        const res = await patch(id, body).expect(409);
+        expect(res.body).toMatchObject({ code: 'ACCOUNT_INACTIVE' });
+      }
+      const row = await prisma.account.findUniqueOrThrow({ where: { id } });
+      expect(row).toMatchObject({ name: 'bank', isActive: false });
+    });
+
+    it('別人的帳戶、不存在的帳戶：404 ACCOUNT_NOT_FOUND', async () => {
+      const otherId = await createUser(prisma, 'c-other@example.com');
+      const res = await api()
+        .patch(`/api/v1/accounts/${bankId}`)
+        .set('Authorization', await bearer(app, otherId))
+        .send({ name: '偷改' })
+        .expect(404);
+      expect(res.body).toMatchObject({ code: 'ACCOUNT_NOT_FOUND' });
+      await patch(NOT_EXIST, { name: 'x' }).expect(404);
+      const row = await prisma.account.findUniqueOrThrow({
+        where: { id: bankId },
+      });
+      expect(row.name).toBe('bank');
+    });
+
+    it('停用後不能再新增它的交易（AC-26）', async () => {
+      await expense(bankId, '10000');
+      await patch(bankId, { isActive: false }).expect(200);
+      const res = await api()
+        .post('/api/v1/transactions')
+        .set('Authorization', auth)
+        .send({
+          transactionType: 'expense',
+          amount: '1',
+          accountId: bankId,
+          categoryId: foodId,
+        })
+        .expect(409);
+      expect(res.body).toMatchObject({ code: 'ACCOUNT_INACTIVE' });
+    });
+  });
+
+  describe('DELETE /accounts/:id', () => {
+    const del = (id: string, query = '') =>
+      api().delete(`/api/v1/accounts/${id}${query}`).set('Authorization', auth);
+    const make = async (openingBalance = '1000') =>
+      (
+        await prisma.account.create({
+          data: {
+            userId,
+            name: '銀行',
+            accountType: 'bank',
+            openingBalance: new Prisma.Decimal(openingBalance),
+          },
+        })
+      ).id;
+
+    it('沒有交易、沒有帳單：204，之後查不到', async () => {
+      const id = await make();
+      const res = await del(id).expect(204);
+      expect(res.body).toEqual({});
+      await api()
+        .get(`/api/v1/accounts/${id}`)
+        .set('Authorization', auth)
+        .expect(404);
+    });
+
+    it.each([
+      ['轉出', 'from'],
+      ['轉入', 'to'],
+      ['未來日期', 'future'],
+    ])('有交易（%s）：409 ACCOUNT_IN_USE，帳戶還在', async (_name, kind) => {
+      const id = await make();
+      const other = await make();
+      await createTransaction(prisma, {
+        userId,
+        accountId: kind === 'to' ? other : id,
+        toAccountId: kind === 'to' ? id : other,
+        transactionType: TransactionType.transfer,
+        amount: '1',
+        transactionDate: kind === 'future' ? '2026-12-01' : TODAY,
+      });
+      const res = await del(id).expect(409);
+      expect(res.body).toMatchObject({ code: 'ACCOUNT_IN_USE', details: [] });
+      expect(await prisma.account.count({ where: { id } })).toBe(1);
+    });
+
+    it('被帳單使用：409 ACCOUNT_IN_USE', async () => {
+      const id = await make();
+      const food = await createCategory(prisma, 'food', CategoryType.expense);
+      await prisma.bill.create({
+        data: {
+          userId,
+          name: '電話費',
+          amount: 500,
+          categoryId: food,
+          accountId: id,
+          dueDate: new Date('2026-11-05T00:00:00Z'),
+          dueDay: 5,
+        },
+      });
+      const res = await del(id).expect(409);
+      expect(res.body).toMatchObject({ code: 'ACCOUNT_IN_USE' });
+    });
+
+    it('別人的帳戶：404，而且沒有被刪掉', async () => {
+      const id = await make();
+      const otherId = await createUser(prisma, 'c-other@example.com');
+      const res = await api()
+        .delete(`/api/v1/accounts/${id}`)
+        .set('Authorization', await bearer(app, otherId))
+        .expect(404);
+      expect(res.body).toMatchObject({ code: 'ACCOUNT_NOT_FOUND' });
+      expect(await prisma.account.count({ where: { id } })).toBe(1);
+      await del(NOT_EXIST).expect(404);
+    });
+
+    it('停用的帳戶沒有交易時也可以刪', async () => {
+      const id = await make('0');
+      await prisma.account.update({ where: { id }, data: { isActive: false } });
+      await del(id).expect(204);
+    });
+
+    it('估計帳戶也可以刪除（D-D-004）', async () => {
+      const estimate = await createEstimate('500000');
+      await del(estimate.id).expect(204);
+    });
+
+    describe('addBackToEstimate（PRD 15.9）', () => {
+      const postDeducted = async (openingBalance: string) => {
+        const res = await api()
+          .post('/api/v1/accounts')
+          .set('Authorization', auth)
+          .send({
+            name: '真實帳戶',
+            accountType: 'bank',
+            openingBalance,
+            deductFromEstimate: true,
+          })
+          .expect(201);
+        return (res.body as { id: string }).id;
+      };
+      const estimateRow = (id: string) =>
+        prisma.account.findUniqueOrThrow({ where: { id } });
+
+      it('true：扣掉的 10 萬加回估計帳戶', async () => {
+        const estimate = await createEstimate('500000');
+        const id = await postDeducted('100000');
+        await del(id, '?addBackToEstimate=true').expect(204);
+        const after = await estimateRow(estimate.id);
+        expect(after.openingBalance.toFixed(2)).toBe('500000.00');
+      });
+
+      it('true：估計帳戶被扣到 0 而停用 → 加回後重新啟用', async () => {
+        const estimate = await createEstimate('50000');
+        const id = await postDeducted('100000');
+        expect((await estimateRow(estimate.id)).isActive).toBe(false);
+        await del(id, '?addBackToEstimate=true').expect(204);
+        const after = await estimateRow(estimate.id);
+        expect(after.openingBalance.toFixed(2)).toBe('50000.00');
+        expect(after.isActive).toBe(true);
+      });
+
+      it('沒帶或 false：不加回', async () => {
+        const estimate = await createEstimate('500000');
+        const a = await postDeducted('100000');
+        const b = await postDeducted('100000');
+        await del(a).expect(204);
+        await del(b, '?addBackToEstimate=false').expect(204);
+        const after = await estimateRow(estimate.id);
+        expect(after.openingBalance.toFixed(2)).toBe('300000.00');
+      });
+
+      it('帳戶沒有扣除紀錄：忽略，不加回', async () => {
+        const estimate = await createEstimate('500000');
+        const id = await make('100000');
+        await del(id, '?addBackToEstimate=true').expect(204);
+        const after = await estimateRow(estimate.id);
+        expect(after.openingBalance.toFixed(2)).toBe('500000.00');
+      });
+
+      it('估計帳戶已經刪掉：照常刪除，不報錯', async () => {
+        const estimate = await createEstimate('500000');
+        const id = await postDeducted('100000');
+        await del(estimate.id).expect(204);
+        await del(id, '?addBackToEstimate=true').expect(204);
+      });
+
+      it('addBackToEstimate 不是布林值：400 VALIDATION_FAILED', async () => {
+        const id = await make();
+        const res = await del(id, '?addBackToEstimate=yes').expect(400);
+        expect(res.body).toMatchObject({ code: 'VALIDATION_FAILED' });
+      });
+
+      it('有交易時就算帶 true 也不加回（整個請求不生效）', async () => {
+        const estimate = await createEstimate('500000');
+        const id = await postDeducted('100000');
+        await createTransaction(prisma, {
+          userId,
+          accountId: id,
+          toAccountId: await make(),
+          transactionType: TransactionType.transfer,
+          amount: '1',
+          transactionDate: TODAY,
+        });
+        await del(id, '?addBackToEstimate=true').expect(409);
+        const after = await estimateRow(estimate.id);
+        expect(after.openingBalance.toFixed(2)).toBe('400000.00');
+      });
+    });
+  });
+
+  describe(':id 格式', () => {
     it.each(['get', 'patch', 'delete'] as const)(
       '%s 的 :id 不是 UUID 時回 404 ACCOUNT_NOT_FOUND',
       async (method) => {

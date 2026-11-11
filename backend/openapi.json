@@ -1458,16 +1458,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1475,13 +1465,13 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】修改、停用或重新啟用帳戶",
+        "summary": "修改、停用或重新啟用帳戶",
         "tags": [
           "accounts"
         ]
       },
       "delete": {
-        "description": "只限沒有任何交易（轉出或轉入）、也沒有被帳單使用的帳戶，否則回 ACCOUNT_IN_USE，請改用停用。\n\n帶 addBackToEstimate=true 而且帳戶有 deductedFromEstimate 時，在同一個資料庫交易內把金額加回估計帳戶；估計帳戶已停用就重新啟用（PRD 15.9）。沒帶或 false 時不加回。",
+        "description": "只限沒有任何交易（轉出或轉入）、也沒有被帳單使用的帳戶，否則回 ACCOUNT_IN_USE，請改用停用。估計帳戶也可以刪除（D-D-004）。\n\n帶 addBackToEstimate=true 而且帳戶有 deductedFromEstimate 時，在同一個資料庫交易內把金額加回估計帳戶；估計帳戶已停用就重新啟用（PRD 15.9）。沒帶或 false 時不加回。",
         "operationId": "Accounts_remove",
         "parameters": [
           {
@@ -1548,16 +1538,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1565,7 +1545,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】刪除帳戶",
+        "summary": "刪除帳戶",
         "tags": [
           "accounts"
         ]
