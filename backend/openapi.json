@@ -1636,7 +1636,7 @@
     },
     "/api/v1/onboarding": {
       "post": {
-        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
+        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300）；currentAssets > 0 時，再呼叫 C 的 createAccount 建立一般的銀行帳戶「現有存款」（餘額 ＝ currentAssets）。不建立估計帳戶；跳過 Q2（省略、null）或填 0 時不建立帳戶（D-D-004）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
         "operationId": "Onboarding_create",
         "parameters": [],
         "requestBody": {
@@ -1689,16 +1689,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1706,7 +1696,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】送出問卷（建立目標與估計帳戶）",
+        "summary": "送出問卷（建立目標與「現有存款」帳戶）",
         "tags": [
           "onboarding"
         ]
@@ -1827,7 +1817,7 @@
     },
     "/api/v1/goal/progress": {
       "get": {
-        "description": "目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。\n\n里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。\n\n年儲蓄：有 3 個以上完整月的記帳時，用最近最多 6 個完整月的平均（savingSource: actual）；否則用 estMonthlySaving（estimate）；都沒有時 fireAgeStatus 是 need_saving。\n\n狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。",
+        "description": "目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。\n\n里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。\n\n年儲蓄：最近 6 個完整月（不含本月）裡有記帳（收入或支出不是 0）的月有 3 個以上時，用那些月的平均（收入 − 支出）× 12（savingSource: actual），沒記帳的月不算進平均；否則用 estMonthlySaving × 12（estimate）；都沒有時 fireAgeStatus 是 need_saving。\n\n狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。",
         "operationId": "Goals_progress",
         "parameters": [],
         "responses": {
@@ -1860,16 +1850,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1877,7 +1857,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】目標進度與財富自由年齡",
+        "summary": "目標進度與財富自由年齡",
         "tags": [
           "goal"
         ]
@@ -3538,7 +3518,7 @@
             "nullable": true,
             "minimum": 0,
             "maximum": 100000000,
-            "description": "現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）",
+            "description": "現在大概有多少存款，整數 0–100,000,000。> 0 時建立一般的銀行帳戶「現有存款」（不是估計帳戶，D-D-004）；省略、null 或 0 時不建立帳戶",
             "example": 800000
           }
         },
