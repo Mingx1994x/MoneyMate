@@ -98,8 +98,7 @@ npm run typecheck    # 頁面用到不存在或改名的欄位會報錯
 ```
 
 - 後端合併了新的 API（`openapi.json` 有變）之後，前端在下一個 PR 執行 `npm run api:types` 並 commit。
-- CI 會用 PR 裡的 `openapi.json` 重新產生型別再 typecheck：後端改名或刪掉前端還在用的欄位時 CI 失敗。
-- 進版控的型別檔過期時：PR 有改 `frontend/` 就失敗（合併最新的 `dev` 再執行 `npm run api:types` 並 commit 就會過）；只改 `openapi.json` 的後端 PR 只出現警告。
+- CI 會用 PR 裡的 `openapi.json` 重新產生型別再 typecheck：後端改名或刪掉前端還在用的欄位時 CI 失敗；進版控的型別檔過期只會出現警告。
 - 貸款、帳單的型別暫時手寫（後端還是 501），#60、#61 接 API 時改用產生的型別。
 
 ### 跟 PRD 對齊的重點
