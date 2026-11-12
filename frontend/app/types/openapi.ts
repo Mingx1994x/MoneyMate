@@ -125,16 +125,20 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 【未實作】列出貸款
+         * 列出貸款
          * @description 包含已結清的貸款，不分頁。排序：active 在前，同一組內依 createdAt 由新到舊，相同時再依 id。
          */
         get: operations["Loans_findAll"];
         put?: never;
         /**
-         * 【未實作】新增貸款
-         * @description 沒帶 monthlyPayment 時，後端依年利率自動計算。以下情況回 LOAN_MONTHLY_PAYMENT_REQUIRED：沒帶 monthlyPayment，而且 interestRate 沒帶或為 null；或 outstandingBalance 是 0（算不出大於 0 的月付）。前端表單一律帶 monthlyPayment（用試算結果預填）。
+         * 新增貸款
+         * @description 沒帶 monthlyPayment 時，後端依年利率自動計算（期數規則同試算，用 body 的 paymentDay）。以下情況回 LOAN_MONTHLY_PAYMENT_REQUIRED：沒帶 monthlyPayment，而且 interestRate 沒帶或為 null；或算不出大於 0 的月付（例如 outstandingBalance 是 0）。前端表單一律帶 monthlyPayment（用試算結果預填）。
+         *
+         *     有帶 monthlyPayment 就照存，不檢查是否等於試算結果，也不要求小於未償餘額。
          *
          *     結清日早於台北今天時 status 必須是 closed，否則回 LOAN_END_DATE_IN_PAST；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。
+         *
+         *     status 是 closed 時不檢查 outstandingBalance，照存使用者填的值；已結清的貸款不算進淨資產與 Dashboard（D-E-003）。
          */
         post: operations["Loans_create"];
         delete?: never;
@@ -151,28 +155,32 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 【未實作】取得單筆貸款
-         * @description 不存在、屬於他人或 id 不是 UUID，一律回 404。
+         * 取得單筆貸款
+         * @description 已結清的貸款也查得到。不存在、屬於他人或 id 不是 UUID，一律回 404。
          */
         get: operations["Loans_findOne"];
         put?: never;
         post?: never;
         /**
-         * 【未實作】刪除貸款（不會刪除帳單）
+         * 刪除貸款（不會刪除帳單）
          * @description active 的貸款也可以刪。貸款和帳單、交易沒有關聯，刪除不影響它們。
          */
         delete: operations["Loans_remove"];
         options?: never;
         head?: never;
         /**
-         * 【未實作】修改貸款
+         * 修改貸款
          * @description 沒傳的欄位保持原值；interestRate、note 傳 null 代表清空，其他欄位傳 null 回 400。
          *
-         *     不自動重算 monthlyPayment：前端改了餘額、利率或結清日時，自己重新試算並帶上新的月付。
+         *     不自動重算 monthlyPayment（D-E-001）：沒帶就保持原值。前端改了餘額、利率、結清日或繳款日時，自己重新試算，讓使用者決定要不要套用新的月付。
          *
-         *     用「原值合併請求」後的結果檢查：status 不是 closed 而且結清日早於台北今天，回 LOAN_END_DATE_IN_PAST（包含把 closed 改回 active 但結清日沒改）；結清日晚於台北今天加 50 年回 VALIDATION_FAILED。
+         *     endDate 或 status 跟原值不同時，才用「原值合併請求」後的結果檢查：status 不是 closed 而且結清日早於台北今天，回 LOAN_END_DATE_IN_PAST（包含把 closed 改回 active 但結清日沒改）。比對的是值：整份送出、endDate 寫同一天不算改；結清日已過但只改其他欄位不擋（D-E-004）。
          *
-         *     請求有帶 outstandingBalance 就更新 balanceUpdatedAt，即使數字相同。
+         *     合併後的結清日晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。
+         *
+         *     status 是 closed 時不檢查、也不自動改 outstandingBalance（D-E-003）。
+         *
+         *     outstandingBalance 跟原值不同才更新 balanceUpdatedAt；沒帶或數字相同（"317200" 和 "317200.00" 視為相同）都不動。
          */
         patch: operations["Loans_update"];
         trace?: never;
@@ -185,7 +193,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 【未實作】列出帳單
+         * 列出帳單
          * @description status 篩選 pending、paid、overdue；overdue 是待繳且到期日早於台北今天（計算出來的，不是資料庫欄位）。dueFrom、dueTo 篩選到期日（含頭尾，不是繳費日），dueFrom 晚於 dueTo 回 VALIDATION_FAILED（field: dueFrom）。
          *
          *     排序：待繳在前，依 dueDate 由近到遠；已繳在後，依 dueDate 由新到舊；相同時再依 id。指定 status 時只套用該組的排序。
@@ -193,7 +201,7 @@ export interface paths {
         get: operations["Bills_findAll"];
         put?: never;
         /**
-         * 【未實作】新增帳單
+         * 新增帳單
          * @description 建立的帳單一律是待繳；不能建立已繳的帳單（要補記請記一筆交易）。dueDate 在過去也可以建立，建立後就是逾期；晚於台北今天加 50 年回 VALIDATION_FAILED（field: dueDate）。
          *
          *     recurrence 沒帶是 none。dueDay、dueMonth 由後端從 dueDate 取：dueDay 是日；recurrence 是 yearly 時 dueMonth 是月，否則是 null。
@@ -215,21 +223,21 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 【未實作】取得單筆帳單
+         * 取得單筆帳單
          * @description 不存在、屬於他人或 id 不是 UUID，一律回 404。已繳的帳單也可以讀。
          */
         get: operations["Bills_findOne"];
         put?: never;
         post?: never;
         /**
-         * 【未實作】刪除帳單（只限待繳）
+         * 刪除帳單（只限待繳）
          * @description 已繳的帳單回 BILL_ALREADY_PAID，要先取消繳費。待繳帳單是系列的最新一期，刪除後系列不再產生下一期，已繳的歷史保留。
          */
         delete: operations["Bills_remove"];
         options?: never;
         head?: never;
         /**
-         * 【未實作】修改帳單
+         * 修改帳單
          * @description 沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。
          *
          *     已繳的帳單只能改 name、note：其他欄位的值和現值不同時回 BILL_ALREADY_PAID，相同的忽略（前端送出整張表單也不會失敗）。amount 用數值比較，'15000' 和 '15000.00' 視為相同。
@@ -309,30 +317,6 @@ export interface paths {
          *     系列沒有待繳帳單時什麼都不做，回 stopped: false、bill: null。
          */
         post: operations["Bills_stopRecurrence"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/onboarding": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * 【未實作】送出問卷（建立目標與估計帳戶）
-         * @description 同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。
-         *
-         *     已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。
-         *
-         *     回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。
-         */
-        post: operations["Onboarding_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -425,6 +409,30 @@ export interface paths {
         get: operations["Categories_findAll"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 【未實作】送出問卷（建立目標與估計帳戶）
+         * @description 同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。
+         *
+         *     已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。
+         *
+         *     回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。
+         */
+        post: operations["Onboarding_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -744,7 +752,7 @@ export interface components {
             status: components["schemas"]["LoanStatus"];
             /**
              * Format: date-time
-             * @description 最後一次更新未償餘額的時間（請求有帶 outstandingBalance 就更新，即使數字相同）
+             * @description 最後一次更新未償餘額的時間：新增時，或修改時 outstandingBalance 跟原值不同時更新。前端用它算「X 天前」，超過 45 天提醒
              * @example 2026-10-24T02:30:00.000Z
              */
             balanceUpdatedAt: string;
@@ -1062,139 +1070,6 @@ export interface components {
             /** @description 保留時是改成不重複後的待繳帳單；刪除或沒有待繳帳單時是 null */
             bill: components["schemas"]["BillResponseDto"] | null;
         };
-        CreateOnboardingDto: {
-            /**
-             * @description 財富自由後每月想花多少，整數 1,000–333,000
-             * @example 40000
-             */
-            monthlySpending: number;
-            /**
-             * @description 現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）
-             * @example 800000
-             */
-            currentAssets?: number | null;
-        };
-        MilestoneDto: {
-            /**
-             * @description 第幾站，從 1 開始
-             * @example 1
-             */
-            index: number;
-            /**
-             * @description 這一站的金額，金額字串
-             * @example 100000.00
-             */
-            amount: string;
-            /** @example 緊急預備金 */
-            label: string;
-            /**
-             * @description 目前金額 ≥ 這一站
-             * @example true
-             */
-            reached: boolean;
-        };
-        NextMilestoneDto: {
-            /**
-             * @description 第幾站，從 1 開始
-             * @example 1
-             */
-            index: number;
-            /**
-             * @description 這一站的金額，金額字串
-             * @example 100000.00
-             */
-            amount: string;
-            /** @example 緊急預備金 */
-            label: string;
-            /**
-             * @description 目前金額 ≥ 這一站
-             * @example true
-             */
-            reached: boolean;
-            /**
-             * @description 再存多少就到這一站，金額字串，> 0
-             * @example 200000.00
-             */
-            remaining: string;
-        };
-        /** @enum {string} */
-        FireAgeStatus: "ok" | "achieved" | "need_birth_year" | "need_saving" | "unreachable" | "over_100";
-        /**
-         * @description 年儲蓄的來源；annualSaving 是 null 時也是 null
-         * @enum {string}
-         */
-        SavingSource: "actual" | "estimate";
-        FireAssumptionsDto: {
-            /**
-             * @description 年支出 ＝ 每月花費 × 12，金額字串
-             * @example 480000.00
-             */
-            annualSpending: string;
-            /**
-             * @description 年儲蓄，金額字串；沒有實際記帳也沒有自估值時是 null
-             * @example 180000.00
-             */
-            annualSaving: string | null;
-            /**
-             * @description 年儲蓄的來源；annualSaving 是 null 時也是 null
-             * @example estimate
-             */
-            savingSource: components["schemas"]["SavingSource"] | null;
-            /**
-             * @description 現在資產 ＝ 帳戶合計（未扣除貸款），金額字串
-             * @example 800000.00
-             */
-            currentAssets: string;
-            /**
-             * @description 年齡 ＝ 台北的今年 − 出生年；沒有出生年時是 null
-             * @example 36
-             */
-            age: number | null;
-        };
-        GoalProgressDto: {
-            /**
-             * @description 目標金額，金額字串
-             * @example 12000000.00
-             */
-            targetAmount: string;
-            /**
-             * @description 目前金額 ＝ 帳戶合計（PRD 15.1），可為負，金額字串
-             * @example 800000.00
-             */
-            currentAmount: string;
-            /**
-             * @description 還差多少 ＝ max(0, 目標 − 目前)，金額字串
-             * @example 11200000.00
-             */
-            remaining: string;
-            /**
-             * @description 達成百分比，小數一位；≤ 0 時 0，≥ 目標時 100
-             * @example 6.7
-             */
-            percent: number;
-            /**
-             * @description 目前金額 ≥ 目標金額
-             * @example false
-             */
-            achieved: boolean;
-            /** @description 由小到大，最後一站是目標金額 */
-            milestones: components["schemas"]["MilestoneDto"][];
-            /** @description 下一個還沒到的站；全部達成時是 null */
-            nextMilestone: components["schemas"]["NextMilestoneDto"] | null;
-            /**
-             * @description 財富自由年齡；fireAgeStatus 不是 ok 時是 null
-             * @example 51
-             */
-            fireAge: number | null;
-            /** @example ok */
-            fireAgeStatus: components["schemas"]["FireAgeStatus"];
-            fireAssumptions: components["schemas"]["FireAssumptionsDto"];
-            /**
-             * @description active 貸款的未償餘額合計，金額字串；> 0 時前端顯示「目前資產未扣除貸款 X 元」
-             * @example 0.00
-             */
-            activeLoanTotal: string;
-        };
         /** @enum {string} */
         AccountType: "cash" | "bank" | "investment" | "credit_card";
         AccountResponseDto: {
@@ -1330,6 +1205,139 @@ export interface components {
         };
         CategoryListResponseDto: {
             items: components["schemas"]["CategoryResponseDto"][];
+        };
+        CreateOnboardingDto: {
+            /**
+             * @description 財富自由後每月想花多少，整數 1,000–333,000
+             * @example 40000
+             */
+            monthlySpending: number;
+            /**
+             * @description 現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）
+             * @example 800000
+             */
+            currentAssets?: number | null;
+        };
+        MilestoneDto: {
+            /**
+             * @description 第幾站，從 1 開始
+             * @example 1
+             */
+            index: number;
+            /**
+             * @description 這一站的金額，金額字串
+             * @example 100000.00
+             */
+            amount: string;
+            /** @example 緊急預備金 */
+            label: string;
+            /**
+             * @description 目前金額 ≥ 這一站
+             * @example true
+             */
+            reached: boolean;
+        };
+        NextMilestoneDto: {
+            /**
+             * @description 第幾站，從 1 開始
+             * @example 1
+             */
+            index: number;
+            /**
+             * @description 這一站的金額，金額字串
+             * @example 100000.00
+             */
+            amount: string;
+            /** @example 緊急預備金 */
+            label: string;
+            /**
+             * @description 目前金額 ≥ 這一站
+             * @example true
+             */
+            reached: boolean;
+            /**
+             * @description 再存多少就到這一站，金額字串，> 0
+             * @example 200000.00
+             */
+            remaining: string;
+        };
+        /** @enum {string} */
+        FireAgeStatus: "ok" | "achieved" | "need_birth_year" | "need_saving" | "unreachable" | "over_100";
+        /**
+         * @description 年儲蓄的來源；annualSaving 是 null 時也是 null
+         * @enum {string}
+         */
+        SavingSource: "actual" | "estimate";
+        FireAssumptionsDto: {
+            /**
+             * @description 年支出 ＝ 每月花費 × 12，金額字串
+             * @example 480000.00
+             */
+            annualSpending: string;
+            /**
+             * @description 年儲蓄，金額字串；沒有實際記帳也沒有自估值時是 null
+             * @example 180000.00
+             */
+            annualSaving: string | null;
+            /**
+             * @description 年儲蓄的來源；annualSaving 是 null 時也是 null
+             * @example estimate
+             */
+            savingSource: components["schemas"]["SavingSource"] | null;
+            /**
+             * @description 現在資產 ＝ 帳戶合計（未扣除貸款），金額字串
+             * @example 800000.00
+             */
+            currentAssets: string;
+            /**
+             * @description 年齡 ＝ 台北的今年 − 出生年；沒有出生年時是 null
+             * @example 36
+             */
+            age: number | null;
+        };
+        GoalProgressDto: {
+            /**
+             * @description 目標金額，金額字串
+             * @example 12000000.00
+             */
+            targetAmount: string;
+            /**
+             * @description 目前金額 ＝ 帳戶合計（PRD 15.1），可為負，金額字串
+             * @example 800000.00
+             */
+            currentAmount: string;
+            /**
+             * @description 還差多少 ＝ max(0, 目標 − 目前)，金額字串
+             * @example 11200000.00
+             */
+            remaining: string;
+            /**
+             * @description 達成百分比，小數一位；≤ 0 時 0，≥ 目標時 100
+             * @example 6.7
+             */
+            percent: number;
+            /**
+             * @description 目前金額 ≥ 目標金額
+             * @example false
+             */
+            achieved: boolean;
+            /** @description 由小到大，最後一站是目標金額 */
+            milestones: components["schemas"]["MilestoneDto"][];
+            /** @description 下一個還沒到的站；全部達成時是 null */
+            nextMilestone: components["schemas"]["NextMilestoneDto"] | null;
+            /**
+             * @description 財富自由年齡；fireAgeStatus 不是 ok 時是 null
+             * @example 51
+             */
+            fireAge: number | null;
+            /** @example ok */
+            fireAgeStatus: components["schemas"]["FireAgeStatus"];
+            fireAssumptions: components["schemas"]["FireAssumptionsDto"];
+            /**
+             * @description active 貸款的未償餘額合計，金額字串；> 0 時前端顯示「目前資產未扣除貸款 X 元」
+             * @example 0.00
+             */
+            activeLoanTotal: string;
         };
         GoalDto: {
             /** @example 財富自由 */
@@ -1972,15 +1980,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Loans_create: {
@@ -2036,15 +2035,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Loans_findOne: {
@@ -2084,15 +2074,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Loans_remove: {
@@ -2123,15 +2104,6 @@ export interface operations {
             };
             /** @description `LOAN_NOT_FOUND`：找不到這筆貸款 */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2203,15 +2175,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Bills_findAll: {
@@ -2251,15 +2214,6 @@ export interface operations {
             };
             /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2331,15 +2285,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Bills_findOne: {
@@ -2372,15 +2317,6 @@ export interface operations {
             };
             /** @description `BILL_NOT_FOUND`：找不到這張帳單 */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2427,15 +2363,6 @@ export interface operations {
             };
             /** @description `BILL_ALREADY_PAID`：這張帳單已經繳過了 */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2515,15 +2442,6 @@ export interface operations {
              *     `BILL_ALREADY_PAID`：這張帳單已經繳過了
              */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2722,65 +2640,6 @@ export interface operations {
             };
             /** @description `BILL_NOT_FOUND`：找不到這張帳單 */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
-    Onboarding_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateOnboardingDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoalProgressDto"];
-                };
-            };
-            /** @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `ONBOARDING_ALREADY_DONE`：已經完成問卷了 */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3107,6 +2966,65 @@ export interface operations {
             };
             /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Onboarding_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOnboardingDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalProgressDto"];
+                };
+            };
+            /** @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `ONBOARDING_ALREADY_DONE`：已經完成問卷了 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
+            501: {
                 headers: {
                     [name: string]: unknown;
                 };
