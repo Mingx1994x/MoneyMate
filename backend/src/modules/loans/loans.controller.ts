@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   HttpCode,
-  NotImplementedException,
   Param,
   Patch,
   Post,
@@ -20,11 +19,8 @@ import {
 } from '@nestjs/swagger';
 import { ClockService } from '../../clock/clock.service.js';
 import { ParseIdPipe } from '../../common/id.js';
-import {
-  ApiAuth,
-  ApiErrors,
-  ApiNotImplemented,
-} from '../../common/swagger/api-decorators.js';
+import { ApiAuth, ApiErrors } from '../../common/swagger/api-decorators.js';
+import { CurrentUser, type AuthUser } from '../auth/index.js';
 import { CreateLoanDto } from './dto/create-loan.dto.js';
 import {
   LoanPaymentPreviewQueryDto,
@@ -38,12 +34,8 @@ import { UpdateLoanDto } from './dto/update-loan.dto.js';
 import { LoansService } from './loans.service.js';
 
 /**
- * 貸款端點。payment-preview 已實作（LOAN-4）；其他端點還是 LOAN-1 空殼，在 LOAN-2 實作。
- * 空殼的寫法（簽名、DTO 與 Swagger 標註是給 C、D 照著寫的範例）：
- * - 空殼的 handler 只丟 NotImplementedException（501），不寫 async（沒有 await 時 oxlint 會擋）。
- * - 沒用到的參數加 _ 前綴，實作時拿掉；@CurrentUser() 由 AUTH-1 提供，實作時再加。
- * - 實作 PR 要拿掉 @ApiNotImplemented()。
- * 各端點的行為約定寫在 @ApiOperation 的 description（前端在 Swagger UI 看得到），實作時照著做。
+ * 貸款端點（LOAN-2、LOAN-4）。各端點的行為約定寫在 @ApiOperation 的 description（前端在 Swagger UI 看得到）。
+ * 只能讀寫登入者自己的貸款；:id 不是 UUID、不存在、屬於他人一律 404 LOAN_NOT_FOUND。
  */
 @ApiTags('loans')
 @ApiAuth()
@@ -80,17 +72,18 @@ export class LoansController {
       '包含已結清的貸款，不分頁。排序：active 在前，同一組內依 createdAt 由新到舊，相同時再依 id。',
   })
   @ApiOkResponse({ type: LoanListResponseDto })
-  @ApiNotImplemented()
-  findAll(): LoanListResponseDto {
-    throw new NotImplementedException();
+  async findAll(@CurrentUser() user: AuthUser): Promise<LoanListResponseDto> {
+    return { items: await this.loans.findAll(user.id) };
   }
 
   @Post()
   @ApiOperation({
     summary: '新增貸款',
     description: [
-      '沒帶 monthlyPayment 時，後端依年利率自動計算。以下情況回 LOAN_MONTHLY_PAYMENT_REQUIRED：沒帶 monthlyPayment，而且 interestRate 沒帶或為 null；或 outstandingBalance 是 0（算不出大於 0 的月付）。前端表單一律帶 monthlyPayment（用試算結果預填）。',
+      '沒帶 monthlyPayment 時，後端依年利率自動計算（期數規則同試算，用 body 的 paymentDay）。以下情況回 LOAN_MONTHLY_PAYMENT_REQUIRED：沒帶 monthlyPayment，而且 interestRate 沒帶或為 null；或算不出大於 0 的月付（例如 outstandingBalance 是 0）。前端表單一律帶 monthlyPayment（用試算結果預填）。',
+      '有帶 monthlyPayment 就照存，不檢查是否等於試算結果，也不要求小於未償餘額。',
       '結清日早於台北今天時 status 必須是 closed，否則回 LOAN_END_DATE_IN_PAST；晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。',
+      'status 是 closed 時不檢查 outstandingBalance，照存使用者填的值；已結清的貸款不算進淨資產與 Dashboard（D-E-003）。',
     ].join('\n\n'),
   })
   @ApiCreatedResponse({ type: LoanResponseDto })
@@ -103,24 +96,27 @@ export class LoansController {
     'LOAN_END_DATE_IN_PAST',
     'LOAN_MONTHLY_PAYMENT_REQUIRED',
   )
-  @ApiNotImplemented()
-  create(@Body() _dto: CreateLoanDto): LoanResponseDto {
-    throw new NotImplementedException();
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateLoanDto,
+  ): Promise<LoanResponseDto> {
+    return this.loans.create(user.id, dto);
   }
 
   @Get(':id')
   @ApiOperation({
     summary: '取得單筆貸款',
-    description: '不存在、屬於他人或 id 不是 UUID，一律回 404。',
+    description:
+      '已結清的貸款也查得到。不存在、屬於他人或 id 不是 UUID，一律回 404。',
   })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ type: LoanResponseDto })
   @ApiErrors('LOAN_NOT_FOUND')
-  @ApiNotImplemented()
   findOne(
-    @Param('id', new ParseIdPipe('LOAN_NOT_FOUND')) _id: string,
-  ): LoanResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('LOAN_NOT_FOUND')) id: string,
+  ): Promise<LoanResponseDto> {
+    return this.loans.findOne(user.id, id);
   }
 
   @Patch(':id')
@@ -128,9 +124,11 @@ export class LoansController {
     summary: '修改貸款',
     description: [
       '沒傳的欄位保持原值；interestRate、note 傳 null 代表清空，其他欄位傳 null 回 400。',
-      '不自動重算 monthlyPayment：前端改了餘額、利率或結清日時，自己重新試算並帶上新的月付。',
-      '用「原值合併請求」後的結果檢查：status 不是 closed 而且結清日早於台北今天，回 LOAN_END_DATE_IN_PAST（包含把 closed 改回 active 但結清日沒改）；結清日晚於台北今天加 50 年回 VALIDATION_FAILED。',
-      '請求有帶 outstandingBalance 就更新 balanceUpdatedAt，即使數字相同。',
+      '不自動重算 monthlyPayment（D-E-001）：沒帶就保持原值。前端改了餘額、利率、結清日或繳款日時，自己重新試算，讓使用者決定要不要套用新的月付。',
+      'endDate 或 status 跟原值不同時，才用「原值合併請求」後的結果檢查：status 不是 closed 而且結清日早於台北今天，回 LOAN_END_DATE_IN_PAST（包含把 closed 改回 active 但結清日沒改）。比對的是值：整份送出、endDate 寫同一天不算改；結清日已過但只改其他欄位不擋（D-E-004）。',
+      '合併後的結清日晚於台北今天加 50 年回 VALIDATION_FAILED（field: endDate）。',
+      'status 是 closed 時不檢查、也不自動改 outstandingBalance（D-E-003）。',
+      'outstandingBalance 跟原值不同才更新 balanceUpdatedAt；沒帶或數字相同（"317200" 和 "317200.00" 視為相同）都不動。',
     ].join('\n\n'),
   })
   @ApiParam({ name: 'id', format: 'uuid' })
@@ -144,12 +142,12 @@ export class LoansController {
     'LOAN_END_DATE_IN_PAST',
     'LOAN_NOT_FOUND',
   )
-  @ApiNotImplemented()
   update(
-    @Param('id', new ParseIdPipe('LOAN_NOT_FOUND')) _id: string,
-    @Body() _dto: UpdateLoanDto,
-  ): LoanResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('LOAN_NOT_FOUND')) id: string,
+    @Body() dto: UpdateLoanDto,
+  ): Promise<LoanResponseDto> {
+    return this.loans.update(user.id, id, dto);
   }
 
   @Delete(':id')
@@ -162,8 +160,10 @@ export class LoansController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiNoContentResponse()
   @ApiErrors('LOAN_NOT_FOUND')
-  @ApiNotImplemented()
-  remove(@Param('id', new ParseIdPipe('LOAN_NOT_FOUND')) _id: string): void {
-    throw new NotImplementedException();
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('LOAN_NOT_FOUND')) id: string,
+  ): Promise<void> {
+    return this.loans.remove(user.id, id);
   }
 }

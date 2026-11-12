@@ -25,6 +25,8 @@ import {
   ApiErrors,
   ApiNotImplemented,
 } from '../../common/swagger/api-decorators.js';
+import { CurrentUser, type AuthUser } from '../auth/index.js';
+import { BillsService } from './bills.service.js';
 import { BillListQueryDto } from './dto/bill-list-query.dto.js';
 import {
   BillListResponseDto,
@@ -39,14 +41,17 @@ import {
 import { UpdateBillDto } from './dto/update-bill.dto.js';
 
 /**
- * BILL-1 空殼，寫法同 LoansController。各端點的行為約定寫在 @ApiOperation 的 description，
- * BILL-2～7 實作時照著做；實作 PR 要拿掉 @ApiNotImplemented()。
+ * 帳單端點。各端點的行為約定寫在 @ApiOperation 的 description（前端在 Swagger UI 看得到）。
+ * CRUD 與列表已實作（BILL-2、BILL-3）；繳費、取消繳費、停止重複還是空殼（BILL-5～7），實作時拿掉 @ApiNotImplemented()。
  * 修改、刪除、繳費、取消繳費、停止重複都要先鎖定整個系列（FOR UPDATE），鎖定後重新讀取帳單再判斷。
+ * 只能讀寫登入者自己的帳單；:id 不是 UUID、不存在、屬於他人一律 404 BILL_NOT_FOUND。
  */
 @ApiTags('bills')
 @ApiAuth()
 @Controller('bills')
 export class BillsController {
+  constructor(private readonly bills: BillsService) {}
+
   @Get()
   @ApiOperation({
     summary: '列出帳單',
@@ -57,9 +62,11 @@ export class BillsController {
   })
   @ApiOkResponse({ type: BillListResponseDto })
   @ApiErrors('VALIDATION_FAILED')
-  @ApiNotImplemented()
-  findAll(@Query() _query: BillListQueryDto): BillListResponseDto {
-    throw new NotImplementedException();
+  findAll(
+    @CurrentUser() user: AuthUser,
+    @Query() query: BillListQueryDto,
+  ): Promise<BillListResponseDto> {
+    return this.bills.findAll(user.id, query);
   }
 
   @Post()
@@ -82,9 +89,11 @@ export class BillsController {
     'CATEGORY_TYPE_MISMATCH',
     'ACCOUNT_INACTIVE',
   )
-  @ApiNotImplemented()
-  create(@Body() _dto: CreateBillDto): BillResponseDto {
-    throw new NotImplementedException();
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateBillDto,
+  ): Promise<BillResponseDto> {
+    return this.bills.create(user.id, dto);
   }
 
   @Get(':id')
@@ -96,11 +105,11 @@ export class BillsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ type: BillResponseDto })
   @ApiErrors('BILL_NOT_FOUND')
-  @ApiNotImplemented()
   findOne(
-    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) _id: string,
-  ): BillResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) id: string,
+  ): Promise<BillResponseDto> {
+    return this.bills.findOne(user.id, id);
   }
 
   @Patch(':id')
@@ -128,12 +137,12 @@ export class BillsController {
     'BILL_ALREADY_PAID',
     'BILL_NOT_FOUND',
   )
-  @ApiNotImplemented()
   update(
-    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) _id: string,
-    @Body() _dto: UpdateBillDto,
-  ): BillResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) id: string,
+    @Body() dto: UpdateBillDto,
+  ): Promise<BillResponseDto> {
+    return this.bills.update(user.id, id, dto);
   }
 
   @Delete(':id')
@@ -146,9 +155,11 @@ export class BillsController {
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiNoContentResponse()
   @ApiErrors('BILL_ALREADY_PAID', 'BILL_NOT_FOUND')
-  @ApiNotImplemented()
-  remove(@Param('id', new ParseIdPipe('BILL_NOT_FOUND')) _id: string): void {
-    throw new NotImplementedException();
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('BILL_NOT_FOUND')) id: string,
+  ): Promise<void> {
+    return this.bills.remove(user.id, id);
   }
 
   @Post(':id/pay')

@@ -145,6 +145,7 @@ describe('帳單交易 service（e2e）', () => {
             categoryId: housingId,
             amount: new Prisma.Decimal(18000),
             transactionDate: '2026-11-05',
+            note: '房租',
           });
           throw new Error('模擬 E 更新帳單狀態失敗');
         }),
@@ -162,6 +163,7 @@ describe('帳單交易 service（e2e）', () => {
             categoryId: housingId,
             amount: new Prisma.Decimal(1),
             transactionDate: '2026-11-05',
+            note: '房租',
           }),
         ),
       ).rejects.toThrow(/扣款帳戶不存在/);

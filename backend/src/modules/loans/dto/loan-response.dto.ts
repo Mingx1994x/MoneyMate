@@ -44,7 +44,7 @@ export class LoanResponseDto {
   @ApiProperty({
     format: 'date-time',
     description:
-      '最後一次更新未償餘額的時間（請求有帶 outstandingBalance 就更新，即使數字相同）',
+      '最後一次更新未償餘額的時間：新增時，或修改時 outstandingBalance 跟原值不同時更新。前端用它算「X 天前」，超過 45 天提醒',
     example: '2026-10-24T02:30:00.000Z',
   })
   balanceUpdatedAt!: string;

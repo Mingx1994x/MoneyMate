@@ -172,22 +172,16 @@ describe('Swagger 文件', () => {
     }
   });
 
-  describe('貸款端點（LOAN-1，C、D 照這個範例寫）', () => {
+  describe('貸款端點', () => {
     type Schema = {
       required?: string[];
       properties: Record<string, Record<string, unknown>>;
     };
     const schema = (name: string) => doc.components?.schemas?.[name] as Schema;
 
-    it('6 個端點都在、都要登入；payment-preview 已實作（LOAN-4），其他標【未實作】', () => {
-      const preview = doc.paths['/api/v1/loans/payment-preview']?.get;
-      if (preview === undefined) throw new Error('缺少 payment-preview');
-      expect(preview.summary).not.toMatch(/未實作/);
-      expect(preview.security).toEqual([{ bearer: [] }]);
-      expect(preview.responses['401']).toBeDefined();
-      expect(preview.responses['501']).toBeUndefined();
-
+    it('6 個端點都在、都已實作（LOAN-2、LOAN-4）、都要登入', () => {
       const ops = [
+        doc.paths['/api/v1/loans/payment-preview']?.get,
         doc.paths['/api/v1/loans']?.get,
         doc.paths['/api/v1/loans']?.post,
         doc.paths['/api/v1/loans/{id}']?.get,
@@ -196,10 +190,10 @@ describe('Swagger 文件', () => {
       ];
       for (const op of ops) {
         if (op === undefined) throw new Error('缺少貸款端點');
-        expect(op.summary).toMatch(/^【未實作】/);
+        expect(op.summary).not.toMatch(/未實作/);
         expect(op.security).toEqual([{ bearer: [] }]);
         expect(op.responses['401']).toBeDefined();
-        expect(op.responses['501']).toBeDefined();
+        expect(op.responses['501']).toBeUndefined();
       }
     });
 
@@ -266,7 +260,7 @@ describe('Swagger 文件', () => {
     });
   });
 
-  describe('帳單端點（BILL-1）', () => {
+  describe('帳單端點', () => {
     type Schema = {
       required?: string[];
       properties: Record<string, Record<string, unknown>>;
@@ -275,24 +269,39 @@ describe('Swagger 文件', () => {
     const bills = '/api/v1/bills';
     const bill = '/api/v1/bills/{id}';
 
-    it('8 個端點都在、都標【未實作】、都要登入', () => {
-      const ops = [
+    it('8 個端點都在、都要登入；CRUD 與列表已實作（BILL-2、BILL-3），繳費、取消繳費、停止重複還標【未實作】', () => {
+      const implemented = [
         doc.paths[bills]?.get,
         doc.paths[bills]?.post,
         doc.paths[bill]?.get,
         doc.paths[bill]?.patch,
         doc.paths[bill]?.delete,
+      ];
+      const stubs = [
         doc.paths[`${bill}/pay`]?.post,
         doc.paths[`${bill}/unpay`]?.post,
         doc.paths[`${bill}/stop-recurrence`]?.post,
       ];
-      for (const op of ops) {
+      for (const op of [...implemented, ...stubs]) {
         if (op === undefined) throw new Error('缺少帳單端點');
-        expect(op.summary).toMatch(/^【未實作】/);
         expect(op.security).toEqual([{ bearer: [] }]);
         expect(op.responses['401']).toBeDefined();
-        expect(op.responses['501']).toBeDefined();
       }
+      for (const op of implemented) {
+        expect(op?.summary).not.toMatch(/^【未實作】/);
+        expect(op?.responses['501']).toBeUndefined();
+      }
+      for (const op of stubs) {
+        expect(op?.summary).toMatch(/^【未實作】/);
+        expect(op?.responses['501']).toBeDefined();
+      }
+    });
+
+    it('DELETE 回 204 沒有 content', () => {
+      const del = doc.paths[bill]?.delete;
+      if (del === undefined) throw new Error('缺少 DELETE /api/v1/bills/{id}');
+      expect(del.responses['204']).toBeDefined();
+      expect(del.responses['204']).not.toHaveProperty('content');
     });
 
     it('動作型端點回 200 不是 201；繳費的 body 可以不帶', () => {
