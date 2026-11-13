@@ -1,10 +1,18 @@
+import { toDbDate } from '../../common/date-only.js';
 import { AppException } from '../../common/errors/app.exception.js';
-import { Recurrence } from '../../prisma/index.js';
+import {
+  BillStatus,
+  Prisma,
+  Recurrence,
+  type Bill,
+} from '../../prisma/index.js';
 import {
   assertDueDateNotTooFar,
   dueDayOf,
   dueMonthOf,
+  nextPeriodData,
   splitPage,
+  stopsOnUnpay,
 } from './bill-rules.js';
 
 describe('assertDueDateNotTooFar', () => {
@@ -116,5 +124,97 @@ describe('splitPage（待繳在前、已繳在後，分兩次查）', () => {
       );
     }
     expect(seen).toEqual([...pending, ...paid]);
+  });
+});
+
+describe('nextPeriodData（繳費後的下一期）', () => {
+  // 已繳的本期：實繳 14800.50，和預定金額不同
+  const paid: Bill = {
+    id: '00000000-0000-4000-8000-000000000001',
+    userId: '00000000-0000-4000-8000-0000000000ee',
+    seriesId: '00000000-0000-4000-8000-0000000000ff',
+    name: '房租',
+    amount: new Prisma.Decimal('15000'),
+    categoryId: '00000000-0000-4000-8000-0000000000cc',
+    accountId: '00000000-0000-4000-8000-0000000000aa',
+    dueDate: toDbDate('2026-01-31'),
+    dueDay: 31,
+    dueMonth: null,
+    recurrence: Recurrence.monthly,
+    status: BillStatus.paid,
+    paidAmount: new Prisma.Decimal('14800.5'),
+    paidDate: toDbDate('2026-02-03'),
+    note: '每月月底',
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-02-03T00:00:00.000Z'),
+  };
+
+  it('同系列、沿用本期的設定；金額是預定金額，不是實繳金額（US-B3）', () => {
+    const next = nextPeriodData(paid);
+    expect(next).toEqual({
+      userId: paid.userId,
+      seriesId: paid.seriesId,
+      name: '房租',
+      amount: paid.amount,
+      categoryId: paid.categoryId,
+      accountId: paid.accountId,
+      dueDate: toDbDate('2026-02-28'),
+      dueDay: 31,
+      dueMonth: null,
+      recurrence: Recurrence.monthly,
+      note: '每月月底',
+    });
+    // 沒有 id、status、paidAmount、paidDate：由資料庫給 id，status 預設 pending
+    expect(next).not.toHaveProperty('id');
+    expect(next).not.toHaveProperty('status');
+    expect(next).not.toHaveProperty('paidAmount');
+  });
+
+  it('到期日從本期的 dueDate 推算，不看繳費日（逾期補繳，US-B19）', () => {
+    const late = { ...paid, dueDate: toDbDate('2026-09-01'), dueDay: 1 };
+    expect(
+      nextPeriodData({ ...late, paidDate: toDbDate('2026-10-28') }).dueDate,
+    ).toEqual(toDbDate('2026-10-01'));
+  });
+
+  it('每年帳單：下一年的 dueMonth 月，dueMonth 沿用', () => {
+    const next = nextPeriodData({
+      ...paid,
+      recurrence: Recurrence.yearly,
+      dueDate: toDbDate('2028-02-29'),
+      dueDay: 29,
+      dueMonth: 2,
+    });
+    expect(next).toMatchObject({
+      dueDate: toDbDate('2029-02-28'),
+      dueDay: 29,
+      dueMonth: 2,
+      recurrence: Recurrence.yearly,
+    });
+  });
+
+  it('不重複的帳單沒有下一期：丟 Error（呼叫端要先檢查）', () => {
+    expect(() =>
+      nextPeriodData({ ...paid, recurrence: Recurrence.none }),
+    ).toThrow(Error);
+  });
+});
+
+describe('stopsOnUnpay（取消繳費時改成不重複，1109-BILL）', () => {
+  it.each([
+    ['系列沒有待繳（停止並刪除，或直接刪除待繳）→ 改成不重複', null, true],
+    [
+      '待繳是不重複（停止並保留，或改成不重複）→ 改成不重複',
+      { recurrence: Recurrence.none },
+      true,
+    ],
+    [
+      '待繳還是每月（一般情況，US-B6）→ 不改',
+      { recurrence: Recurrence.monthly },
+      false,
+    ],
+    ['待繳還是每年 → 不改', { recurrence: Recurrence.yearly }, false],
+  ])('%s', (_name, pending, expected) => {
+    expect(stopsOnUnpay(pending)).toBe(expected);
   });
 });

@@ -1022,16 +1022,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1039,7 +1029,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】繳費",
+        "summary": "繳費",
         "tags": [
           "bills"
         ]
@@ -1100,16 +1090,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1117,7 +1097,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】取消繳費",
+        "summary": "取消繳費",
         "tags": [
           "bills"
         ]
@@ -1188,16 +1168,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1205,7 +1175,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】停止重複",
+        "summary": "停止重複",
         "tags": [
           "bills"
         ]
@@ -1634,255 +1604,6 @@
         ]
       }
     },
-    "/api/v1/onboarding": {
-      "post": {
-        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
-        "operationId": "Onboarding_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateOnboardingDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GoalProgressDto"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`ONBOARDING_ALREADY_DONE`：已經完成問卷了",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "【未實作】送出問卷（建立目標與估計帳戶）",
-        "tags": [
-          "onboarding"
-        ]
-      }
-    },
-    "/api/v1/goal": {
-      "get": {
-        "operationId": "Goals_findOne",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GoalDto"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "取得目標設定",
-        "tags": [
-          "goal"
-        ]
-      },
-      "patch": {
-        "description": "沒傳的欄位保持原值；birthYear、estMonthlySaving 傳 null 代表清空，monthlySpending 傳 null 回 400。\n\n改了 monthlySpending 時，targetAmount 由後端重算為 × 300（前端不能直接改目標金額）。\n\nbirthYear 晚於台北的今年回 VALIDATION_FAILED（field: birthYear）。",
-        "operationId": "Goals_update",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateGoalDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GoalDto"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "修改目標（每月花費、出生年、自估每月儲蓄）",
-        "tags": [
-          "goal"
-        ]
-      }
-    },
-    "/api/v1/goal/progress": {
-      "get": {
-        "description": "目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。\n\n里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。\n\n年儲蓄：有 3 個以上完整月的記帳時，用最近最多 6 個完整月的平均（savingSource: actual）；否則用 estMonthlySaving（estimate）；都沒有時 fireAgeStatus 是 need_saving。\n\n狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。",
-        "operationId": "Goals_progress",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GoalProgressDto"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "【未實作】目標進度與財富自由年齡",
-        "tags": [
-          "goal"
-        ]
-      }
-    },
     "/api/v1/transactions": {
       "get": {
         "description": "篩選條件都是選填，同時帶多個時取交集。分頁：page 預設 1、pageSize 預設 20、上限 100。\n\n排序：transactionDate 由新到舊，相同時依 createdAt 由新到舊，再依 id。包含未來日期的交易。\n\ncategoryId、accountId 不是 UUID，或不屬於登入者（系統分類算存在）時回 400 CATEGORY_NOT_FOUND／ACCOUNT_NOT_FOUND；dateTo 早於 dateFrom 回 400 VALIDATION_FAILED（field: dateTo）。",
@@ -2296,6 +2017,255 @@
         "summary": "【未實作】刪除交易",
         "tags": [
           "transactions"
+        ]
+      }
+    },
+    "/api/v1/onboarding": {
+      "post": {
+        "description": "同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。\n\n已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。\n\n回傳和 GET /goal/progress 相同的內容，前端可以直接顯示目標頁。",
+        "operationId": "Onboarding_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOnboardingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalProgressDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_ALREADY_DONE`：已經完成問卷了",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】送出問卷（建立目標與估計帳戶）",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/api/v1/goal": {
+      "get": {
+        "operationId": "Goals_findOne",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "取得目標設定",
+        "tags": [
+          "goal"
+        ]
+      },
+      "patch": {
+        "description": "沒傳的欄位保持原值；birthYear、estMonthlySaving 傳 null 代表清空，monthlySpending 傳 null 回 400。\n\n改了 monthlySpending 時，targetAmount 由後端重算為 × 300（前端不能直接改目標金額）。\n\nbirthYear 晚於台北的今年回 VALIDATION_FAILED（field: birthYear）。",
+        "operationId": "Goals_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGoalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`AMOUNT_INVALID`：金額格式不正確",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "修改目標（每月花費、出生年、自估每月儲蓄）",
+        "tags": [
+          "goal"
+        ]
+      }
+    },
+    "/api/v1/goal/progress": {
+      "get": {
+        "description": "目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。\n\n里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。\n\n年儲蓄：有 3 個以上完整月的記帳時，用最近最多 6 個完整月的平均（savingSource: actual）；否則用 estMonthlySaving（estimate）；都沒有時 fireAgeStatus 是 need_saving。\n\n狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。",
+        "operationId": "Goals_progress",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalProgressDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ONBOARDING_REQUIRED`：請先完成問卷",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "【未實作】目標進度與財富自由年齡",
+        "tags": [
+          "goal"
         ]
       }
     },
@@ -3523,6 +3493,245 @@
           "items"
         ]
       },
+      "TransactionType": {
+        "type": "string",
+        "enum": [
+          "income",
+          "expense",
+          "transfer"
+        ]
+      },
+      "TransactionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "5c4b3a29-1807-4f6e-8d5c-4b3a29180765"
+          },
+          "transactionType": {
+            "example": "expense",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionType"
+              }
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "description": "金額字串，> 0",
+            "example": "120.00"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "收入／支出的帳戶；轉帳的轉出帳戶",
+            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+          },
+          "toAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "轉入帳戶；只有轉帳有值",
+            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "分類；轉帳是 null",
+            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-10-25"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "example": "午餐"
+          },
+          "billId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "產生這筆交易的帳單；不是帳單產生的是 null",
+            "example": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+          },
+          "isBillGenerated": {
+            "type": "boolean",
+            "description": "由帳單繳費產生的交易為 true；前端隱藏修改、刪除（後端回 BILL_LINKED_TRANSACTION）",
+            "example": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-25T04:30:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-10-25T04:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "transactionType",
+          "amount",
+          "accountId",
+          "toAccountId",
+          "categoryId",
+          "transactionDate",
+          "note",
+          "billId",
+          "isBillGenerated",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "TransactionListResponseDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "example": 20
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 42
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransactionResponseDto"
+            }
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "total",
+          "items"
+        ]
+      },
+      "CreateTransactionDto": {
+        "type": "object",
+        "properties": {
+          "transactionType": {
+            "description": "繳卡費＝銀行 → 信用卡的 transfer，不是 expense",
+            "example": "expense",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionType"
+              }
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "description": "金額字串，> 0",
+            "example": "120.00"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶",
+            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）",
+            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
+          },
+          "toAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）",
+            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date",
+            "description": "交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支",
+            "example": "2026-10-25"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "午餐"
+          }
+        },
+        "required": [
+          "transactionType",
+          "amount",
+          "accountId"
+        ]
+      },
+      "UpdateTransactionDto": {
+        "type": "object",
+        "properties": {
+          "transactionType": {
+            "description": "繳卡費＝銀行 → 信用卡的 transfer，不是 expense",
+            "example": "expense",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionType"
+              }
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "description": "金額字串，> 0",
+            "example": "120.00"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶",
+            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）",
+            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
+          },
+          "toAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）",
+            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date",
+            "description": "交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支",
+            "example": "2026-10-25"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "description": "備註，最多 200 字；空字串存成 null",
+            "example": "午餐"
+          }
+        }
+      },
       "CreateOnboardingDto": {
         "type": "object",
         "properties": {
@@ -3821,245 +4030,6 @@
             "nullable": true,
             "description": "自估的每月儲蓄，金額字串，可以是 0 或負數（入不敷出）；null 代表清空",
             "example": "15000.00"
-          }
-        }
-      },
-      "TransactionType": {
-        "type": "string",
-        "enum": [
-          "income",
-          "expense",
-          "transfer"
-        ]
-      },
-      "TransactionResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "example": "5c4b3a29-1807-4f6e-8d5c-4b3a29180765"
-          },
-          "transactionType": {
-            "example": "expense",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/TransactionType"
-              }
-            ]
-          },
-          "amount": {
-            "type": "string",
-            "description": "金額字串，> 0",
-            "example": "120.00"
-          },
-          "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "description": "收入／支出的帳戶；轉帳的轉出帳戶",
-            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
-          },
-          "toAccountId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true,
-            "description": "轉入帳戶；只有轉帳有值",
-            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
-          },
-          "categoryId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true,
-            "description": "分類；轉帳是 null",
-            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
-          },
-          "transactionDate": {
-            "type": "string",
-            "format": "date",
-            "example": "2026-10-25"
-          },
-          "note": {
-            "type": "string",
-            "nullable": true,
-            "example": "午餐"
-          },
-          "billId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true,
-            "description": "產生這筆交易的帳單；不是帳單產生的是 null",
-            "example": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
-          },
-          "isBillGenerated": {
-            "type": "boolean",
-            "description": "由帳單繳費產生的交易為 true；前端隱藏修改、刪除（後端回 BILL_LINKED_TRANSACTION）",
-            "example": false
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-10-25T04:30:00.000Z"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "example": "2026-10-25T04:30:00.000Z"
-          }
-        },
-        "required": [
-          "id",
-          "transactionType",
-          "amount",
-          "accountId",
-          "toAccountId",
-          "categoryId",
-          "transactionDate",
-          "note",
-          "billId",
-          "isBillGenerated",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
-      "TransactionListResponseDto": {
-        "type": "object",
-        "properties": {
-          "page": {
-            "type": "integer",
-            "minimum": 1,
-            "example": 1
-          },
-          "pageSize": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "example": 20
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "example": 42
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TransactionResponseDto"
-            }
-          }
-        },
-        "required": [
-          "page",
-          "pageSize",
-          "total",
-          "items"
-        ]
-      },
-      "CreateTransactionDto": {
-        "type": "object",
-        "properties": {
-          "transactionType": {
-            "description": "繳卡費＝銀行 → 信用卡的 transfer，不是 expense",
-            "example": "expense",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/TransactionType"
-              }
-            ]
-          },
-          "amount": {
-            "type": "string",
-            "description": "金額字串，> 0",
-            "example": "120.00"
-          },
-          "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "description": "收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶",
-            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
-          },
-          "categoryId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true,
-            "description": "分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）",
-            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
-          },
-          "toAccountId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true,
-            "description": "轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）",
-            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
-          },
-          "transactionDate": {
-            "type": "string",
-            "format": "date",
-            "description": "交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支",
-            "example": "2026-10-25"
-          },
-          "note": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 200,
-            "description": "備註，最多 200 字；空字串存成 null",
-            "example": "午餐"
-          }
-        },
-        "required": [
-          "transactionType",
-          "amount",
-          "accountId"
-        ]
-      },
-      "UpdateTransactionDto": {
-        "type": "object",
-        "properties": {
-          "transactionType": {
-            "description": "繳卡費＝銀行 → 信用卡的 transfer，不是 expense",
-            "example": "expense",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/TransactionType"
-              }
-            ]
-          },
-          "amount": {
-            "type": "string",
-            "description": "金額字串，> 0",
-            "example": "120.00"
-          },
-          "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "description": "收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶",
-            "example": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
-          },
-          "categoryId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true,
-            "description": "分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）",
-            "example": "7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d"
-          },
-          "toAccountId": {
-            "type": "string",
-            "format": "uuid",
-            "nullable": true,
-            "description": "轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）",
-            "example": "2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182"
-          },
-          "transactionDate": {
-            "type": "string",
-            "format": "date",
-            "description": "交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支",
-            "example": "2026-10-25"
-          },
-          "note": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 200,
-            "description": "備註，最多 200 字；空字串存成 null",
-            "example": "午餐"
           }
         }
       },
