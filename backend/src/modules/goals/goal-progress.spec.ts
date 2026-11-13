@@ -1,5 +1,10 @@
 import { Prisma } from '../../prisma/index.js';
-import { buildMilestones, goalPercent } from './goal-progress.js';
+import {
+  averageMonthlySaving,
+  buildMilestones,
+  goalPercent,
+  recentCompleteMonths,
+} from './goal-progress.js';
 
 const D = (v: string | number): Prisma.Decimal => new Prisma.Decimal(v);
 
@@ -125,5 +130,77 @@ describe('goalPercent：達成百分比（PRD 15.3）', () => {
 
   it('還沒達成但四捨五入會變 100（99.96%）→ 99.9，不顯示 100', () => {
     expect(goalPercent(D(1000000), D('999600'))).toBe(99.9);
+  });
+});
+
+describe('recentCompleteMonths：最近的完整月（PRD 15.6、15.7）', () => {
+  it('不含本月，由近到遠', () => {
+    expect(recentCompleteMonths('2026-11-11', 6)).toEqual([
+      '2026-10',
+      '2026-09',
+      '2026-08',
+      '2026-07',
+      '2026-06',
+      '2026-05',
+    ]);
+  });
+
+  it('月初第一天也不含本月；跨年', () => {
+    expect(recentCompleteMonths('2026-02-01', 3)).toEqual([
+      '2026-01',
+      '2025-12',
+      '2025-11',
+    ]);
+  });
+});
+
+describe('averageMonthlySaving：每月平均儲蓄（PRD 15.7）', () => {
+  const m = (income: number, expense: number) => ({
+    income: D(income),
+    expense: D(expense),
+  });
+
+  it('3 個有記帳的月 → 平均（收入 − 支出）', () => {
+    expect(
+      averageMonthlySaving([
+        m(100000, 50000),
+        m(90000, 60000),
+        m(80000, 50000),
+      ])?.toFixed(2),
+    ).toBe('36666.67');
+  });
+
+  it('只有 2 個月有記帳 → null（改用自估值）', () => {
+    expect(
+      averageMonthlySaving([m(100000, 50000), m(0, 0), m(90000, 60000)]),
+    ).toBeNull();
+  });
+
+  it('沒有記帳的月不算進平均（不當成存 0）', () => {
+    expect(
+      averageMonthlySaving([
+        m(100000, 40000),
+        m(0, 0),
+        m(100000, 40000),
+        m(0, 0),
+        m(100000, 40000),
+      ])?.toFixed(2),
+    ).toBe('60000.00');
+  });
+
+  it('只有支出的月也算有記帳；平均可以是負的', () => {
+    expect(
+      averageMonthlySaving([m(0, 30000), m(0, 30000), m(0, 30000)])?.toFixed(2),
+    ).toBe('-30000.00');
+  });
+
+  it('保留完整精度，不在這裡四捨五入', () => {
+    expect(
+      averageMonthlySaving([m(1, 0), m(1, 0), m(0, 1)])?.toString(),
+    ).toMatch(/^0\.3333/);
+  });
+
+  it('空陣列 → null', () => {
+    expect(averageMonthlySaving([])).toBeNull();
   });
 });
