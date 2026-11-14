@@ -261,7 +261,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 【未實作】繳費
+         * 繳費
          * @description body 可以是空的：paidAmount 預設帳單的 amount，paidDate 預設台北今天；paidDate 晚於台北今天回 PAID_DATE_IN_FUTURE。
          *
          *     在同一個資料庫交易內：建立一筆支出（帳戶、分類沿用帳單，金額是 paidAmount，日期是 paidDate；不檢查餘額）、帳單改為已繳；recurrence 不是 none 時建立下一期待繳帳單，放在 nextBill（不重複時是 null）。
@@ -287,7 +287,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 【未實作】取消繳費
+         * 取消繳費
          * @description 刪除這張帳單產生的支出、帳單改回待繳並清空 paidAmount、paidDate；同系列的待繳帳單（繳費時產生的下一期）一起刪除。
          *
          *     同系列的待繳帳單已經是不重複（停止重複時保留），或系列已經沒有待繳帳單（停止重複時刪除，或直接刪除待繳帳單）時，改回待繳的這張也改成不重複（dueMonth 改成 null），再繳費不會產生下一期。
@@ -311,7 +311,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 【未實作】停止重複
+         * 停止重複
          * @description 從系列的任何一張（包括已繳的歷史期）都可以停止，處理的是同系列的待繳帳單：keepCurrent 是 true 時保留它、改成不重複（dueMonth 改成 null）；false 時刪除它。已繳的歷史都不動。
          *
          *     系列沒有待繳帳單時什麼都不做，回 stopped: false、bill: null。
@@ -415,6 +415,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 列出交易（篩選＋分頁）
+         * @description 篩選條件都是選填，同時帶多個時取交集。分頁：page 預設 1、pageSize 預設 20、上限 100。
+         *
+         *     排序：transactionDate 由新到舊，相同時依 createdAt 由新到舊，再依 id。包含未來日期的交易。
+         *
+         *     categoryId、accountId 不是 UUID，或不屬於登入者（系統分類算存在）時回 400 CATEGORY_NOT_FOUND／ACCOUNT_NOT_FOUND；dateTo 早於 dateFrom 回 400 VALIDATION_FAILED（field: dateTo）。
+         */
+        get: operations["Transactions_findAll"];
+        put?: never;
+        /**
+         * 新增交易（快速記帳、繳卡費也走這支）
+         * @description 收入／支出：必須有 categoryId，類型要相同（否則 CATEGORY_TYPE_MISMATCH），不可帶 toAccountId。轉帳：必須有 toAccountId、不可帶 categoryId，兩個帳戶不同（否則 TRANSFER_SAME_ACCOUNT）。類型與欄位不符回 TRANSACTION_FIELDS_MISMATCH（field 為不符合的欄位）。
+         *
+         *     accountId、toAccountId、categoryId 必須屬於登入者（分類可以是系統分類），否則回 400 ACCOUNT_NOT_FOUND／CATEGORY_NOT_FOUND；任一帳戶停用時回 ACCOUNT_INACTIVE。
+         *
+         *     transactionDate 不帶時是台北今天。繳卡費＝銀行 → 信用卡的 transfer，不計入收支（PRD 15.10）。
+         */
+        post: operations["Transactions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transactions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 取得單筆交易
+         * @description 不存在、屬於他人或 id 不是 UUID，一律回 404。
+         */
+        get: operations["Transactions_findOne"];
+        put?: never;
+        post?: never;
+        /**
+         * 【未實作】刪除交易
+         * @description 帳單產生的交易回 BILL_LINKED_TRANSACTION（請到帳單取消繳費）；轉出或轉入帳戶停用時回 ACCOUNT_INACTIVE。
+         */
+        delete: operations["Transactions_remove"];
+        options?: never;
+        head?: never;
+        /**
+         * 【未實作】修改交易
+         * @description 沒傳的欄位保持原值；categoryId、toAccountId、note 傳 null 代表清空，其他欄位傳 null 回 400。
+         *
+         *     可以改交易類型：用「原值合併請求」後的結果檢查欄位規則（同新增），例如支出改轉帳時要帶 toAccountId，並把 categoryId 設成 null。
+         *
+         *     帳單產生的交易回 BILL_LINKED_TRANSACTION。原本或修改後的帳戶（轉出、轉入任一方）是停用帳戶時回 ACCOUNT_INACTIVE（PRD 15.11）。
+         */
+        patch: operations["Transactions_update"];
+        trace?: never;
+    };
     "/api/v1/onboarding": {
         parameters: {
             query?: never;
@@ -488,70 +552,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/transactions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 列出交易（篩選＋分頁）
-         * @description 篩選條件都是選填，同時帶多個時取交集。分頁：page 預設 1、pageSize 預設 20、上限 100。
-         *
-         *     排序：transactionDate 由新到舊，相同時依 createdAt 由新到舊，再依 id。包含未來日期的交易。
-         *
-         *     categoryId、accountId 不是 UUID，或不屬於登入者（系統分類算存在）時回 400 CATEGORY_NOT_FOUND／ACCOUNT_NOT_FOUND；dateTo 早於 dateFrom 回 400 VALIDATION_FAILED（field: dateTo）。
-         */
-        get: operations["Transactions_findAll"];
-        put?: never;
-        /**
-         * 新增交易（快速記帳、繳卡費也走這支）
-         * @description 收入／支出：必須有 categoryId，類型要相同（否則 CATEGORY_TYPE_MISMATCH），不可帶 toAccountId。轉帳：必須有 toAccountId、不可帶 categoryId，兩個帳戶不同（否則 TRANSFER_SAME_ACCOUNT）。類型與欄位不符回 TRANSACTION_FIELDS_MISMATCH（field 為不符合的欄位）。
-         *
-         *     accountId、toAccountId、categoryId 必須屬於登入者（分類可以是系統分類），否則回 400 ACCOUNT_NOT_FOUND／CATEGORY_NOT_FOUND；任一帳戶停用時回 ACCOUNT_INACTIVE。
-         *
-         *     transactionDate 不帶時是台北今天。繳卡費＝銀行 → 信用卡的 transfer，不計入收支（PRD 15.10）。
-         */
-        post: operations["Transactions_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/transactions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 取得單筆交易
-         * @description 不存在、屬於他人或 id 不是 UUID，一律回 404。
-         */
-        get: operations["Transactions_findOne"];
-        put?: never;
-        post?: never;
-        /**
-         * 【未實作】刪除交易
-         * @description 帳單產生的交易回 BILL_LINKED_TRANSACTION（請到帳單取消繳費）；轉出或轉入帳戶停用時回 ACCOUNT_INACTIVE。
-         */
-        delete: operations["Transactions_remove"];
-        options?: never;
-        head?: never;
-        /**
-         * 【未實作】修改交易
-         * @description 沒傳的欄位保持原值；categoryId、toAccountId、note 傳 null 代表清空，其他欄位傳 null 回 400。
-         *
-         *     可以改交易類型：用「原值合併請求」後的結果檢查欄位規則（同新增），例如支出改轉帳時要帶 toAccountId，並把 categoryId 設成 null。
-         *
-         *     帳單產生的交易回 BILL_LINKED_TRANSACTION。原本或修改後的帳戶（轉出、轉入任一方）是停用帳戶時回 ACCOUNT_INACTIVE（PRD 15.11）。
-         */
-        patch: operations["Transactions_update"];
         trace?: never;
     };
     "/api/v1/dashboard/summary": {
@@ -1206,6 +1206,159 @@ export interface components {
         CategoryListResponseDto: {
             items: components["schemas"]["CategoryResponseDto"][];
         };
+        /** @enum {string} */
+        TransactionType: "income" | "expense" | "transfer";
+        TransactionResponseDto: {
+            /**
+             * Format: uuid
+             * @example 5c4b3a29-1807-4f6e-8d5c-4b3a29180765
+             */
+            id: string;
+            /** @example expense */
+            transactionType: components["schemas"]["TransactionType"];
+            /**
+             * @description 金額字串，> 0
+             * @example 120.00
+             */
+            amount: string;
+            /**
+             * Format: uuid
+             * @description 收入／支出的帳戶；轉帳的轉出帳戶
+             * @example 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+             */
+            accountId: string;
+            /**
+             * Format: uuid
+             * @description 轉入帳戶；只有轉帳有值
+             * @example 2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182
+             */
+            toAccountId: string | null;
+            /**
+             * Format: uuid
+             * @description 分類；轉帳是 null
+             * @example 7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d
+             */
+            categoryId: string | null;
+            /**
+             * Format: date
+             * @example 2026-10-25
+             */
+            transactionDate: string;
+            /** @example 午餐 */
+            note: string | null;
+            /**
+             * Format: uuid
+             * @description 產生這筆交易的帳單；不是帳單產生的是 null
+             * @example 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+             */
+            billId: string | null;
+            /**
+             * @description 由帳單繳費產生的交易為 true；前端隱藏修改、刪除（後端回 BILL_LINKED_TRANSACTION）
+             * @example false
+             */
+            isBillGenerated: boolean;
+            /**
+             * Format: date-time
+             * @example 2026-10-25T04:30:00.000Z
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-10-25T04:30:00.000Z
+             */
+            updatedAt: string;
+        };
+        TransactionListResponseDto: {
+            /** @example 1 */
+            page: number;
+            /** @example 20 */
+            pageSize: number;
+            /** @example 42 */
+            total: number;
+            items: components["schemas"]["TransactionResponseDto"][];
+        };
+        CreateTransactionDto: {
+            /**
+             * @description 繳卡費＝銀行 → 信用卡的 transfer，不是 expense
+             * @example expense
+             */
+            transactionType: components["schemas"]["TransactionType"];
+            /**
+             * @description 金額字串，> 0
+             * @example 120.00
+             */
+            amount: string;
+            /**
+             * Format: uuid
+             * @description 收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶
+             * @example 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+             */
+            accountId: string;
+            /**
+             * Format: uuid
+             * @description 分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）
+             * @example 7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d
+             */
+            categoryId?: string | null;
+            /**
+             * Format: uuid
+             * @description 轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）
+             * @example 2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182
+             */
+            toAccountId?: string | null;
+            /**
+             * Format: date
+             * @description 交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支
+             * @example 2026-10-25
+             */
+            transactionDate?: string;
+            /**
+             * @description 備註，最多 200 字；空字串存成 null
+             * @example 午餐
+             */
+            note?: string | null;
+        };
+        UpdateTransactionDto: {
+            /**
+             * @description 繳卡費＝銀行 → 信用卡的 transfer，不是 expense
+             * @example expense
+             */
+            transactionType?: components["schemas"]["TransactionType"];
+            /**
+             * @description 金額字串，> 0
+             * @example 120.00
+             */
+            amount?: string;
+            /**
+             * Format: uuid
+             * @description 收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶
+             * @example 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+             */
+            accountId?: string;
+            /**
+             * Format: uuid
+             * @description 分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）
+             * @example 7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d
+             */
+            categoryId?: string | null;
+            /**
+             * Format: uuid
+             * @description 轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）
+             * @example 2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182
+             */
+            toAccountId?: string | null;
+            /**
+             * Format: date
+             * @description 交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支
+             * @example 2026-10-25
+             */
+            transactionDate?: string;
+            /**
+             * @description 備註，最多 200 字；空字串存成 null
+             * @example 午餐
+             */
+            note?: string | null;
+        };
         CreateOnboardingDto: {
             /**
              * @description 財富自由後每月想花多少，整數 1,000–333,000
@@ -1379,159 +1532,6 @@ export interface components {
              * @example 15000.00
              */
             estMonthlySaving?: string | null;
-        };
-        /** @enum {string} */
-        TransactionType: "income" | "expense" | "transfer";
-        TransactionResponseDto: {
-            /**
-             * Format: uuid
-             * @example 5c4b3a29-1807-4f6e-8d5c-4b3a29180765
-             */
-            id: string;
-            /** @example expense */
-            transactionType: components["schemas"]["TransactionType"];
-            /**
-             * @description 金額字串，> 0
-             * @example 120.00
-             */
-            amount: string;
-            /**
-             * Format: uuid
-             * @description 收入／支出的帳戶；轉帳的轉出帳戶
-             * @example 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
-             */
-            accountId: string;
-            /**
-             * Format: uuid
-             * @description 轉入帳戶；只有轉帳有值
-             * @example 2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182
-             */
-            toAccountId: string | null;
-            /**
-             * Format: uuid
-             * @description 分類；轉帳是 null
-             * @example 7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d
-             */
-            categoryId: string | null;
-            /**
-             * Format: date
-             * @example 2026-10-25
-             */
-            transactionDate: string;
-            /** @example 午餐 */
-            note: string | null;
-            /**
-             * Format: uuid
-             * @description 產生這筆交易的帳單；不是帳單產生的是 null
-             * @example 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
-             */
-            billId: string | null;
-            /**
-             * @description 由帳單繳費產生的交易為 true；前端隱藏修改、刪除（後端回 BILL_LINKED_TRANSACTION）
-             * @example false
-             */
-            isBillGenerated: boolean;
-            /**
-             * Format: date-time
-             * @example 2026-10-25T04:30:00.000Z
-             */
-            createdAt: string;
-            /**
-             * Format: date-time
-             * @example 2026-10-25T04:30:00.000Z
-             */
-            updatedAt: string;
-        };
-        TransactionListResponseDto: {
-            /** @example 1 */
-            page: number;
-            /** @example 20 */
-            pageSize: number;
-            /** @example 42 */
-            total: number;
-            items: components["schemas"]["TransactionResponseDto"][];
-        };
-        CreateTransactionDto: {
-            /**
-             * @description 繳卡費＝銀行 → 信用卡的 transfer，不是 expense
-             * @example expense
-             */
-            transactionType: components["schemas"]["TransactionType"];
-            /**
-             * @description 金額字串，> 0
-             * @example 120.00
-             */
-            amount: string;
-            /**
-             * Format: uuid
-             * @description 收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶
-             * @example 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
-             */
-            accountId: string;
-            /**
-             * Format: uuid
-             * @description 分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）
-             * @example 7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d
-             */
-            categoryId?: string | null;
-            /**
-             * Format: uuid
-             * @description 轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）
-             * @example 2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182
-             */
-            toAccountId?: string | null;
-            /**
-             * Format: date
-             * @description 交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支
-             * @example 2026-10-25
-             */
-            transactionDate?: string;
-            /**
-             * @description 備註，最多 200 字；空字串存成 null
-             * @example 午餐
-             */
-            note?: string | null;
-        };
-        UpdateTransactionDto: {
-            /**
-             * @description 繳卡費＝銀行 → 信用卡的 transfer，不是 expense
-             * @example expense
-             */
-            transactionType?: components["schemas"]["TransactionType"];
-            /**
-             * @description 金額字串，> 0
-             * @example 120.00
-             */
-            amount?: string;
-            /**
-             * Format: uuid
-             * @description 收入／支出的帳戶；轉帳的轉出帳戶。必須是登入者啟用中的帳戶。快速記帳時由前端帶入上次使用的帳戶
-             * @example 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
-             */
-            accountId?: string;
-            /**
-             * Format: uuid
-             * @description 分類。收入／支出必填，類型要和 transactionType 相同；轉帳不可帶（或傳 null）
-             * @example 7b1d6e2a-3c4f-4a8e-9d10-5e6f7a8b9c0d
-             */
-            categoryId?: string | null;
-            /**
-             * Format: uuid
-             * @description 轉入帳戶。轉帳必填，不可與 accountId 相同、必須是登入者啟用中的帳戶；收入／支出不可帶（或傳 null）
-             * @example 2b3c4d5e-6f70-4a81-9b2c-3d4e5f607182
-             */
-            toAccountId?: string | null;
-            /**
-             * Format: date
-             * @description 交易日期；不帶時是台北今天。可以是未來日期（預先記帳），但日期 > 台北今天的交易不計入目前餘額與本月收支
-             * @example 2026-10-25
-             */
-            transactionDate?: string;
-            /**
-             * @description 備註，最多 200 字；空字串存成 null
-             * @example 午餐
-             */
-            note?: string | null;
         };
         DashboardBillBriefDto: {
             /**
@@ -2522,15 +2522,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Bills_unpay: {
@@ -2586,15 +2577,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Bills_stopRecurrence: {
@@ -2640,15 +2622,6 @@ export interface operations {
             };
             /** @description `BILL_NOT_FOUND`：找不到這張帳單 */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2975,202 +2948,6 @@ export interface operations {
             };
         };
     };
-    Onboarding_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateOnboardingDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoalProgressDto"];
-                };
-            };
-            /** @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `ONBOARDING_ALREADY_DONE`：已經完成問卷了 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
-    Goals_findOne: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoalDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
-    Goals_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateGoalDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoalDto"];
-                };
-            };
-            /**
-             * @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位
-             *
-             *     `AMOUNT_INVALID`：金額格式不正確
-             */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
-    Goals_progress: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GoalProgressDto"];
-                };
-            };
-            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-        };
-    };
     Transactions_findAll: {
         parameters: {
             query?: {
@@ -3461,6 +3238,202 @@ export interface operations {
              *
              *     `BILL_LINKED_TRANSACTION`：這筆交易由帳單產生，請到帳單修改
              */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Onboarding_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOnboardingDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalProgressDto"];
+                };
+            };
+            /** @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `ONBOARDING_ALREADY_DONE`：已經完成問卷了 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Goals_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Goals_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGoalDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalDto"];
+                };
+            };
+            /**
+             * @description `VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位
+             *
+             *     `AMOUNT_INVALID`：金額格式不正確
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+        };
+    };
+    Goals_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalProgressDto"];
+                };
+            };
+            /** @description `AUTH_UNAUTHENTICATED`：請先登入 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponseDto"];
+                };
+            };
+            /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
             409: {
                 headers: {
                     [name: string]: unknown;
