@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { DateOnly } from '../../common/date-only.js';
+import { toDbDate, type DateOnly } from '../../common/date-only.js';
 import { AppException } from '../../common/errors/app.exception.js';
 import { toMoney, toMoneyString } from '../../common/money.js';
 import {
@@ -14,6 +14,7 @@ import { CategoriesService } from '../categories/index.js';
 import { FinanceCalcService } from '../finance/index.js';
 import type { AccountResponseDto } from './dto/account-response.dto.js';
 import type { CreateAccountDto } from './dto/create-account.dto.js';
+import type { UpdateAccountDto } from './dto/update-account.dto.js';
 
 /** createAccount 的輸入（給 D 的問卷與 POST /accounts 共用） */
 export interface CreateAccountData {
@@ -205,6 +206,134 @@ export class AccountsService {
   }
 
   /**
+   * PATCH /accounts/:id（PRD 15.9、15.11、AC-03）。
+   * - 停用的帳戶只能重新啟用：只帶 isActive = true（或什麼都沒帶）時通過，帶了其他欄位回 ACCOUNT_INACTIVE。
+   * - 停用（isActive = false）：套用這次的其他修改後，目前餘額必須為 0，而且沒有未來日期的交易，
+   *   否則 ACCOUNT_DEACTIVATE_BLOCKED（整個請求不生效）。停用不會把扣掉的估計值加回。
+   * - openingBalance 只有 credit_card 與估計帳戶可以是負數，其他回 OPENING_BALANCE_NEGATIVE。
+   * 先 FOR UPDATE 鎖住帳戶：寫交易時用 FOR SHARE 鎖同一列，停用和寫交易會排隊，
+   * 不會停用到正在寫入交易的帳戶。
+   */
+  async update(
+    userId: string,
+    id: string,
+    dto: UpdateAccountDto,
+    today: DateOnly,
+  ): Promise<AccountResponseDto> {
+    await this.prisma.$transaction(async (tx) => {
+      const account = await lockOwnAccount(tx, userId, id);
+
+      if (!account.isActive) {
+        const others =
+          dto.name !== undefined ||
+          dto.openingBalance !== undefined ||
+          dto.note !== undefined;
+        if (others) throw new AppException('ACCOUNT_INACTIVE');
+        if (dto.isActive === true) {
+          await tx.account.update({ where: { id }, data: { isActive: true } });
+        }
+        return;
+      }
+
+      const openingBalance =
+        dto.openingBalance !== undefined
+          ? toMoney(dto.openingBalance)
+          : undefined;
+      if (
+        openingBalance?.lt(0) &&
+        account.accountType !== AccountType.credit_card &&
+        !account.isEstimate
+      ) {
+        throw AppException.forField(
+          'OPENING_BALANCE_NEGATIVE',
+          'openingBalance',
+        );
+      }
+      await tx.account.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(openingBalance !== undefined ? { openingBalance } : {}),
+          ...(dto.note !== undefined ? { note: dto.note } : {}),
+        },
+      });
+
+      if (dto.isActive === false) {
+        await this.assertCanDeactivate(tx, userId, id, today);
+        await tx.account.update({ where: { id }, data: { isActive: false } });
+      }
+    });
+    return this.findOne(userId, id, today);
+  }
+
+  /**
+   * DELETE /accounts/:id（PRD 15.9）。只限沒有任何交易（轉出或轉入，含未來日期）、
+   * 也沒有被帳單使用的帳戶，否則 409 ACCOUNT_IN_USE（請改用停用）。估計帳戶也可以刪除（D-D-004）。
+   * addBackToEstimate 而且帳戶有 deductedFromEstimate 時，同一個資料庫交易內加回估計帳戶，
+   * 估計帳戶已停用就重新啟用；估計帳戶已經不在時略過。
+   */
+  async remove(
+    userId: string,
+    id: string,
+    addBackToEstimate: boolean,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const account = await lockOwnAccount(tx, userId, id);
+
+      const [txCount, billCount] = await Promise.all([
+        tx.transaction.count({
+          where: { userId, OR: [{ accountId: id }, { toAccountId: id }] },
+        }),
+        tx.bill.count({ where: { userId, accountId: id } }),
+      ]);
+      if (txCount > 0 || billCount > 0) {
+        throw new AppException('ACCOUNT_IN_USE');
+      }
+
+      const deducted = account.deductedFromEstimate;
+      if (addBackToEstimate && deducted !== null && !account.isEstimate) {
+        const estimate = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM accounts
+          WHERE user_id = ${userId}::uuid AND is_estimate
+          FOR UPDATE`;
+        const estimateId = estimate[0]?.id;
+        if (estimateId) {
+          await tx.account.update({
+            where: { id: estimateId },
+            data: {
+              openingBalance: { increment: deducted },
+              isActive: true,
+            },
+          });
+        }
+      }
+      await tx.account.delete({ where: { id } });
+    });
+  }
+
+  /** 停用條件（PRD 15.11）：目前餘額為 0，而且沒有未來日期的交易；否則 409 ACCOUNT_DEACTIVATE_BLOCKED */
+  private async assertCanDeactivate(
+    tx: PrismaTx,
+    userId: string,
+    id: string,
+    today: DateOnly,
+  ): Promise<void> {
+    const [balance, future] = await Promise.all([
+      this.finance.getAccountBalance(userId, id, today, tx),
+      tx.transaction.count({
+        where: {
+          userId,
+          OR: [{ accountId: id }, { toAccountId: id }],
+          transactionDate: { gt: toDbDate(today) },
+        },
+      }),
+    ]);
+    if (!balance?.isZero() || future > 0) {
+      throw AppException.forField('ACCOUNT_DEACTIVATE_BLOCKED', 'isActive');
+    }
+  }
+
+  /**
    * 從啟用中的估計帳戶扣掉 min(amount, 估計帳戶目前餘額)，回傳實際扣除金額；
    * 沒有估計帳戶、已停用，或扣除金額 ≤ 0 時回 null（不扣、不報錯）。
    * 先 FOR UPDATE 鎖住估計帳戶，同時新增兩個帳戶也不會重複扣。扣到 0 時自動停用。
@@ -272,6 +401,20 @@ export class AccountsService {
     }
     return ids;
   }
+}
+
+/** 鎖住並讀出自己的帳戶；不存在或屬於他人 404 */
+async function lockOwnAccount(
+  tx: PrismaTx,
+  userId: string,
+  id: string,
+): Promise<Account> {
+  const locked = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM accounts
+    WHERE id = ${id}::uuid AND user_id = ${userId}::uuid
+    FOR UPDATE`;
+  if (locked.length === 0) throw new AppException('ACCOUNT_NOT_FOUND');
+  return tx.account.findUniqueOrThrow({ where: { id } });
 }
 
 function toResponse(
