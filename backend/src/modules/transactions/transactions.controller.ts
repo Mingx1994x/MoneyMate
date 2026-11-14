@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   HttpCode,
-  NotImplementedException,
   Param,
   Patch,
   Post,
@@ -20,11 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { ClockService } from '../../clock/clock.service.js';
 import { ParseIdPipe } from '../../common/id.js';
-import {
-  ApiAuth,
-  ApiErrors,
-  ApiNotImplemented,
-} from '../../common/swagger/api-decorators.js';
+import { ApiAuth, ApiErrors } from '../../common/swagger/api-decorators.js';
 import { CurrentUser, type AuthUser } from '../auth/index.js';
 import { CreateTransactionDto } from './dto/create-transaction.dto.js';
 import { TransactionListQueryDto } from './dto/transaction-list-query.dto.js';
@@ -36,7 +31,7 @@ import { UpdateTransactionDto } from './dto/update-transaction.dto.js';
 import { TransactionsService } from './transactions.service.js';
 
 /**
- * transactions（C）。已實作：列表、新增、單筆；修改、刪除在 W3（暫時回 501）。
+ * transactions（C）：列表、新增、單筆、修改、刪除。
  * 快速記帳、繳卡費都走 POST /transactions，沒有另外的端點。
  */
 @ApiTags('transactions')
@@ -137,12 +132,12 @@ export class TransactionsController {
     'BILL_LINKED_TRANSACTION',
     'TRANSACTION_NOT_FOUND',
   )
-  @ApiNotImplemented()
   update(
-    @Param('id', new ParseIdPipe('TRANSACTION_NOT_FOUND')) _id: string,
-    @Body() _dto: UpdateTransactionDto,
-  ): TransactionResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('TRANSACTION_NOT_FOUND')) id: string,
+    @Body() dto: UpdateTransactionDto,
+  ): Promise<TransactionResponseDto> {
+    return this.transactions.update(user.id, id, dto);
   }
 
   @Delete(':id')
@@ -159,10 +154,10 @@ export class TransactionsController {
     'BILL_LINKED_TRANSACTION',
     'TRANSACTION_NOT_FOUND',
   )
-  @ApiNotImplemented()
   remove(
-    @Param('id', new ParseIdPipe('TRANSACTION_NOT_FOUND')) _id: string,
-  ): void {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('TRANSACTION_NOT_FOUND')) id: string,
+  ): Promise<void> {
+    return this.transactions.remove(user.id, id);
   }
 }

@@ -10,6 +10,7 @@ import {
   type PrismaTx,
   type Transaction,
 } from '../../prisma/index.js';
+import type { UpdateTransactionDto } from './dto/update-transaction.dto.js';
 import { AccountsService } from '../accounts/index.js';
 import { CategoriesService } from '../categories/index.js';
 import type { CreateTransactionDto } from './dto/create-transaction.dto.js';
@@ -131,76 +132,195 @@ export class TransactionsService {
    * 2. 帳戶屬於登入者且啟用中（ACCOUNT_NOT_FOUND 400／ACCOUNT_INACTIVE）
    * 3. 分類可用且類型相同（CATEGORY_NOT_FOUND／CATEGORY_TYPE_MISMATCH）
    * transactionDate 不帶時是台北今天。
+   * 先鎖住相關帳戶（lockAccounts），和停用帳戶排隊，避免寫進剛被停用的帳戶。
    */
   async create(
     userId: string,
     dto: CreateTransactionDto,
     today: DateOnly,
   ): Promise<TransactionResponseDto> {
-    const isTransfer = dto.transactionType === TransactionType.transfer;
-    const categoryId = dto.categoryId ?? null;
-    const toAccountId = dto.toAccountId ?? null;
+    const fields: TransactionFields = {
+      transactionType: dto.transactionType,
+      accountId: dto.accountId,
+      toAccountId: dto.toAccountId ?? null,
+      categoryId: dto.categoryId ?? null,
+    };
+    assertFieldsMatchType(fields);
 
-    if (isTransfer) {
-      if (categoryId !== null) {
-        throw AppException.forField(
-          'TRANSACTION_FIELDS_MISMATCH',
-          'categoryId',
-        );
-      }
-      if (toAccountId === null) {
-        throw AppException.forField(
-          'TRANSACTION_FIELDS_MISMATCH',
-          'toAccountId',
-        );
-      }
-      if (toAccountId === dto.accountId) {
-        throw AppException.forField('TRANSFER_SAME_ACCOUNT', 'toAccountId');
-      }
-    } else {
-      if (toAccountId !== null) {
-        throw AppException.forField(
-          'TRANSACTION_FIELDS_MISMATCH',
-          'toAccountId',
-        );
-      }
-      if (categoryId === null) {
-        throw AppException.forField(
-          'TRANSACTION_FIELDS_MISMATCH',
-          'categoryId',
-        );
-      }
-    }
+    return this.prisma.$transaction(async (tx) => {
+      await lockAccounts(tx, userId, [fields.accountId, fields.toAccountId]);
+      await this.assertAccountsUsable(tx, userId, fields);
+      await this.assertCategoryUsable(tx, userId, fields);
 
-    await this.accounts.assertActiveAccount(userId, dto.accountId, 'accountId');
-    if (toAccountId !== null) {
+      const row = await tx.transaction.create({
+        data: {
+          userId,
+          ...fields,
+          amount: toMoney(dto.amount),
+          transactionDate: toDbDate(dto.transactionDate ?? today),
+          note: dto.note ?? null,
+        },
+      });
+      return toResponse(row);
+    });
+  }
+
+  /**
+   * PATCH /transactions/:id（PRD 15.11、16.5、AC-26）。檢查順序：
+   * 1. 交易存在且屬於登入者（TRANSACTION_NOT_FOUND 404）
+   * 2. 不是帳單產生的（BILL_LINKED_TRANSACTION 409）
+   * 3. 原本的轉出、轉入帳戶都啟用中：停用帳戶的交易不能改，也不能移出（ACCOUNT_INACTIVE）
+   * 4. 原值＋請求合併後，跑和新增一樣的檢查；帳戶有變才檢查新帳戶，分類或類型有變才檢查分類
+   *    （沒改的分類即使之後停用，也可以只改金額、日期、備註）
+   * 交易列與相關帳戶都先鎖住：同一筆同時修改、或修改時帳戶被停用，都會排隊。
+   */
+  async update(
+    userId: string,
+    id: string,
+    dto: UpdateTransactionDto,
+  ): Promise<TransactionResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const row = await this.lockOwnTransaction(tx, userId, id);
+
+      const merged: TransactionFields = {
+        transactionType: dto.transactionType ?? row.transactionType,
+        accountId: dto.accountId ?? row.accountId,
+        toAccountId:
+          dto.toAccountId !== undefined ? dto.toAccountId : row.toAccountId,
+        categoryId:
+          dto.categoryId !== undefined ? dto.categoryId : row.categoryId,
+      };
+      await lockAccounts(tx, userId, [
+        row.accountId,
+        row.toAccountId,
+        merged.accountId,
+        merged.toAccountId,
+      ]);
+
+      // 3. 停用帳戶的交易不能改（轉出或轉入任一方）
+      await this.assertOriginalAccountsActive(tx, userId, row, true);
+
+      // 4. 合併後的檢查
+      assertFieldsMatchType(merged);
+      const accountChanged =
+        merged.accountId !== row.accountId ||
+        merged.toAccountId !== row.toAccountId;
+      if (accountChanged) await this.assertAccountsUsable(tx, userId, merged);
+      const categoryChanged =
+        merged.categoryId !== row.categoryId ||
+        merged.transactionType !== row.transactionType;
+      if (categoryChanged) await this.assertCategoryUsable(tx, userId, merged);
+
+      const updated = await tx.transaction.update({
+        where: { id: row.id },
+        data: {
+          ...merged,
+          ...(dto.amount !== undefined ? { amount: toMoney(dto.amount) } : {}),
+          ...(dto.transactionDate !== undefined
+            ? { transactionDate: toDbDate(dto.transactionDate) }
+            : {}),
+          ...(dto.note !== undefined ? { note: dto.note } : {}),
+        },
+      });
+      return toResponse(updated);
+    });
+  }
+
+  /**
+   * DELETE /transactions/:id（PRD 15.11、16.5、AC-26）。
+   * 不存在或屬於他人 404；帳單產生的 409 BILL_LINKED_TRANSACTION（到帳單取消繳費）；
+   * 轉出或轉入帳戶停用 409 ACCOUNT_INACTIVE（details 是 []）。
+   */
+  async remove(userId: string, id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const row = await this.lockOwnTransaction(tx, userId, id);
+      await lockAccounts(tx, userId, [row.accountId, row.toAccountId]);
+      await this.assertOriginalAccountsActive(tx, userId, row, false);
+      await tx.transaction.delete({ where: { id: row.id } });
+    });
+  }
+
+  /** 鎖住並讀出自己的交易；不存在或屬於他人 404，帳單產生的 409 */
+  private async lockOwnTransaction(
+    tx: PrismaTx,
+    userId: string,
+    id: string,
+  ): Promise<Transaction> {
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM transactions
+      WHERE id = ${id}::uuid AND user_id = ${userId}::uuid
+      FOR UPDATE`;
+    if (locked.length === 0) throw new AppException('TRANSACTION_NOT_FOUND');
+    const row = await tx.transaction.findUniqueOrThrow({ where: { id } });
+    if (row.billId !== null) throw new AppException('BILL_LINKED_TRANSACTION');
+    return row;
+  }
+
+  /**
+   * 原本的轉出、轉入帳戶有停用的就 409 ACCOUNT_INACTIVE。
+   * withField：PATCH 時 details 是對應的帳戶欄位；DELETE 時是 []（docs/error-codes.md）。
+   */
+  private async assertOriginalAccountsActive(
+    tx: PrismaTx,
+    userId: string,
+    row: Transaction,
+    withField: boolean,
+  ): Promise<void> {
+    const ids = row.toAccountId
+      ? [row.accountId, row.toAccountId]
+      : [row.accountId];
+    const inactive = await tx.account.findMany({
+      where: { userId, id: { in: ids }, isActive: false },
+      select: { id: true },
+    });
+    if (inactive.length === 0) return;
+    if (!withField) throw new AppException('ACCOUNT_INACTIVE');
+    const field = inactive.some((a) => a.id === row.accountId)
+      ? 'accountId'
+      : 'toAccountId';
+    throw AppException.forField('ACCOUNT_INACTIVE', field);
+  }
+
+  /** 帳戶屬於登入者且啟用中（ACCOUNT_NOT_FOUND 400／ACCOUNT_INACTIVE） */
+  private async assertAccountsUsable(
+    tx: PrismaTx,
+    userId: string,
+    f: TransactionFields,
+  ): Promise<void> {
+    await this.accounts.assertActiveAccount(
+      userId,
+      f.accountId,
+      'accountId',
+      tx,
+    );
+    if (f.toAccountId !== null) {
       await this.accounts.assertActiveAccount(
         userId,
-        toAccountId,
+        f.toAccountId,
         'toAccountId',
+        tx,
       );
     }
-    if (categoryId !== null) {
-      const type =
-        dto.transactionType === TransactionType.income
-          ? CategoryType.income
-          : CategoryType.expense;
-      await this.categories.assertUsable(userId, categoryId, type);
-    }
+  }
 
-    const row = await this.prisma.transaction.create({
-      data: {
-        userId,
-        accountId: dto.accountId,
-        transactionType: dto.transactionType,
-        amount: toMoney(dto.amount),
-        categoryId,
-        toAccountId,
-        transactionDate: toDbDate(dto.transactionDate ?? today),
-        note: dto.note ?? null,
-      },
-    });
-    return toResponse(row);
+  /** 收入／支出的分類可用且類型相同（CATEGORY_NOT_FOUND／CATEGORY_TYPE_MISMATCH） */
+  private async assertCategoryUsable(
+    tx: PrismaTx,
+    userId: string,
+    f: TransactionFields,
+  ): Promise<void> {
+    if (f.categoryId === null) return;
+    const type =
+      f.transactionType === TransactionType.income
+        ? CategoryType.income
+        : CategoryType.expense;
+    await this.categories.assertUsable(
+      userId,
+      f.categoryId,
+      type,
+      'categoryId',
+      tx,
+    );
   }
 
   /**
@@ -263,6 +383,60 @@ export class TransactionsService {
     if (!row.account.isActive) throw new AppException('ACCOUNT_INACTIVE');
     await tx.transaction.delete({ where: { id: row.id } });
   }
+}
+
+/** 新增與修改共用的欄位檢查對象（修改時是原值＋請求合併後的結果） */
+interface TransactionFields {
+  transactionType: TransactionType;
+  accountId: string;
+  toAccountId: string | null;
+  categoryId: string | null;
+}
+
+/**
+ * 類型與欄位是否相符（不查資料庫）：
+ * 轉帳要有 toAccountId、不能有 categoryId，且不能轉給同一個帳戶；收入、支出相反。
+ */
+function assertFieldsMatchType(f: TransactionFields): void {
+  if (f.transactionType === TransactionType.transfer) {
+    if (f.categoryId !== null) {
+      throw AppException.forField('TRANSACTION_FIELDS_MISMATCH', 'categoryId');
+    }
+    if (f.toAccountId === null) {
+      throw AppException.forField('TRANSACTION_FIELDS_MISMATCH', 'toAccountId');
+    }
+    if (f.toAccountId === f.accountId) {
+      throw AppException.forField('TRANSFER_SAME_ACCOUNT', 'toAccountId');
+    }
+  } else {
+    if (f.toAccountId !== null) {
+      throw AppException.forField('TRANSACTION_FIELDS_MISMATCH', 'toAccountId');
+    }
+    if (f.categoryId === null) {
+      throw AppException.forField('TRANSACTION_FIELDS_MISMATCH', 'categoryId');
+    }
+  }
+}
+
+/**
+ * 鎖住這些帳戶（FOR SHARE）：寫入交易時和停用帳戶（之後的 PATCH /accounts 用 FOR UPDATE）排隊，
+ * 避免停用的帳戶又被寫進交易、或停用時餘額不是 0。多筆交易同時寫同一個帳戶不會互相擋。
+ * 依 id 排序再鎖，避免兩個請求用相反順序鎖而互相等待。不屬於登入者的 id 不會被鎖，之後的檢查會回 400。
+ */
+async function lockAccounts(
+  tx: PrismaTx,
+  userId: string,
+  ids: (string | null)[],
+): Promise<void> {
+  const unique = [
+    ...new Set(ids.filter((id): id is string => id !== null)),
+  ].sort();
+  if (unique.length === 0) return;
+  await tx.$queryRaw`
+    SELECT id FROM accounts
+    WHERE user_id = ${userId}::uuid AND id = ANY(${unique}::uuid[])
+    ORDER BY id
+    FOR SHARE`;
 }
 
 function toResponse(t: Transaction): TransactionResponseDto {

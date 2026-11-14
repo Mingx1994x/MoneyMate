@@ -1928,16 +1928,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -1945,7 +1935,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】修改交易",
+        "summary": "修改交易",
         "tags": [
           "transactions"
         ]
@@ -1997,16 +1987,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "`NOT_IMPLEMENTED`：這個功能還在開發中",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -2014,7 +1994,7 @@
             "bearer": []
           }
         ],
-        "summary": "【未實作】刪除交易",
+        "summary": "刪除交易",
         "tags": [
           "transactions"
         ]

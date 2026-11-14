@@ -615,18 +615,408 @@ describe('交易 API（e2e）', () => {
     });
   });
 
-  describe('還沒實作的端點（W3）', () => {
-    it.each([
-      ['patch', { amount: '150.00' }],
-      ['delete', undefined],
-    ] as const)('%s 回 501 NOT_IMPLEMENTED', async (method, body) => {
-      await api()
-        [method](`/api/v1/transactions/${NOT_EXIST}`)
+  describe('PATCH /transactions/:id', () => {
+    let lunchId: string;
+    const patch = (id: string, body: Record<string, unknown>) =>
+      api()
+        .patch(`/api/v1/transactions/${id}`)
         .set('Authorization', auth)
-        .send(body)
-        .expect(501);
+        .send(body);
+    const expense = (body: Record<string, unknown> = {}) =>
+      post({
+        transactionType: 'expense',
+        amount: '120',
+        accountId: bankId,
+        categoryId: foodId,
+        transactionDate: '2026-10-20',
+        note: '午餐',
+        ...body,
+      }).expect(201);
+
+    beforeEach(async () => {
+      lunchId = ((await expense()).body as { id: string }).id;
     });
 
+    it('改金額、日期、備註：沒傳的欄位保持原值，餘額跟著變', async () => {
+      const res = await patch(lunchId, {
+        amount: '150.5',
+        transactionDate: '2026-10-21',
+        note: '晚餐',
+      }).expect(200);
+      expect(res.body).toMatchObject({
+        id: lunchId,
+        transactionType: 'expense',
+        amount: '150.50',
+        accountId: bankId,
+        categoryId: foodId,
+        toAccountId: null,
+        transactionDate: '2026-10-21',
+        note: '晚餐',
+        isBillGenerated: false,
+      });
+      expect(await balanceOf(bankId)).toBe('99849.50');
+    });
+
+    it('只改一個欄位：其他欄位不變', async () => {
+      const res = await patch(lunchId, { note: '便當' }).expect(200);
+      expect(res.body).toMatchObject({
+        amount: '120.00',
+        transactionDate: '2026-10-20',
+        categoryId: foodId,
+        note: '便當',
+      });
+    });
+
+    it('note 傳 null 或空字串：清空', async () => {
+      const res = await patch(lunchId, { note: null }).expect(200);
+      expect(res.body).toMatchObject({ note: null });
+      const res2 = await patch(lunchId, { note: '' }).expect(200);
+      expect(res2.body).toMatchObject({ note: null });
+    });
+
+    it('空的 body：不改任何東西，回原本的交易', async () => {
+      const res = await patch(lunchId, {}).expect(200);
+      expect(res.body).toMatchObject({ amount: '120.00', note: '午餐' });
+    });
+
+    it('換帳戶：交易移到另一個帳戶，兩邊餘額都跟著變', async () => {
+      await patch(lunchId, { accountId: cardId }).expect(200);
+      expect(await balanceOf(bankId)).toBe('100000.00');
+      expect(await balanceOf(cardId)).toBe('-120.00');
+    });
+
+    it('改成未來日期：不算進目前餘額（PRD 15.11）', async () => {
+      await patch(lunchId, { transactionDate: '2026-11-05' }).expect(200);
+      expect(await balanceOf(bankId)).toBe('100000.00');
+    });
+
+    it('支出改收入：分類一起換成收入分類，餘額由減變加', async () => {
+      const res = await patch(lunchId, {
+        transactionType: 'income',
+        categoryId: salaryId,
+      }).expect(200);
+      expect(res.body).toMatchObject({
+        transactionType: 'income',
+        categoryId: salaryId,
+      });
+      expect(await balanceOf(bankId)).toBe('100120.00');
+    });
+
+    it('支出改收入但沒換分類：400 CATEGORY_TYPE_MISMATCH', async () => {
+      const res = await patch(lunchId, { transactionType: 'income' }).expect(
+        400,
+      );
+      expect(res.body).toMatchObject({
+        code: 'CATEGORY_TYPE_MISMATCH',
+        details: [{ field: 'categoryId' }],
+      });
+    });
+
+    it('支出改轉帳：帶 toAccountId、categoryId 設成 null', async () => {
+      const res = await patch(lunchId, {
+        transactionType: 'transfer',
+        toAccountId: cardId,
+        categoryId: null,
+      }).expect(200);
+      expect(res.body).toMatchObject({
+        transactionType: 'transfer',
+        toAccountId: cardId,
+        categoryId: null,
+      });
+      expect(await balanceOf(bankId)).toBe('99880.00');
+      expect(await balanceOf(cardId)).toBe('120.00');
+    });
+
+    it.each([
+      [
+        '改轉帳卻沒清空分類',
+        { transactionType: 'transfer', toAccountId: 'card' },
+        'categoryId',
+      ],
+      [
+        '改轉帳卻沒帶轉入帳戶',
+        { transactionType: 'transfer', categoryId: null },
+        'toAccountId',
+      ],
+      ['支出帶了轉入帳戶', { toAccountId: 'card' }, 'toAccountId'],
+      ['支出把分類清空', { categoryId: null }, 'categoryId'],
+    ])('%s：400 TRANSACTION_FIELDS_MISMATCH', async (_name, body, field) => {
+      const resolved = Object.fromEntries(
+        Object.entries(body).map(([k, v]) => [k, v === 'card' ? cardId : v]),
+      );
+      const res = await patch(lunchId, resolved).expect(400);
+      expect(res.body).toMatchObject({
+        code: 'TRANSACTION_FIELDS_MISMATCH',
+        details: [{ field }],
+      });
+    });
+
+    it('轉帳改支出：清空轉入帳戶、帶支出分類', async () => {
+      const transfer = await post({
+        transactionType: 'transfer',
+        amount: '500',
+        accountId: bankId,
+        toAccountId: cardId,
+      }).expect(201);
+      const res = await patch((transfer.body as { id: string }).id, {
+        transactionType: 'expense',
+        toAccountId: null,
+        categoryId: foodId,
+      }).expect(200);
+      expect(res.body).toMatchObject({
+        transactionType: 'expense',
+        toAccountId: null,
+        categoryId: foodId,
+      });
+      expect(await balanceOf(cardId)).toBe('0.00');
+    });
+
+    it('轉帳改成轉給同一個帳戶：400 TRANSFER_SAME_ACCOUNT', async () => {
+      const transfer = await post({
+        transactionType: 'transfer',
+        amount: '500',
+        accountId: bankId,
+        toAccountId: cardId,
+      }).expect(201);
+      const res = await patch((transfer.body as { id: string }).id, {
+        toAccountId: bankId,
+      }).expect(400);
+      expect(res.body).toMatchObject({ code: 'TRANSFER_SAME_ACCOUNT' });
+    });
+
+    it.each([
+      ['transactionType', 'VALIDATION_FAILED'],
+      ['amount', 'AMOUNT_INVALID'],
+      ['accountId', 'ACCOUNT_NOT_FOUND'],
+      ['transactionDate', 'VALIDATION_FAILED'],
+    ])('%s 傳 null：400 %s（不能清空）', async (field, code) => {
+      const res = await patch(lunchId, { [field]: null }).expect(400);
+      expect(res.body).toMatchObject({ code, details: [{ field }] });
+    });
+
+    it('金額 0：400 AMOUNT_NOT_POSITIVE', async () => {
+      const res = await patch(lunchId, { amount: '0' }).expect(400);
+      expect(res.body).toMatchObject({ code: 'AMOUNT_NOT_POSITIVE' });
+    });
+
+    it('別人的交易、不存在的交易：404 TRANSACTION_NOT_FOUND', async () => {
+      const otherId = await createUser(prisma, 'c-other@example.com');
+      const res = await api()
+        .patch(`/api/v1/transactions/${lunchId}`)
+        .set('Authorization', await bearer(app, otherId))
+        .send({ amount: '1' })
+        .expect(404);
+      expect(res.body).toMatchObject({ code: 'TRANSACTION_NOT_FOUND' });
+      await patch(NOT_EXIST, { amount: '1' }).expect(404);
+      // 別人改不到：金額沒變
+      expect(await balanceOf(bankId)).toBe('99880.00');
+    });
+
+    it('移到別人的帳戶、用別人的分類：400 NOT_FOUND，不洩漏是否存在（PRD 第 517 行）', async () => {
+      const otherId = await createUser(prisma, 'c-other@example.com');
+      const otherBank = await prisma.account.create({
+        data: {
+          userId: otherId,
+          name: 'B',
+          accountType: 'bank',
+          openingBalance: 0,
+        },
+      });
+      const otherFood = await createCategory(
+        prisma,
+        'other-food',
+        CategoryType.expense,
+        { userId: otherId },
+      );
+      const res = await patch(lunchId, { accountId: otherBank.id }).expect(400);
+      expect(res.body).toMatchObject({
+        code: 'ACCOUNT_NOT_FOUND',
+        details: [{ field: 'accountId' }],
+      });
+      const res2 = await patch(lunchId, { categoryId: otherFood }).expect(400);
+      expect(res2.body).toMatchObject({
+        code: 'CATEGORY_NOT_FOUND',
+        details: [{ field: 'categoryId' }],
+      });
+    });
+
+    it('原本的帳戶停用：409 ACCOUNT_INACTIVE，什麼都不能改（AC-26）', async () => {
+      await prisma.account.update({
+        where: { id: bankId },
+        data: { isActive: false },
+      });
+      const res = await patch(lunchId, { note: '只改備註' }).expect(409);
+      expect(res.body).toMatchObject({
+        code: 'ACCOUNT_INACTIVE',
+        details: [{ field: 'accountId' }],
+      });
+      // 也不能把交易移出停用帳戶
+      await patch(lunchId, { accountId: cardId }).expect(409);
+    });
+
+    it('轉帳的轉入帳戶停用：409 ACCOUNT_INACTIVE（field toAccountId）', async () => {
+      const transfer = await post({
+        transactionType: 'transfer',
+        amount: '500',
+        accountId: bankId,
+        toAccountId: cardId,
+      }).expect(201);
+      await prisma.account.update({
+        where: { id: cardId },
+        data: { isActive: false },
+      });
+      const res = await patch((transfer.body as { id: string }).id, {
+        amount: '600',
+      }).expect(409);
+      expect(res.body).toMatchObject({
+        code: 'ACCOUNT_INACTIVE',
+        details: [{ field: 'toAccountId' }],
+      });
+    });
+
+    it('移進停用的帳戶：409 ACCOUNT_INACTIVE（PRD 15.11）', async () => {
+      await prisma.account.update({
+        where: { id: cardId },
+        data: { isActive: false },
+      });
+      const res = await patch(lunchId, { accountId: cardId }).expect(409);
+      expect(res.body).toMatchObject({
+        code: 'ACCOUNT_INACTIVE',
+        details: [{ field: 'accountId' }],
+      });
+    });
+
+    it('分類之後停用了：沒改分類時仍可以改金額；換成停用的分類回 400', async () => {
+      const oldFood = await createCategory(
+        prisma,
+        'old-food',
+        CategoryType.expense,
+      );
+      const created = await expense({ categoryId: oldFood });
+      const id = (created.body as { id: string }).id;
+      await prisma.category.update({
+        where: { id: oldFood },
+        data: { isActive: false },
+      });
+      await patch(id, { amount: '80' }).expect(200);
+      const res = await patch(lunchId, { categoryId: oldFood }).expect(400);
+      expect(res.body).toMatchObject({ code: 'CATEGORY_NOT_FOUND' });
+    });
+
+    it('帳單產生的交易：409 BILL_LINKED_TRANSACTION，內容不變（PRD 16.5）', async () => {
+      const billTxId = await createBillTransaction();
+      const res = await patch(billTxId, { amount: '1' }).expect(409);
+      expect(res.body).toMatchObject({
+        code: 'BILL_LINKED_TRANSACTION',
+        details: [],
+      });
+      const row = await prisma.transaction.findUniqueOrThrow({
+        where: { id: billTxId },
+      });
+      expect(row.amount.toFixed(2)).toBe('18000.00');
+    });
+
+    it('同一筆同時改兩次：兩個都成功，結果是其中一個（不會壞掉）', async () => {
+      const [a, b] = await Promise.all([
+        patch(lunchId, { amount: '200' }),
+        patch(lunchId, { amount: '300' }),
+      ]);
+      expect([a.status, b.status]).toEqual([200, 200]);
+      expect(['99800.00', '99700.00']).toContain(await balanceOf(bankId));
+    });
+  });
+
+  describe('DELETE /transactions/:id', () => {
+    const del = (id: string) =>
+      api().delete(`/api/v1/transactions/${id}`).set('Authorization', auth);
+
+    it('刪除後餘額恢復，再查回 404；刪第二次也是 404', async () => {
+      const created = await post({
+        transactionType: 'expense',
+        amount: '120',
+        accountId: bankId,
+        categoryId: foodId,
+      }).expect(201);
+      const id = (created.body as { id: string }).id;
+      expect(await balanceOf(bankId)).toBe('99880.00');
+
+      const res = await del(id).expect(204);
+      expect(res.body).toEqual({});
+      expect(await balanceOf(bankId)).toBe('100000.00');
+      await api()
+        .get(`/api/v1/transactions/${id}`)
+        .set('Authorization', auth)
+        .expect(404);
+      await del(id).expect(404);
+    });
+
+    it('刪除轉帳：兩邊餘額都恢復', async () => {
+      const created = await post({
+        transactionType: 'transfer',
+        amount: '500',
+        accountId: bankId,
+        toAccountId: cardId,
+      }).expect(201);
+      await del((created.body as { id: string }).id).expect(204);
+      expect(await balanceOf(bankId)).toBe('100000.00');
+      expect(await balanceOf(cardId)).toBe('0.00');
+    });
+
+    it('別人的交易：404，而且沒有被刪掉', async () => {
+      const created = await post({
+        transactionType: 'expense',
+        amount: '120',
+        accountId: bankId,
+        categoryId: foodId,
+      }).expect(201);
+      const id = (created.body as { id: string }).id;
+      const otherId = await createUser(prisma, 'c-other@example.com');
+      const res = await api()
+        .delete(`/api/v1/transactions/${id}`)
+        .set('Authorization', await bearer(app, otherId))
+        .expect(404);
+      expect(res.body).toMatchObject({ code: 'TRANSACTION_NOT_FOUND' });
+      expect(await prisma.transaction.count({ where: { id } })).toBe(1);
+    });
+
+    it.each([
+      ['轉出帳戶', 'bank'],
+      ['轉入帳戶', 'card'],
+    ])(
+      '%s停用：409 ACCOUNT_INACTIVE，details 是 []（AC-26）',
+      async (_name, which) => {
+        const created = await post({
+          transactionType: 'transfer',
+          amount: '500',
+          accountId: bankId,
+          toAccountId: cardId,
+        }).expect(201);
+        await prisma.account.update({
+          where: { id: which === 'bank' ? bankId : cardId },
+          data: { isActive: false },
+        });
+        const res = await del((created.body as { id: string }).id).expect(409);
+        expect(res.body).toMatchObject({
+          code: 'ACCOUNT_INACTIVE',
+          details: [],
+        });
+      },
+    );
+
+    it('帳單產生的交易：409 BILL_LINKED_TRANSACTION，沒有被刪掉（PRD 16.5）', async () => {
+      const billTxId = await createBillTransaction();
+      const res = await del(billTxId).expect(409);
+      expect(res.body).toMatchObject({
+        code: 'BILL_LINKED_TRANSACTION',
+        details: [],
+      });
+      expect(await prisma.transaction.count({ where: { id: billTxId } })).toBe(
+        1,
+      );
+    });
+  });
+
+  describe(':id 格式', () => {
     it.each(['get', 'patch', 'delete'] as const)(
       '%s 的 :id 不是 UUID 時回 404 TRANSACTION_NOT_FOUND',
       async (method) => {
@@ -638,4 +1028,36 @@ describe('交易 API（e2e）', () => {
       },
     );
   });
+
+  /** 已繳帳單與它產生的支出（直接寫資料庫，模擬 E 的繳費）；回傳交易 id */
+  async function createBillTransaction(): Promise<string> {
+    const bill = await prisma.bill.create({
+      data: {
+        userId,
+        name: '房租',
+        amount: 18000,
+        categoryId: foodId,
+        accountId: bankId,
+        dueDate: toDbDate('2026-10-05'),
+        dueDay: 5,
+        status: 'paid',
+        paidAmount: 18000,
+        paidDate: toDbDate('2026-10-05'),
+      },
+    });
+    return (
+      await prisma.transaction.create({
+        data: {
+          userId,
+          accountId: bankId,
+          transactionType: TransactionType.expense,
+          amount: 18000,
+          categoryId: foodId,
+          transactionDate: toDbDate('2026-10-05'),
+          note: '房租',
+          billId: bill.id,
+        },
+      })
+    ).id;
+  }
 });
