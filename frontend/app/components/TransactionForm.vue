@@ -5,7 +5,7 @@
  * - 轉帳、繳卡費（kind="transfer"／"card"）：繳卡費＝銀行 → 信用卡的轉帳，不算支出（§15.10）
  * - 交易頁的編輯（initial 有值）
  */
-import { errorText } from '~/lib/api-error'
+import { errorText, fieldErrors } from '~/lib/api-error'
 import { formatDateShort, isValidDate, todayTaipei } from '~/lib/date'
 import { formatMoney, normalizeAmount, toCents, validateAmount } from '~/lib/money'
 import type { Transaction, TransactionBody, TransactionType } from '~/types/api'
@@ -53,9 +53,13 @@ if (props.initial) {
     kind: t.transactionType, amount: String(Number(t.amount)), categoryId: t.categoryId ?? '',
     accountId: t.accountId, toAccountId: t.toAccountId ?? '', transactionDate: t.transactionDate, note: t.note ?? '',
   }
-} else if (props.startKind !== 'expense' || props.cardId) {
-  form.value.kind = props.startKind
-  if (props.cardId) form.value.toAccountId = props.cardId
+} else {
+  if (props.startKind !== 'expense' || props.cardId) {
+    form.value.kind = props.startKind
+    if (props.cardId) form.value.toAccountId = props.cardId
+  }
+  // 日期預設今天（AC-21）：草稿是前幾天留下的，日期不要停在那天；未來日期是使用者自己選的，保留
+  if (form.value.transactionDate < today) form.value.transactionDate = today
 }
 
 const showMore = ref(props.mode === 'full')
@@ -137,9 +141,17 @@ function validate() {
   if (isTransfer.value && !f.toAccountId) e.toAccountId = '請選擇轉入帳戶'
   if (isTransfer.value && f.toAccountId && f.toAccountId === f.accountId) e.toAccountId = '轉出和轉入不能是同一個帳戶'
   if (!isValidDate(f.transactionDate)) e.transactionDate = '請選擇有效的日期'
-  if (f.note.length > 200) e.note = '備註最多 200 字'
+  // 跟後端一樣以字元（code point）計算，emoji 算 1 個字
+  if (Array.from(f.note).length > 200) e.note = '備註最多 200 字'
+  return showErrors(e)
+}
+
+/** 表單上有顯示錯誤的欄位（和後端 details.field 同名） */
+const FORM_FIELDS = ['amount', 'categoryId', 'accountId', 'toAccountId', 'transactionDate', 'note']
+
+/** 顯示欄位錯誤；錯誤在「更多」裡面時自動展開 */
+function showErrors(e: Record<string, string | undefined>) {
   errors.value = e
-  // 錯誤在「更多」裡面時自動展開
   if (e.accountId || e.toAccountId || e.transactionDate || e.note) showMore.value = true
   return !Object.values(e).some(Boolean)
 }
@@ -173,7 +185,11 @@ async function submit() {
     bump()
     emit('saved', saved)
   } catch (e) {
-    submitError.value = errorText(e)
+    // 後端的欄位錯誤（details）顯示在對應的欄位下面，其他的顯示在表單上方
+    const fields = fieldErrors(e)
+    const shown = Object.keys(fields).filter((k) => FORM_FIELDS.includes(k))
+    if (shown.length) showErrors(fields)
+    else submitError.value = errorText(e)
   } finally {
     saving.value = false
   }
@@ -195,7 +211,12 @@ const summaryText = computed(() => {
 </script>
 
 <template>
-  <div v-if="!accounts.data.value || !categories.data.value" class="space-y-3 py-2" aria-busy="true">
+  <!-- 帳戶或分類載入失敗：不要一直轉圈 -->
+  <div v-if="accounts.error.value || categories.error.value" class="py-6 text-center">
+    <p class="text-sm text-rose-700">{{ accounts.error.value ?? categories.error.value }}</p>
+    <AppButton variant="secondary" class="mt-3" @click="accounts.reload(); categories.reload()">重試</AppButton>
+  </div>
+  <div v-else-if="!accounts.data.value || !categories.data.value" class="space-y-3 py-2" aria-busy="true">
     <div class="h-10 animate-pulse rounded-xl bg-slate-100" />
     <div class="h-16 animate-pulse rounded-xl bg-slate-100" />
     <div class="h-24 animate-pulse rounded-xl bg-slate-100" />
@@ -280,7 +301,7 @@ const summaryText = computed(() => {
         </select>
       </AppField>
       <AppField label="備註" for="tx-note" :error="errors.note" class="sm:col-span-2">
-        <input id="tx-note" v-model="form.note" type="text" maxlength="200" class="field-input" placeholder="選填，例如：午餐">
+        <input id="tx-note" v-model="form.note" type="text" class="field-input" placeholder="選填，例如：午餐">
       </AppField>
     </div>
 
