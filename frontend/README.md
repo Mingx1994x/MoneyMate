@@ -99,7 +99,7 @@ npm run typecheck    # 頁面用到不存在或改名的欄位會報錯
 
 - 後端合併了新的 API（`openapi.json` 有變）之後，前端在下一個 PR 執行 `npm run api:types` 並 commit。
 - CI 會用 PR 裡的 `openapi.json` 重新產生型別再 typecheck：後端改名或刪掉前端還在用的欄位時 CI 失敗；進版控的型別檔過期只會出現警告。
-- 貸款、帳單的型別暫時手寫（後端還是 501），#60、#61 接 API 時改用產生的型別。
+- 貸款、帳單的型別暫時手寫：頁面還接假後端，#60、#61 接 API 時改用產生的型別。
 
 ### 跟 PRD 對齊的重點
 
@@ -113,7 +113,7 @@ npm run typecheck    # 頁面用到不存在或改名的欄位會報錯
 
 | 項目 | 結論 |
 |---|---|
-| 不分頁的列表 | 一律包一層 `{ items: [...] }`（E 的統一規則）：`GET /accounts`、`/categories`、`/loans`、`/bills` |
+| 不分頁的列表 | 一律包一層 `{ items: [...] }`（E 的統一規則）：`GET /accounts`、`/categories`、`/loans`（`/bills` 是分頁格式，跟 `/transactions` 一樣） |
 | 刪除帳戶時加回估計值 | `DELETE /accounts/:id?addBackToEstimate=true`；沒帶或 `false` 就不加回（C 確認） |
 | 快速記帳「填好金額後點分類就直接存」 | OK（C 確認）；前端一律帶上次使用的 `accountId` 與 `transactionDate` |
 | 交易列表篩選參數 | `dateFrom`、`dateTo`、`transactionType`、`categoryId`、`accountId`、`page`、`pageSize` |
