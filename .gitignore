@@ -4,11 +4,17 @@ node_modules/
 # Build output
 dist/
 build/
+*.tsbuildinfo
+coverage/
+
+# Generated code
+backend/src/generated/
 
 # Environment variables
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # Logs
 *.log
@@ -23,3 +29,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Minimal flow test screenshots
+docs/screenshot/

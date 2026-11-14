@@ -1,0 +1,229 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 慣例
+// - id：由資料庫 gen_random_uuid() 產生，直接用 SQL 新增也不用給
+// - updatedAt：資料庫預設 now()，Prisma 每次修改時更新；raw SQL 的 UPDATE 要自己寫 updated_at = now()
+// - onDelete：使用者 → 他的資料用 Cascade（seed:demo、測試可以一次刪乾淨）；業務資料之間用 Restrict（PRD 第十四節）
+// - 欄位說明、null 的意思：見 docs/data-dictionary.md
+
+model User {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  displayName  String?       @map("display_name")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  accounts     Account[]
+  categories   Category[]
+  transactions Transaction[]
+  loans        Loan[]
+  bills        Bill[]
+  goal         Goal?
+
+  @@map("users")
+}
+
+enum AccountType {
+  cash
+  bank
+  investment
+  credit_card
+
+  @@map("account_type")
+}
+
+model Account {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String      @map("user_id") @db.Uuid
+  name                 String
+  accountType          AccountType @map("account_type")
+  currency             String      @default("TWD")
+  openingBalance       Decimal     @map("opening_balance") @db.Decimal(14, 2)
+  isActive             Boolean     @default(true) @map("is_active")
+  isEstimate           Boolean     @default(false) @map("is_estimate")
+  deductedFromEstimate Decimal?    @map("deducted_from_estimate") @db.Decimal(14, 2)
+  note                 String?
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      Transaction[] @relation("TransactionAccount")
+  incomingTransfers Transaction[] @relation("TransactionToAccount")
+  bills             Bill[]
+
+  @@unique([id, userId]) // 複合外鍵的對應目標：交易、帳單只能用同一個使用者的帳戶
+  @@index([userId])
+  @@map("accounts")
+}
+
+enum CategoryType {
+  income
+  expense
+
+  @@map("category_type")
+}
+
+// user_id 是 null = 系統分類，所有人共用（P0 只有系統分類）
+model Category {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?      @map("user_id") @db.Uuid
+  code      String       @unique
+  name      String
+  type      CategoryType
+  sortOrder Int          @default(0) @map("sort_order")
+  isActive  Boolean      @default(true) @map("is_active")
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  bills        Bill[]
+
+  @@map("categories")
+}
+
+enum TransactionType {
+  income
+  expense
+  transfer
+
+  @@map("transaction_type")
+}
+
+model Transaction {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  accountId       String          @map("account_id") @db.Uuid // 收入／支出的帳戶；轉帳的轉出帳戶
+  transactionType TransactionType @map("transaction_type")
+  amount          Decimal         @db.Decimal(14, 2)
+  categoryId      String?         @map("category_id") @db.Uuid // 轉帳是 null
+  toAccountId     String?         @map("to_account_id") @db.Uuid // 只有轉帳有
+  transactionDate DateTime        @map("transaction_date") @db.Date // 可以是未來日期
+  note            String?
+  billId          String?         @unique @map("bill_id") @db.Uuid // 繳帳單產生的交易才有
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 複合外鍵：onUpdate Restrict，改帳戶的 user_id 不會把交易一起搬給別人
+  account   Account   @relation("TransactionAccount", fields: [accountId, userId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  toAccount Account?  @relation("TransactionToAccount", fields: [toAccountId, userId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  bill      Bill?     @relation(fields: [billId], references: [id], onDelete: Restrict)
+
+  @@index([userId, transactionDate])
+  @@index([accountId])
+  @@index([toAccountId])
+  @@map("transactions")
+}
+
+enum LoanStatus {
+  active
+  closed
+
+  @@map("loan_status")
+}
+
+// 貸款和帳單是獨立資料：P0 沒有 loan_id
+model Loan {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String     @map("user_id") @db.Uuid
+  name               String
+  loanType           String     @map("loan_type")
+  outstandingBalance Decimal    @map("outstanding_balance") @db.Decimal(14, 2) // 使用者手動更新
+  monthlyPayment     Decimal    @map("monthly_payment") @db.Decimal(14, 2)
+  paymentDay         Int        @map("payment_day") // 1–31
+  endDate            DateTime   @map("end_date") @db.Date
+  interestRate       Decimal?   @map("interest_rate") @db.Decimal(6, 3) // 0–100，選填；用來算建議月付
+  status             LoanStatus @default(active)
+  balanceUpdatedAt   DateTime   @default(now()) @map("balance_updated_at") @db.Timestamptz
+  note               String?
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("loans")
+}
+
+enum Recurrence {
+  none
+  monthly
+  yearly
+
+  @@map("recurrence")
+}
+
+enum BillStatus {
+  pending
+  paid
+
+  @@map("bill_status")
+}
+
+model Bill {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String     @map("user_id") @db.Uuid
+  name       String
+  amount     Decimal    @db.Decimal(14, 2) // 預定金額；下一期沿用
+  categoryId String     @map("category_id") @db.Uuid // 只能是支出分類
+  accountId  String     @map("account_id") @db.Uuid // 預設扣款帳戶
+  dueDate    DateTime   @map("due_date") @db.Date
+  dueDay     Int        @map("due_day") // 原本的日期（例如 31），短月用
+  dueMonth   Int?       @map("due_month") // 年度帳單原本的月份（例如 2），閏年用
+  seriesId   String     @default(dbgenerated("gen_random_uuid()")) @map("series_id") @db.Uuid // 同一個重複系列共用；下一期沿用
+  recurrence Recurrence @default(none)
+  status     BillStatus @default(pending)
+  paidAmount Decimal?   @map("paid_amount") @db.Decimal(14, 2) // 實繳金額
+  paidDate   DateTime?  @map("paid_date") @db.Date
+  note       String?
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  // 複合外鍵：onUpdate Restrict，改帳戶的 user_id 不會把帳單一起搬給別人
+  account     Account      @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict, onUpdate: Restrict)
+  transaction Transaction?
+
+  @@index([userId, dueDate])
+  @@index([seriesId, dueDate])
+  @@map("bills")
+}
+
+// 一人一個目標；有這筆資料 = 已完成問卷
+model Goal {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @unique @map("user_id") @db.Uuid
+  name             String    @default("財富自由")
+  monthlySpending  Decimal   @map("monthly_spending") @db.Decimal(14, 2) // 1,000–333,000 的整數
+  targetAmount     Decimal   @map("target_amount") @db.Decimal(14, 2) // = monthly_spending × 300，只由 goals service 寫入
+  targetDate       DateTime? @map("target_date") @db.Date // P1
+  birthYear        Int?      @map("birth_year") // 算財富自由年齡用；目標頁問 1 次
+  estMonthlySaving Decimal?  @map("est_monthly_saving") @db.Decimal(14, 2) // 記帳不滿 3 個完整月時才用到
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("goals")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Prisma 寫不出來的規則：手動加在 migration 20261027034404_init 的最下面。
+// 清單與說明見 docs/data-dictionary.md「手動加在 migration 的規則」；
+// 自動測試在 test/db-constraints.e2e-spec.ts。
+// 要改這些規則時：另外手寫一份新的 migration，同步更新資料字典與測試。
+//
+// ⚠️ 部分唯一索引不能延後檢查，帳單的寫入順序要照 PRD 第十六節：
+//    繳費：先把本期改成 paid → 再新增下一期 pending
+//    取消繳費：先刪下一期 pending → 再把本期改回 pending
+//
+// P1：開放自訂分類時，categories.code 不能再全域唯一，要改成 (user_id, code)
+// ─────────────────────────────────────────────────────────────
