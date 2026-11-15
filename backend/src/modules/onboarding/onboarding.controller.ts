@@ -1,23 +1,24 @@
-import {
-  Body,
-  Controller,
-  NotImplementedException,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  ApiAuth,
-  ApiErrors,
-  ApiNotImplemented,
-} from '../../common/swagger/api-decorators.js';
+import { ClockService } from '../../clock/clock.service.js';
+import { ApiAuth, ApiErrors } from '../../common/swagger/api-decorators.js';
+import { CurrentUser, type AuthUser } from '../auth/index.js';
 import { GoalProgressDto } from '../goals/dto/goal-progress.dto.js';
+import { GoalsService } from '../goals/index.js';
 import { CreateOnboardingDto } from './dto/create-onboarding.dto.js';
+import { OnboardingService } from './onboarding.service.js';
 
-/** ONB 空殼：實作在 W4（等 C 的 createAccount）。 */
+/** ONB：送出問卷（PRD 第十二節）。 */
 @ApiTags('onboarding')
 @ApiAuth()
 @Controller('onboarding')
 export class OnboardingController {
+  constructor(
+    private readonly onboarding: OnboardingService,
+    private readonly goals: GoalsService,
+    private readonly clock: ClockService,
+  ) {}
+
   @Post()
   @ApiOperation({
     summary: '送出問卷（建立目標與估計帳戶）',
@@ -29,8 +30,18 @@ export class OnboardingController {
   })
   @ApiCreatedResponse({ type: GoalProgressDto })
   @ApiErrors('VALIDATION_FAILED', 'ONBOARDING_ALREADY_DONE')
-  @ApiNotImplemented()
-  create(@Body() _dto: CreateOnboardingDto): GoalProgressDto {
-    throw new NotImplementedException();
+  async create(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateOnboardingDto,
+  ): Promise<GoalProgressDto> {
+    // 寫入的交易結束（commit）後才讀進度，才讀得到剛建立的目標與估計帳戶
+    await this.onboarding.submit(user.id, dto);
+    const progress = await this.goals.getGoalProgress(
+      user.id,
+      this.clock.today(),
+    );
+    // submit 成功就一定有目標；真的是 null 代表程式有錯，交給全域 filter 回 500
+    if (!progress) throw new Error('問卷送出後找不到目標');
+    return progress;
   }
 }
