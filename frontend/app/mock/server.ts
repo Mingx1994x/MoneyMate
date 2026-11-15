@@ -13,7 +13,7 @@ import { buildMilestones, fireAge, loanPaymentPreview } from '../lib/finance'
 import { AMOUNT_RE, fromCents, toCents } from '../lib/money'
 import type {
   Account, Bill, BillBrief, Category, DashboardSummary, Goal, GoalProgress, Loan, Me, NextStep, Paginated, Transaction,
-} from '../types/api'
+} from './types'
 import {
   CATEGORIES, emptyDB, newId, STORAGE_KEY,
   type AccountRow, type BillRow, type DB, type LoanRow, type Storage, type TxRow,

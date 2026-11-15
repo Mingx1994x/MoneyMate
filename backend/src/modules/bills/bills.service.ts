@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ClockService } from '../../clock/clock.service.js';
 import {
   addDays,
@@ -19,6 +19,7 @@ import {
 } from '../../prisma/index.js';
 import { AccountsService } from '../accounts/index.js';
 import { CategoriesService } from '../categories/index.js';
+import { TransactionsService } from '../transactions/index.js';
 import { DUE_SOON_DAYS, summarizeBillAlerts } from './bill-alerts.js';
 import type { BillAlerts } from './bill-alerts.types.js';
 import { toBillResponse } from './bill-mapper.js';
@@ -26,7 +27,9 @@ import {
   assertDueDateNotTooFar,
   dueDayOf,
   dueMonthOf,
+  nextPeriodData,
   splitPage,
+  stopsOnUnpay,
 } from './bill-rules.js';
 import type { BillListQueryDto } from './dto/bill-list-query.dto.js';
 import { BillListStatus } from './dto/bill-list-status.enum.js';
@@ -35,21 +38,31 @@ import type {
   BillResponseDto,
 } from './dto/bill-response.dto.js';
 import type { CreateBillDto } from './dto/create-bill.dto.js';
+import type { PayBillDto, PayBillResponseDto } from './dto/pay-bill.dto.js';
+import type {
+  StopRecurrenceDto,
+  StopRecurrenceResponseDto,
+} from './dto/stop-recurrence.dto.js';
 import type { UpdateBillDto } from './dto/update-bill.dto.js';
 
 /**
- * 帳單：CRUD（BILL-2）、列表（BILL-3），以及 Dashboard 的帳單區塊（BILL-9）。繳費、取消繳費、停止重複在 BILL-5～7 加入。
+ * 帳單：CRUD（BILL-2）、列表（BILL-3）、繳費（BILL-5）、取消繳費（BILL-6）、停止重複（BILL-7），
+ * 以及 Dashboard 的帳單區塊（BILL-9）。
  * - 端點方法開頭從 ClockService 取一次今天，往下傳。
  * - 查詢一律帶 userId；不存在、屬於他人一律 404 BILL_NOT_FOUND。
- * - 修改、刪除先鎖定整個系列（FOR UPDATE），鎖定後重新讀取再判斷：等鎖的期間狀態可能已經變了。
+ * - 修改、刪除、繳費、取消繳費、停止重複先鎖定整個系列（FOR UPDATE），鎖定後重新讀取再判斷：
+ *   等鎖的期間狀態可能已經變了。一個系列最多一張待繳（部分唯一索引），所以要先刪舊的待繳、再產生新的。
  */
 @Injectable()
 export class BillsService {
+  private readonly logger = new Logger(BillsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly clock: ClockService,
     private readonly accounts: AccountsService,
     private readonly categories: CategoriesService,
+    private readonly transactions: TransactionsService,
   ) {}
 
   /**
@@ -257,6 +270,164 @@ export class BillsService {
   }
 
   /**
+   * POST /bills/:id/pay。在同一個資料庫交易內：建立支出 → 帳單改為已繳 → 重複的帳單建立下一期。
+   * - 已繳 → 409 BILL_ALREADY_PAID（鎖定後重新讀取，同時送兩次也只有一筆支出）。
+   * - paidAmount 預設帳單的 amount；paidDate 預設台北今天，晚於今天 → 400 PAID_DATE_IN_FUTURE。
+   * - 支出用 C 的 createBillTransaction：帳戶、分類沿用帳單，note 是帳單名稱（Q14）。扣款帳戶停用時它丟 409 ACCOUNT_INACTIVE；
+   *   不檢查餘額（Q16）。不檢查分類：分類之後被停用也照常繳費（Q17）。
+   */
+  async pay(
+    userId: string,
+    id: string,
+    dto: PayBillDto,
+  ): Promise<PayBillResponseDto> {
+    const today = this.clock.today();
+    const { seriesId } = await this.findOwned(userId, id);
+
+    const { bill, nextBill } = await this.prisma.$transaction(async (tx) => {
+      const current = await this.lockAndReload(tx, seriesId, userId, id);
+      if (current.status === BillStatus.paid) {
+        throw new AppException('BILL_ALREADY_PAID');
+      }
+      const paidAmount =
+        dto.paidAmount === undefined ? current.amount : toMoney(dto.paidAmount);
+      const paidDate = dto.paidDate ?? today;
+      if (paidDate > today) {
+        throw AppException.forField('PAID_DATE_IN_FUTURE', 'paidDate');
+      }
+
+      await this.transactions.createBillTransaction(tx, userId, {
+        billId: current.id,
+        accountId: current.accountId,
+        categoryId: current.categoryId,
+        amount: paidAmount,
+        transactionDate: paidDate,
+        note: current.name,
+      });
+      const paid = await tx.bill.update({
+        where: { id: current.id },
+        data: {
+          status: BillStatus.paid,
+          paidAmount,
+          paidDate: toDbDate(paidDate),
+        },
+      });
+      const next =
+        current.recurrence === Recurrence.none
+          ? null
+          : await tx.bill.create({ data: nextPeriodData(current) });
+      return { bill: paid, nextBill: next };
+    });
+
+    this.logger.log(
+      { billId: bill.id, seriesId, nextBillId: nextBill?.id ?? null },
+      '帳單已繳費',
+    );
+    return {
+      bill: toBillResponse(bill, today),
+      nextBill: nextBill === null ? null : toBillResponse(nextBill, today),
+    };
+  }
+
+  /**
+   * POST /bills/:id/unpay。在同一個資料庫交易內：刪除同系列的待繳帳單 → 刪除這張的支出 → 這張改回待繳。
+   * - 待繳 → 409 BILL_NOT_PAID；同系列有到期日更晚的已繳帳單 → 409 NEXT_BILL_ALREADY_PAID（要從最新一期往回取消）。
+   * - 扣款帳戶停用：C 的 deleteBillTransaction 丟 409 ACCOUNT_INACTIVE（Q2）。這時待繳帳單已經刪了，但整個交易一起回滾。
+   * - 系列已經停止（沒有待繳，或待繳是不重複）時，這張也改成不重複、dueMonth 改成 null（stopsOnUnpay）。
+   * 順序：先刪待繳，才不會同時有兩張待繳；先刪支出，再把這張改回待繳。
+   * 提交後寫 info 日誌：刪掉的待繳帳單不在路徑上，請求完成日誌看不出來。
+   */
+  async unpay(userId: string, id: string): Promise<BillResponseDto> {
+    const today = this.clock.today();
+    const { seriesId } = await this.findOwned(userId, id);
+
+    const { bill, deletedPendingId, stoppedRecurrence } =
+      await this.prisma.$transaction(async (tx) => {
+        const current = await this.lockAndReload(tx, seriesId, userId, id);
+        if (current.status === BillStatus.pending) {
+          throw new AppException('BILL_NOT_PAID');
+        }
+        const laterPaid = await tx.bill.findFirst({
+          where: {
+            userId,
+            seriesId,
+            status: BillStatus.paid,
+            dueDate: { gt: current.dueDate },
+          },
+          select: { id: true },
+        });
+        if (laterPaid) throw new AppException('NEXT_BILL_ALREADY_PAID');
+
+        // 要在刪除之前看：刪掉之後就看不出系列有沒有停止
+        const pending = await this.findPending(tx, userId, seriesId);
+        const stop = stopsOnUnpay(pending);
+        if (pending) await tx.bill.delete({ where: { id: pending.id } });
+        await this.transactions.deleteBillTransaction(tx, userId, current.id);
+        const unpaid = await tx.bill.update({
+          where: { id: current.id },
+          data: {
+            status: BillStatus.pending,
+            paidAmount: null,
+            paidDate: null,
+            ...(stop ? { recurrence: Recurrence.none, dueMonth: null } : {}),
+          },
+        });
+        return {
+          bill: unpaid,
+          deletedPendingId: pending?.id ?? null,
+          stoppedRecurrence: stop,
+        };
+      });
+
+    this.logger.log(
+      { billId: bill.id, seriesId, deletedPendingId, stoppedRecurrence },
+      '帳單已取消繳費',
+    );
+    return toBillResponse(bill, today);
+  }
+
+  /**
+   * POST /bills/:id/stop-recurrence。從系列的任何一張進來都可以，處理的是同系列的待繳帳單（最多一張）：
+   * keepCurrent 是 true 時改成不重複（dueMonth 改成 null），false 時刪除。已繳的歷史都不動。
+   * 系列沒有待繳帳單 → 什麼都不做，回 stopped: false。
+   * 有處理時提交後寫 info 日誌：被處理的待繳帳單不一定是路徑上那張，keepCurrent 在 body 裡，請求完成日誌都看不到。
+   */
+  async stopRecurrence(
+    userId: string,
+    id: string,
+    dto: StopRecurrenceDto,
+  ): Promise<StopRecurrenceResponseDto> {
+    const today = this.clock.today();
+    const { seriesId } = await this.findOwned(userId, id);
+
+    const { pendingId, kept } = await this.prisma.$transaction(async (tx) => {
+      await this.lockAndReload(tx, seriesId, userId, id);
+      const pending = await this.findPending(tx, userId, seriesId);
+      if (!pending) return { pendingId: null, kept: null };
+
+      if (!dto.keepCurrent) {
+        await tx.bill.delete({ where: { id: pending.id } });
+        return { pendingId: pending.id, kept: null };
+      }
+      const updated = await tx.bill.update({
+        where: { id: pending.id },
+        data: { recurrence: Recurrence.none, dueMonth: null },
+      });
+      return { pendingId: pending.id, kept: updated };
+    });
+    if (pendingId === null) return { stopped: false, bill: null };
+
+    this.logger.log(
+      { billId: id, seriesId, pendingId, keepCurrent: dto.keepCurrent },
+      '帳單已停止重複',
+    );
+    return {
+      stopped: true,
+      bill: kept === null ? null : toBillResponse(kept, today),
+    };
+  }
+
+  /**
    * Dashboard 的帳單區塊（BILL-9，規則見 bill-alerts.types.ts）。today 由呼叫端用 ClockService 取得，這裡不取時間。
    * 只讀這位使用者待繳、到期日不晚於今天＋14 天的帳單（逾期的不論多久都算）；計算在 summarizeBillAlerts。
    * 不呼叫 C 的 service；資金缺口由 C 用 dueTotal 計算（Q3）。
@@ -302,6 +473,17 @@ export class BillsService {
     const bill = await tx.bill.findFirst({ where: { id, userId } });
     if (!bill) throw new AppException('BILL_NOT_FOUND');
     return bill;
+  }
+
+  /** 同系列的待繳帳單；一個系列最多一張（部分唯一索引 bills_one_pending_per_series） */
+  private findPending(
+    tx: PrismaTx,
+    userId: string,
+    seriesId: string,
+  ): Promise<Bill | null> {
+    return tx.bill.findFirst({
+      where: { userId, seriesId, status: BillStatus.pending },
+    });
   }
 
   /**
