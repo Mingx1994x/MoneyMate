@@ -128,6 +128,34 @@ describe('seed:e2e 端到端測試帳號（e2e）', () => {
         next: { index: 2, remaining: '760000.00' },
       });
     });
+
+    it.each([
+      ['11/12：15 號還有 3 天 → 列出 11/15', '2026-11-12', ['2026-11-15']],
+      ['11/01：15 號剛好第 14 天 → 列出 11/15', '2026-11-01', ['2026-11-15']],
+      ['11/20：下次 12/15 還有 25 天 → 不列', '2026-11-20', []],
+    ])(
+      'Dashboard 貸款區塊 %s；未償合計 1,000,000、1 筆、月付 17,969',
+      async (_, today, dates) => {
+        clock.setTaipeiDate(today);
+        await run();
+
+        const { auth } = await login(E2E_DASHBOARD_EMAIL);
+        const res = await api()
+          .get('/api/v1/dashboard/summary')
+          .set('Authorization', auth)
+          .expect(200);
+        expect((res.body as { loans: unknown }).loans).toEqual({
+          outstandingTotal: '1000000.00',
+          activeCount: 1,
+          upcomingPayments: dates.map((date) => ({
+            loanId: expect.any(String) as string,
+            name: '房貸',
+            date,
+            monthlyPayment: '17969.00',
+          })),
+        });
+      },
+    );
   });
 
   it('e2e-goal：目標驗算案例（AC-16）銀行 30 萬＋信用卡 −5 萬 → 2.1%，第 2 站再存 750,000', async () => {
