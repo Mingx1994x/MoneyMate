@@ -18,3 +18,4 @@ Closes #
 ## 檢查清單
 - [ ] PR 的目標分支是 `dev`
 - [ ] 沒有 commit `.env` 或其他敏感資訊
+- [ ] 有新的決定或慣例變更時，已同步更新 `docs/decisions.md`／README，並請相關組員 review

@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+  --color-brand-800: #115e59;
+}
+
+html,
+body {
+  background: #f6f7f9;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 共用表單樣式：<input class="field-input"> */
+@layer components {
+  .field-input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 shadow-sm outline-none transition
+      placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30 disabled:bg-slate-100 disabled:text-slate-500;
+  }
+  .field-input[aria-invalid="true"] {
+    @apply border-rose-400 focus:border-rose-500 focus:ring-rose-500/30;
+  }
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+  }
+  .chip {
+    @apply inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium transition select-none;
+  }
+  .chip-off {
+    @apply border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50;
+  }
+  .chip-on {
+    @apply border-brand-600 bg-brand-50 text-brand-800 ring-1 ring-brand-600;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
