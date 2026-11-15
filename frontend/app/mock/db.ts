@@ -2,7 +2,7 @@
  * Mock 資料庫：存在瀏覽器 localStorage。
  * 金額內部一律用「分」（整數）儲存，輸出給前端時才轉成 "1234.00" 字串。
  */
-import type { AccountType, BillStatus, CategoryType, LoanStatus, Recurrence, TransactionType } from '../types/api'
+import type { AccountType, BillStatus, CategoryType, LoanStatus, Recurrence, TransactionType } from './types'
 
 export interface UserRow { id: string; email: string; password: string; displayName: string | null; createdAt: string }
 export interface AccountRow {

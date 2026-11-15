@@ -48,8 +48,8 @@ type BillList = {
 };
 
 /**
- * BILL-2（CRUD）、BILL-3（列表）。繳費、取消繳費、停止重複還沒實作（501）。
- * 已繳的帳單要等繳費端點，這裡直接改資料庫做出來（markPaid）。
+ * BILL-2（CRUD）、BILL-3（列表）。繳費、取消繳費、停止重複在 bill-payments.e2e-spec.ts。
+ * 這裡的已繳帳單直接改資料庫做出來（markPaid），不經過繳費端點，才能自由安排系列的各期。
  */
 describe('帳單（e2e）', () => {
   let app: INestApplication<App>;
@@ -94,7 +94,7 @@ describe('帳單（e2e）', () => {
   };
   const dueDates = (l: BillList) => l.items.map((b) => b.dueDate);
 
-  /** 繳費端點還沒實作：直接把帳單改成已繳（實繳金額＝預定金額、繳費日＝到期日） */
+  /** 直接把帳單改成已繳（實繳金額＝預定金額、繳費日＝到期日）；不建立支出，這個檔案不看交易 */
   const markPaid = (id: string) =>
     prisma.$executeRaw`UPDATE bills SET status = 'paid', paid_amount = amount, paid_date = due_date WHERE id = ${id}::uuid`;
 
@@ -1126,34 +1126,6 @@ describe('帳單（e2e）', () => {
         message: '找不到這張帳單',
         details: [],
       });
-    });
-  });
-
-  describe('還沒實作的端點（BILL-5～7）', () => {
-    it.each([
-      ['pay', undefined],
-      ['unpay', undefined],
-      ['stop-recurrence', { keepCurrent: true }],
-    ] as const)(
-      'POST /bills/:id/%s 回 501 NOT_IMPLEMENTED',
-      async (action, data) => {
-        const res = await http()
-          .post(`/api/v1/bills/${MISSING_ID}/${action}`)
-          .set('Authorization', auth)
-          .send(data)
-          .expect(501);
-        expect(res.body).toMatchObject({
-          code: 'NOT_IMPLEMENTED',
-          details: [],
-        });
-      },
-    );
-
-    it('stop-recurrence 沒帶 keepCurrent → 400 VALIDATION_FAILED（keepCurrent）', async () => {
-      const res = await http()
-        .post(`/api/v1/bills/${MISSING_ID}/stop-recurrence`)
-        .set('Authorization', auth);
-      expectError(res, 400, 'VALIDATION_FAILED', 'keepCurrent');
     });
   });
 });

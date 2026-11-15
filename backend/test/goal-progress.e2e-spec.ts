@@ -4,6 +4,7 @@ import type { App } from 'supertest/types.js';
 import { toDbDate, type DateOnly } from '../src/common/date-only.js';
 import { ClockService } from '../src/clock/clock.service.js';
 import type { GoalProgressDto } from '../src/modules/goals/dto/goal-progress.dto.js';
+import { GoalsService } from '../src/modules/goals/goals.service.js';
 import { OnboardingService } from '../src/modules/onboarding/onboarding.service.js';
 import {
   AccountType,
@@ -132,6 +133,12 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
     it('還沒完成問卷 → 409 ONBOARDING_REQUIRED', async () => {
       const res = await progress().expect(409);
       expect(res.body).toMatchObject({ code: 'ONBOARDING_REQUIRED' });
+    });
+
+    it('還沒完成問卷 → service 回 null（給 Dashboard 用，不丟錯）', async () => {
+      await expect(
+        app.get(GoalsService).getGoalProgress(userId, TODAY),
+      ).resolves.toBeNull();
     });
 
     it('AC-16：每月 4 萬、銀行 30 萬＋信用卡 −5 萬 → 目前 25 萬、2.1%，第 2 站再存 75 萬', async () => {
@@ -384,10 +391,12 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
         await recordMonth(bank, '2026-10', '100000.00', '50000.00');
         await recordMonth(bank, '2026-09', '100000.00', '50000.00');
         await recordMonth(bank, '2026-08', '100000.01', '50000.00');
+        await recordMonth(bank, '2026-07', '100000.00', '50000.00');
+        await recordMonth(bank, '2026-06', '100000.00', '50000.00');
 
         const res = await progress().expect(200);
-        // 平均每月 50,000.00333… × 12 ＝ 600,000.04
-        expect(bodyOf(res).fireAssumptions.annualSaving).toBe('600000.04');
+        // 平均每月 50,000.002 × 12 ＝ 600,000.024，必須四捨五入成 2 位
+        expect(bodyOf(res).fireAssumptions.annualSaving).toBe('600000.02');
       });
     });
 
