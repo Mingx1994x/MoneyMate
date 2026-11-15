@@ -128,6 +128,75 @@ describe('seed:e2e 端到端測試帳號（e2e）', () => {
         next: { index: 2, remaining: '760000.00' },
       });
     });
+
+    it('房租是每月帳單：本月 1 號已繳 80,000（銀行），下一期 12/01 待繳', async () => {
+      await run();
+
+      const userId = await idOf(E2E_DASHBOARD_EMAIL);
+      const bills = await prisma.bill.findMany({
+        where: { userId },
+        orderBy: { dueDate: 'asc' },
+        include: { transaction: { select: { amount: true } } },
+      });
+      expect(
+        bills.map((b) => ({
+          name: b.name,
+          recurrence: b.recurrence,
+          status: b.status,
+          dueDate: b.dueDate.toISOString().slice(0, 10),
+          paid: b.transaction?.amount.toFixed(2) ?? null,
+        })),
+      ).toEqual([
+        {
+          name: '房租',
+          recurrence: 'monthly',
+          status: 'paid',
+          dueDate: '2026-11-01',
+          paid: '80000.00',
+        },
+        {
+          name: '房租',
+          recurrence: 'monthly',
+          status: 'pending',
+          dueDate: '2026-12-01',
+          paid: null,
+        },
+      ]);
+    });
+
+    it.each([
+      ['11/12：下一期還有 19 天，不在 14 天內', '2026-11-12', []],
+      [
+        '11/20：下一期剩 11 天 → 即將到期',
+        '2026-11-20',
+        [
+          {
+            name: '房租',
+            amount: '80000.00',
+            dueDate: '2026-12-01',
+            daysUntilDue: 11,
+          },
+        ],
+      ],
+    ])(
+      'Dashboard 帳單區塊 %s；沒有逾期、沒有資金缺口',
+      async (_, today, dueSoon) => {
+        clock.setTaipeiDate(today);
+        await run();
+
+        const { auth } = await login(E2E_DASHBOARD_EMAIL);
+        const res = await api()
+          .get('/api/v1/dashboard/summary')
+          .set('Authorization', auth)
+          .expect(200);
+        expect(res.body).toMatchObject({
+          billsOverdue: [],
+          billsOverdueCount: 0,
+          billsDueSoon: dueSoon,
+          fundingGap: null,
+        });
+      },
+    );
   });
 
   it('e2e-goal：目標驗算案例（AC-16）銀行 30 萬＋信用卡 −5 萬 → 2.1%，第 2 站再存 750,000', async () => {
@@ -160,6 +229,7 @@ describe('seed:e2e 端到端測試帳號（e2e）', () => {
     expect(await prisma.transaction.count({ where: { userId } })).toBe(4);
     expect(await prisma.account.count({ where: { userId } })).toBe(2);
     expect(await prisma.loan.count({ where: { userId } })).toBe(1);
+    expect(await prisma.bill.count({ where: { userId } })).toBe(2);
     expect(
       await prisma.user.count({
         where: {
