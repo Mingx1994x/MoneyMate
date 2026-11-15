@@ -384,10 +384,12 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
         await recordMonth(bank, '2026-10', '100000.00', '50000.00');
         await recordMonth(bank, '2026-09', '100000.00', '50000.00');
         await recordMonth(bank, '2026-08', '100000.01', '50000.00');
+        await recordMonth(bank, '2026-07', '100000.00', '50000.00');
+        await recordMonth(bank, '2026-06', '100000.00', '50000.00');
 
         const res = await progress().expect(200);
-        // 平均每月 50,000.00333… × 12 ＝ 600,000.04
-        expect(bodyOf(res).fireAssumptions.annualSaving).toBe('600000.04');
+        // 平均每月 50,000.002 × 12 ＝ 600,000.024，必須四捨五入成 2 位
+        expect(bodyOf(res).fireAssumptions.annualSaving).toBe('600000.02');
       });
     });
 
