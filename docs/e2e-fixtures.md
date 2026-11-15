@@ -4,6 +4,12 @@
 - **用途：** A、B 的 Playwright 測試直接登入這些帳號，檢查畫面上的數字（PRD 20.5「端到端測試資料」）。
 - **程式：** `backend/src/seed/e2e-fixtures.ts`，測試在 `backend/test/seed-e2e.e2e-spec.ts`。
 
+## 在哪裡跑
+
+- Playwright 一律對**本機**的前端＋後端跑（`localhost`），不是 Render 上的網站。
+- 在本機的 `backend/.env` 設 `E2E_PASSWORD`（`.env.example` 裡有註解掉的 `# E2E_PASSWORD=`），再執行 `npm run seed:e2e`，帳號會建在本機的 `app_dev`。
+- **不要對 Render／Supabase 執行 `seed:e2e`**，測試帳號才不會進到正式資料庫。
+
 ## 怎麼建立
 
 在 `backend/` 執行（連 `DATABASE_URL` 指的資料庫，本機是 `app_dev`）：
@@ -47,7 +53,7 @@ E2E_PASSWORD=<8 字元以上> npm run seed:e2e
 | 目標進度 | 2.0% |
 | 下一站 | 第 2 站 100 萬，「再存 760,000」 |
 
-> 房租在 AC-22 是一張帳單。帳單繳費（E 的 #78）合併前先記成一般支出，數字一樣；合併後改成帳單，這份文件會跟著更新。
+> 房租在 AC-22 是一張帳單。目前先記成一般支出，數字一樣。房租改成帳單（#78 已合併）會在後續 PR 處理，並補上 Dashboard 帳單區塊的預期值。
 
 ### 3. `e2e-goal@moneymate.test`：目標驗算案例（AC-16）
 
