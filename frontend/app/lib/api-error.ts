@@ -36,20 +36,11 @@ export class ApiError extends Error implements ApiErrorBody {
 
 /**
  * 前端自己的錯誤文字。原則上畫面顯示後端回傳的 message（docs/error-codes.md），
- * 這張表只放後端沒有、或後端還沒定的代碼；表裡沒有的代碼就顯示後端的 message。
+ * 這張表只放前端自己的代碼；表裡沒有的代碼就顯示後端的 message。
  */
 export const ERROR_MESSAGES: Record<string, string> = {
   // 前端自己的代碼：連不上後端時用（後端沒有這個代碼）
   NETWORK_ERROR: '連不上伺服器，請確認網路或稍後再試',
-
-  // ---- 名稱和後端不同或後端沒有的 demo 代碼，#35 再判斷要不要留 ----
-  NOTE_INVALID: '備註最多 200 字',
-  DATE_INVALID: '日期無效',
-  TRANSFER_ACCOUNT_REQUIRED: '請選擇轉入帳戶',
-  ACCOUNT_HAS_BALANCE: '帳戶餘額不是 0，不能停用',
-  ACCOUNT_HAS_FUTURE_TRANSACTIONS: '帳戶還有未來日期的交易，不能停用',
-  LOAN_END_DATE_PAST: '結清日已過，狀態請選「已結清」',
-  MONTHLY_PAYMENT_REQUIRED: '沒有年利率時，請自己填每月還款',
 
   // 改用後端的 message，舊資料對齊後移除
   // ---- 共用（E） ----
