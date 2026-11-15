@@ -90,6 +90,7 @@ npm run db:drift           # 一致時印出 "-- This is an empty migration."；
 | `npm run db:drift`                 | 檢查 schema 與 migration 是否一致（見上方）  |
 | `npm run openapi:export`           | 匯出 `openapi.json`（不需要資料庫與 `.env`） |
 | `npm run seed:categories`          | 建立或更新 12 個系統分類（可重複執行）       |
+| `npm run seed:demo`                | 刪掉並重建 Demo 帳號（可重複執行）           |
 
 **系統分類 seed**：新資料庫要先有 12 個系統分類，分類下拉選單才有選項、交易才能記帳（收入、支出一定要有分類）。
 
@@ -97,7 +98,19 @@ npm run db:drift           # 一致時印出 "-- This is an empty migration."；
 - **部署（Render＋Supabase）**：在 Render 設 `RUN_SEED=true`，容器啟動時（migration 之後）會自動執行 `node dist/seed/seed-categories.js`，和 `RUN_MIGRATIONS=true` 同一套做法；新資料庫兩個都要設。可以重複執行，所以每次啟動都跑也沒關係。seed 失敗時只印警告、照樣啟動 app（交易會回滾，現有分類不受影響）；migration 失敗則會直接結束。映像檔裡沒有 `nest`，不能在容器裡跑 `npm run seed:categories`。
 - 只會新增或更新自己的 12 個分類（用 `code` 比對），不會刪除任何資料、不會動使用者的分類（衝突時丟錯並回滾）；之後被停用的分類重跑也不會又打開。12 筆用一個 SQL 寫入，所以遠端資料庫也不會逾時。
 - 分類清單在 `src/seed/system-categories.ts`，要和 `docs/data-dictionary.md` 的「系統分類」表一致（`system-categories.spec.ts` 會檢查）。e2e 需要分類時，在測試的 `beforeAll` 呼叫 `seedSystemCategories(tx)`，不要依賴別的測試檔留下的資料（共用的 `app_test` 會被各檔 TRUNCATE）。
-- Demo 帳號與 12 個月 Demo 資料（`seed:demo`）要等 C 的 service 與 AUTH-2，之後再加；`seed:demo` 要先呼叫 `seedSystemCategories`，一行指令才能在新資料庫重建。
+
+**Demo 帳號 seed**（PRD 第二十八節）：`npm run seed:demo` 一行指令重建 Demo 帳號。⚠️ 目前的內容是暫定的假資料，等 C 確認 Demo 劇本後再調整（`src/seed/demo-data.ts`）。
+
+- **執行**：先設 `DEMO_PASSWORD`（8–72 字元，寫在 `.env` 或指令前面），再執行 `npm run seed:demo`。連哪個資料庫由 `DATABASE_URL` 決定；會先跑 `seedSystemCategories`，所以新資料庫（migration 之後）一行就能建好。密碼不寫在程式碼裡，兩個帳號共用。
+- **部署環境**：映像檔裡沒有 `nest`，要在容器裡（例如 Render 的 Shell）執行 `DEMO_PASSWORD=… node dist/seed/seed-demo.js`。不會在容器啟動時自動執行（`RUN_SEED` 只跑系統分類），免得每次部署都把 Demo 帳號重建、示範到一半的資料被洗掉。
+- **建出來的資料**（日期都相對於台北今天，所以哪天執行都是「最近 12 個月」）：
+  - `demo@moneymate.local`：已完成問卷（每月 4 萬、現有資產 80 萬）；現金、銀行、投資、信用卡 4 個帳戶，銀行帳戶從估計帳戶轉換 12 萬。
+  - 12 個月（含本月到今天）的收入、支出、轉帳，包含薪資、房貸還款、刷卡消費與下個月 20 號的繳卡費，金額用固定公式，每次重建都一樣。
+  - 1 筆房貸，餘額 60 天前更新（觸發提醒）；3 張帳單：1 張逾期、1 張 7 天後到期、1 張每月重複且已繳 3 期。
+  - `demo-new@moneymate.local`：只註冊、沒填問卷，現場示範 30 秒問卷。
+- **只動這兩個 Email**：先在一個資料庫交易內刪掉他們的所有資料（照外鍵順序），再全部透過 service 建立（註冊、問卷、帳戶、交易、貸款、帳單都走正式的檢查）。唯一直接寫資料表的是房貸的 `balanceUpdatedAt`（service 一律設成現在）。其他使用者的資料不受影響。
+- 重建不是一個大交易（各 service 自己開交易），中途失敗時再跑一次就會從頭重建。每次重建後帳號的 id 會變，已登入的 token 會失效（`/auth/me` 回 401），重新登入即可。
+- 測試在 `test/seed-demo.e2e-spec.ts`（重複執行、不動別人的資料、月底與閏年）。改了 service 的檢查讓 seed 失敗時，這個測試會先擋下來。
 
 Prisma 一律透過上面的 npm scripts 執行。**不要用 `npx prisma`**（沒裝時會自動下載 `latest`，目前是 8 RC），也不要照 Prisma 的更新提示執行 `npm i prisma@latest`。
 
