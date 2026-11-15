@@ -99,7 +99,7 @@ npm run db:drift           # 一致時印出 "-- This is an empty migration."；
 - 只會新增或更新自己的 12 個分類（用 `code` 比對），不會刪除任何資料、不會動使用者的分類（衝突時丟錯並回滾）；之後被停用的分類重跑也不會又打開。12 筆用一個 SQL 寫入，所以遠端資料庫也不會逾時。
 - 分類清單在 `src/seed/system-categories.ts`，要和 `docs/data-dictionary.md` 的「系統分類」表一致（`system-categories.spec.ts` 會檢查）。e2e 需要分類時，在測試的 `beforeAll` 呼叫 `seedSystemCategories(tx)`，不要依賴別的測試檔留下的資料（共用的 `app_test` 會被各檔 TRUNCATE）。
 
-**Demo 帳號 seed（`seed:demo`）**：重建 `demo@moneymate.local`（有 Demo 資料）與 `demo-new@moneymate.local`（還沒做問卷），會先建立系統分類，所以新資料庫一行指令就能重建。只會刪除、重建這兩個帳號，不會動其他使用者；可以重複執行。
+**Demo 帳號 seed（`seed:demo`）**：重建 `demo@moneymate.local`（有 Demo 資料：問卷、4 個帳戶、12 個月交易、1 筆房貸、3 張帳單）與 `demo-new@moneymate.local`（還沒做問卷），會先建立系統分類，所以新資料庫一行指令就能重建。只會刪除、重建這兩個帳號，不會動其他使用者；可以重複執行。
 
 - **本機**：在 `.env` 設 `DEMO_PASSWORD`（8 字元以上，不要用自己真的密碼），執行 `npm run seed:demo`，寫進 `.env` 的 `DATABASE_URL`（`app_dev`）。
 - **部署（Supabase）**：Render 免費方案沒有 Shell，映像檔裡也沒有 `nest`，所以**不能在 Render 上跑**，一律在本機執行。shell 設定的環境變數會蓋過 `.env`，用這個方式指向 Supabase：

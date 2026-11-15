@@ -10,6 +10,7 @@ import {
   type MonthString,
 } from '../common/date-only.js';
 import { AccountsService } from '../modules/accounts/index.js';
+import { BillsService } from '../modules/bills/index.js';
 import { AuthService } from '../modules/auth/auth.service.js';
 import { GoalsService } from '../modules/goals/index.js';
 import { LoansService } from '../modules/loans/index.js';
@@ -18,6 +19,7 @@ import {
   AccountType,
   Prisma,
   PrismaService,
+  Recurrence,
   TransactionType,
 } from '../prisma/index.js';
 import { seedSystemCategories } from './system-categories.js';
@@ -29,7 +31,7 @@ import { seedSystemCategories } from './system-categories.js';
  * 安全界線：只會刪除、重建下面這 2 個 Email 的使用者（users 會 CASCADE 到他們的資料），
  * 不會動其他使用者。Email 用 .local（不會是真人的信箱）；密碼由呼叫端從環境變數 DEMO_PASSWORD 傳入。
  *
- * 還沒做：帳單（等 E 的繳費功能合併）。估計帳戶依 D-D-004 不再建立。
+ * 估計帳戶依 D-D-004 不再建立。
  */
 
 /** Demo 帳號：已完成問卷、有 12 個月的資料 */
@@ -263,6 +265,41 @@ export async function seedDemo(
     lastCardSpend = cardSpend;
   }
 
+  // ── 帳單：1 張逾期、1 張 14 天內到期、1 張每月重複且已繳 3 期（PRD 第二十八節）
+  // 繳費時會建立支出交易（E 的 BillsService.pay），所以交易筆數另外算
+  const bills = app.get(BillsService);
+  await bills.create(userId, {
+    name: '水費',
+    amount: '420.00',
+    categoryId: categories.living,
+    accountId: bank,
+    dueDate: addDays(today, -5),
+  });
+  await bills.create(userId, {
+    name: '網路費',
+    amount: '1099.00',
+    categoryId: categories.subscription,
+    accountId: bank,
+    dueDate: addDays(today, 7),
+    recurrence: Recurrence.monthly,
+  });
+  let phone = await bills.create(userId, {
+    name: '手機月租',
+    amount: '599.00',
+    categoryId: categories.subscription,
+    accountId: card,
+    dueDate: recurringStart(today),
+    recurrence: Recurrence.monthly,
+  });
+  for (let i = 0; i < 3; i++) {
+    const { nextBill } = await bills.pay(userId, phone.id, {
+      paidDate: addDays(phone.dueDate, -2),
+    });
+    if (nextBill === null) throw new Error('seedDemo: 每月帳單沒有產生下一期');
+    phone = nextBill;
+    count++;
+  }
+
   return {
     demoUserId: userId,
     newUserId: fresh.user.id,
@@ -289,4 +326,16 @@ function shiftedClock(base: ClockService, days: number): ClockService {
       return toTaipeiDate(this.now());
     }
   })();
+}
+
+/**
+ * 每月帳單第 1 期的到期日：3 個月前、日期是「今天加 20 天」的那一天（最多 28 號，短月不會被截掉）。
+ * 繳 3 期後，第 4 期在 14 天之後才到期，不會跟「14 天內到期」那張帳單混在一起。
+ */
+export function recurringStart(today: DateOnly): DateOnly {
+  const target = addDays(today, 20);
+  const day = Math.min(Number(target.slice(8, 10)), 28);
+  let month = monthOf(target);
+  for (let i = 0; i < 3; i++) month = monthOf(addDays(monthStart(month), -1));
+  return dayInMonth(month, day);
 }

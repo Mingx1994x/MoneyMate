@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { ClockService, toTaipeiDate } from '../src/clock/clock.service.js';
-import { fromDbDate } from '../src/common/date-only.js';
+import { addDays, fromDbDate } from '../src/common/date-only.js';
 import { OnboardingService } from '../src/modules/onboarding/onboarding.service.js';
 import {
   AccountType,
@@ -165,6 +165,39 @@ describe('seed:demo 重建 Demo 帳號（e2e）', () => {
       expect(goal.birthYear).not.toBeNull();
     });
 
+    it('3 張帳單：1 張逾期、1 張 14 天內到期、1 張每月重複且已繳 3 期', async () => {
+      await run();
+      const { id } = await userOf(DEMO_EMAIL);
+
+      const bills = await prisma.bill.findMany({ where: { userId: id } });
+      const pending = bills
+        .filter((b) => b.status === 'pending')
+        .map((b) => fromDbDate(b.dueDate));
+      expect(pending.filter((d) => d < TODAY)).toHaveLength(1);
+      expect(
+        pending.filter((d) => d >= TODAY && d <= addDays(TODAY, 14)),
+      ).toHaveLength(1);
+
+      const paid = bills.filter((b) => b.status === 'paid');
+      expect(paid).toHaveLength(3);
+      expect(new Set(paid.map((b) => b.seriesId)).size).toBe(1);
+      // 每期繳費都有一筆支出，而且不晚於今天
+      const billTxs = await prisma.transaction.findMany({
+        where: { userId: id, billId: { not: null } },
+      });
+      expect(billTxs).toHaveLength(3);
+      expect(billTxs.every((t) => fromDbDate(t.transactionDate) <= TODAY)).toBe(
+        true,
+      );
+    });
+
+    it('月底、閏年執行也建得起來（帳單日期不會被短月截掉）', async () => {
+      clock.setTaipeiDate('2028-02-29');
+      await run();
+      const { id } = await userOf(DEMO_EMAIL);
+      expect(await prisma.bill.count({ where: { userId: id } })).toBe(6);
+    });
+
     it('Dashboard 打得開（200）', async () => {
       await run();
       const auth = await login(DEMO_EMAIL);
@@ -214,6 +247,7 @@ describe('seed:demo 重建 Demo 帳號（e2e）', () => {
           where: { userId: id },
         }),
         loans: await prisma.loan.count({ where: { userId: id } }),
+        bills: await prisma.bill.count({ where: { userId: id } }),
         goals: await prisma.goal.count({ where: { userId: id } }),
       };
     };
