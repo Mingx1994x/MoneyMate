@@ -29,3 +29,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Minimal flow test screenshots
+docs/screenshot/
