@@ -337,6 +337,9 @@ export class TransactionsService {
     if (!data.amount.gt(0)) {
       throw new Error('createBillTransaction: 金額必須大於 0');
     }
+    // 先鎖住扣款帳戶再看是否啟用：和停用帳戶（FOR UPDATE）排隊，
+    // 不然同時停用與繳費會讓停用的帳戶多一筆支出、餘額不是 0
+    await lockAccounts(tx, userId, [data.accountId]);
     const account = await tx.account.findFirst({
       where: { id: data.accountId, userId },
       select: { isActive: true },
@@ -375,12 +378,18 @@ export class TransactionsService {
   ): Promise<void> {
     const row = await tx.transaction.findFirst({
       where: { billId, userId },
-      select: { id: true, account: { select: { isActive: true } } },
+      select: { id: true, accountId: true },
     });
     if (!row) {
       throw new Error('deleteBillTransaction: 找不到這張帳單產生的交易');
     }
-    if (!row.account.isActive) throw new AppException('ACCOUNT_INACTIVE');
+    // 和 createBillTransaction 一樣，鎖住扣款帳戶後才讀是否啟用
+    await lockAccounts(tx, userId, [row.accountId]);
+    const account = await tx.account.findUniqueOrThrow({
+      where: { id: row.accountId },
+      select: { isActive: true },
+    });
+    if (!account.isActive) throw new AppException('ACCOUNT_INACTIVE');
     await tx.transaction.delete({ where: { id: row.id } });
   }
 }

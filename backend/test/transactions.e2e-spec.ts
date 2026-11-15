@@ -916,6 +916,47 @@ describe('交易 API（e2e）', () => {
       expect(row.amount.toFixed(2)).toBe('18000.00');
     });
 
+    it(
+      '同時改類型與改分類（重複 30 次）：交易列有鎖，結果一定合法（#91 review）',
+      // 30 次 × 3 個請求，慢的電腦會超過預設的 5 秒
+      { timeout: 60_000 },
+      async () => {
+        // 一個改成轉帳（分類清空），一個只改分類。沒鎖交易列時，後者讀到舊的「支出」、
+        // 檢查通過後把分類寫回轉帳，留下「有分類的轉帳」。有鎖時後者會等前者完成，
+        // 再用新的值檢查：轉帳不能有分類 → 400。
+        const drinkId = await createCategory(
+          prisma,
+          'drink',
+          CategoryType.expense,
+        );
+        for (let i = 0; i < 30; i++) {
+          const id = ((await expense()).body as { id: string }).id;
+          const [toTransfer, toDrink] = await Promise.all([
+            patch(id, {
+              transactionType: 'transfer',
+              toAccountId: cardId,
+              categoryId: null,
+            }),
+            patch(id, { categoryId: drinkId }),
+          ]);
+          const row = await prisma.transaction.findUniqueOrThrow({
+            where: { id },
+          });
+          expect(toTransfer.status).toBe(200);
+          if (toDrink.status === 200 && row.transactionType !== 'transfer') {
+            throw new Error(`第 ${i + 1} 次：兩個都 200，結果卻不是轉帳`);
+          }
+          // 不論誰先，結果都要符合類型與欄位的規則
+          expect(row).toMatchObject({
+            transactionType: 'transfer',
+            categoryId: null,
+            toAccountId: cardId,
+          });
+          expect([200, 400]).toContain(toDrink.status);
+        }
+      },
+    );
+
     it('同一筆同時改兩次：兩個都成功，結果是其中一個（不會壞掉）', async () => {
       const [a, b] = await Promise.all([
         patch(lunchId, { amount: '200' }),
