@@ -36,6 +36,12 @@ export class OnboardingController {
   ): Promise<GoalProgressDto> {
     // 寫入的交易結束（commit）後才讀進度，才讀得到剛建立的目標與估計帳戶
     await this.onboarding.submit(user.id, dto);
-    return this.goals.getGoalProgress(user.id, this.clock.today());
+    const progress = await this.goals.getGoalProgress(
+      user.id,
+      this.clock.today(),
+    );
+    // submit 成功就一定有目標；真的是 null 代表程式有錯，交給全域 filter 回 500
+    if (!progress) throw new Error('問卷送出後找不到目標');
+    return progress;
   }
 }

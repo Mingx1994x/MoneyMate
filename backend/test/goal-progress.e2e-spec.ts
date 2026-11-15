@@ -4,6 +4,7 @@ import type { App } from 'supertest/types.js';
 import { toDbDate, type DateOnly } from '../src/common/date-only.js';
 import { ClockService } from '../src/clock/clock.service.js';
 import type { GoalProgressDto } from '../src/modules/goals/dto/goal-progress.dto.js';
+import { GoalsService } from '../src/modules/goals/goals.service.js';
 import { OnboardingService } from '../src/modules/onboarding/onboarding.service.js';
 import {
   AccountType,
@@ -132,6 +133,12 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
     it('還沒完成問卷 → 409 ONBOARDING_REQUIRED', async () => {
       const res = await progress().expect(409);
       expect(res.body).toMatchObject({ code: 'ONBOARDING_REQUIRED' });
+    });
+
+    it('還沒完成問卷 → service 回 null（給 Dashboard 用，不丟錯）', async () => {
+      await expect(
+        app.get(GoalsService).getGoalProgress(userId, TODAY),
+      ).resolves.toBeNull();
     });
 
     it('AC-16：每月 4 萬、銀行 30 萬＋信用卡 −5 萬 → 目前 25 萬、2.1%，第 2 站再存 75 萬', async () => {

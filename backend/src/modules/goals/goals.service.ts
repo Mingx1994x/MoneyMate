@@ -103,14 +103,14 @@ export class GoalsService {
    * - 目前金額 ＝ 帳戶合計（啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易）。
    * - 年儲蓄：最近 6 個完整月裡有記帳的月 ≥ 3 個 → 那些月的平均（收入 − 支出）× 12（actual）；
    *   否則用 estMonthlySaving × 12（estimate）；都沒有是 null。
-   * - 還沒完成問卷 → 409 ONBOARDING_REQUIRED。
+   * - 還沒完成問卷 → 回 null，由呼叫端決定：端點回 409、Dashboard 顯示問卷提示。
    */
   async getGoalProgress(
     userId: string,
     today: DateOnly,
-  ): Promise<GoalProgressDto> {
+  ): Promise<GoalProgressDto | null> {
     const goal = await this.prisma.goal.findUnique({ where: { userId } });
-    if (!goal) throw new AppException('ONBOARDING_REQUIRED');
+    if (!goal) return null;
 
     const [current, loanSummary, ...months] = await Promise.all([
       this.finance.getAccountsTotal(userId, today),

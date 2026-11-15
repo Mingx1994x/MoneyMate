@@ -2,6 +2,7 @@ import { Body, Controller, Get, Patch } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiAuth, ApiErrors } from '../../common/swagger/api-decorators.js';
 import { ClockService } from '../../clock/clock.service.js';
+import { AppException } from '../../common/errors/app.exception.js';
 import { CurrentUser, type AuthUser } from '../auth/index.js';
 import { GoalProgressDto } from './dto/goal-progress.dto.js';
 import { GoalDto } from './dto/goal.dto.js';
@@ -59,7 +60,12 @@ export class GoalsController {
   })
   @ApiOkResponse({ type: GoalProgressDto })
   @ApiErrors('ONBOARDING_REQUIRED')
-  progress(@CurrentUser() user: AuthUser): Promise<GoalProgressDto> {
-    return this.goals.getGoalProgress(user.id, this.clock.today());
+  async progress(@CurrentUser() user: AuthUser): Promise<GoalProgressDto> {
+    const progress = await this.goals.getGoalProgress(
+      user.id,
+      this.clock.today(),
+    );
+    if (!progress) throw new AppException('ONBOARDING_REQUIRED');
+    return progress;
   }
 }
