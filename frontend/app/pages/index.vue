@@ -2,13 +2,12 @@
 /**
  * Dashboard —— 第一屏（3 個問題＋一句下一步）由 A 負責；往下的報表區塊（收支、帳單、貸款）由 B 負責。
  * 所有數字都來自一支 API：GET /dashboard/summary（PRD FR-19）。還沒完成的區塊會列在 unavailable，顯示「準備中」。
- * ⚠️ 開發中：目前只接上 W2 最小流程需要的「本月收支」，其他區塊之後再逐一接上。
- *    原本照 mock 資料寫的版本先註解保留（script 在下方，template 留在各區塊原本的位置），對照完再刪；
- *    收支區塊已改寫完，原本的版本已刪除。
+ * ⚠️ 開發中：B 的報表區塊（收支、帳戶合計與淨資產、帳單、貸款）都已接上；A 的第一屏還沒接。
+ *    第一屏原本照 mock 資料寫的版本先註解保留（script 在下方，template 在第一屏的位置），對照完再刪。
  */
-import { addMonthsClamped, monthOf } from '~/lib/date'
+import { addMonthsClamped, formatDateShort, monthOf, relativeDue } from '~/lib/date'
 import { formatMoney, toCents } from '~/lib/money'
-import type { DashboardSummary } from '~/types/api'
+import type { DashboardSection, DashboardSummary } from '~/types/api'
 
 const api = useApi()
 const quick = useQuickAdd()
@@ -42,6 +41,13 @@ const monthLabel = computed(() => (isCurrentMonth.value ? '當月' : `${monthNum
 const hasMonthlyRecords = computed(
   () => !!data.value && (toCents(data.value.income) !== 0 || toCents(data.value.expense) !== 0),
 )
+
+// ===== 帳單、貸款區塊（#87）=====
+// 後端還沒完成的區塊會列在 unavailable，對應的欄位是 null，顯示「準備中」
+const unavailable = (k: DashboardSection) => !!data.value?.unavailable.includes(k)
+// 逾期在前（由舊到新）、再接 14 天內到期；後端各回最多 5 筆
+const upcomingBills = computed(() => [...(data.value?.billsOverdue ?? []), ...(data.value?.billsDueSoon ?? [])])
+const moreOverdue = computed(() => (data.value?.billsOverdueCount ?? 0) - (data.value?.billsOverdue?.length ?? 0))
 
 // ===== 原本的寫法（照 mock 資料寫的，暫時保留對照）=====
 // import { addMonthsClamped, formatDateShort, monthOf, relativeDue, todayTaipei } from '~/lib/date'
@@ -170,58 +176,74 @@ const hasMonthlyRecords = computed(
           <p v-if="hasMonthlyRecords" class="mt-2 text-xs text-slate-400">轉帳、繳卡費不算收支；未來日期的交易不算</p>
         </section>
 
-        <!--
-        ===== 原本的其他報表區塊（照 mock 資料寫的，暫時保留對照）=====
-
+        <!-- 帳戶合計、淨資產。淨資產要扣貸款，貸款區塊還沒完成時後端回 null -->
         <div class="mb-4 grid gap-4 sm:grid-cols-2">
           <section class="card p-5">
             <h3 class="text-sm text-slate-500">帳戶合計</h3>
-            <p class="num mt-1 text-2xl font-bold">{{ formatMoney(d.accountsTotal) }}</p>
+            <p class="num mt-1 text-2xl font-bold" :class="toCents(data.accountsTotal) < 0 ? 'text-rose-600' : ''">{{ formatMoney(data.accountsTotal) }}</p>
             <p class="mt-1 text-xs text-slate-400">啟用帳戶加總（含投資、信用卡欠款），不扣貸款</p>
           </section>
           <section class="card p-5">
             <h3 class="text-sm text-slate-500">淨資產</h3>
-            <p class="num mt-1 text-2xl font-bold" :class="toCents(d.netWorth) < 0 ? 'text-rose-600' : ''">{{ formatMoney(d.netWorth) }}</p>
+            <p v-if="data.netWorth === null" class="mt-1 text-2xl font-bold text-slate-400">準備中</p>
+            <p v-else class="num mt-1 text-2xl font-bold" :class="toCents(data.netWorth) < 0 ? 'text-rose-600' : ''">{{ formatMoney(data.netWorth) }}</p>
             <p class="mt-1 text-xs text-slate-400">所有帳戶 − 還款中貸款</p>
           </section>
         </div>
 
         <div class="grid gap-4 md:grid-cols-2">
+          <!-- 帳單：逾期＋14 天內到期 -->
           <section class="card p-5">
             <div class="flex items-center justify-between">
               <h3 class="font-semibold">14 天內與逾期帳單</h3>
               <NuxtLink to="/bills" class="text-sm font-semibold text-brand-700">全部 →</NuxtLink>
             </div>
             <div v-if="unavailable('bills')" class="py-6 text-center text-sm text-slate-400">準備中</div>
-            <p v-else-if="!d.billsOverdue.length && !d.billsDueSoon.length" class="mt-3 text-sm text-slate-500">沒有近期帳單</p>
+            <div v-else-if="!upcomingBills.length" class="py-6 text-center">
+              <p class="text-sm text-slate-500">近 14 天沒有要繳的帳單</p>
+              <NuxtLink to="/bills" class="mt-2 inline-block text-sm font-semibold text-brand-700">管理帳單 →</NuxtLink>
+            </div>
             <ul v-else class="mt-3 divide-y divide-slate-100">
-              <li v-for="b in [...d.billsOverdue, ...d.billsDueSoon]" :key="b.id" class="flex items-center justify-between py-2 text-sm">
-                <span>{{ b.name }} <span class="text-xs" :class="b.daysUntilDue < 0 ? 'text-rose-600' : 'text-slate-500'">· {{ relativeDue(b.daysUntilDue) }}</span></span>
-                <span class="num font-semibold">{{ formatMoney(b.amount) }}</span>
+              <li v-for="b in upcomingBills" :key="b.id" class="flex items-center justify-between gap-2 py-2 text-sm">
+                <div class="min-w-0">
+                  <p class="truncate font-medium">{{ b.name }}</p>
+                  <p class="text-xs" :class="b.daysUntilDue < 0 ? 'text-rose-600' : b.daysUntilDue <= 3 ? 'text-amber-700' : 'text-slate-500'">
+                    {{ formatDateShort(b.dueDate) }} · {{ relativeDue(b.daysUntilDue) }}
+                  </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <span class="num font-semibold">{{ formatMoney(b.amount) }}</span>
+                  <NuxtLink :to="{ path: '/bills', query: { pay: b.id } }"><AppButton size="sm" variant="soft">繳費</AppButton></NuxtLink>
+                </div>
               </li>
+              <li v-if="moreOverdue > 0" class="pt-2 text-xs text-slate-500">還有 {{ moreOverdue }} 張逾期帳單，到帳單頁查看</li>
             </ul>
           </section>
 
+          <!-- 貸款：未償餘額合計＋14 天內的還款日 -->
           <section class="card p-5">
             <div class="flex items-center justify-between">
               <h3 class="font-semibold">貸款</h3>
               <NuxtLink to="/loans" class="text-sm font-semibold text-brand-700">全部 →</NuxtLink>
             </div>
-            <div v-if="unavailable('loans') || !d.loans" class="py-6 text-center text-sm text-slate-400">準備中</div>
+            <div v-if="unavailable('loans') || !data.loans" class="py-6 text-center text-sm text-slate-400">準備中</div>
+            <div v-else-if="data.loans.activeCount === 0" class="py-6 text-center">
+              <p class="text-sm text-slate-500">沒有還款中的貸款</p>
+              <NuxtLink to="/loans" class="mt-2 inline-block text-sm font-semibold text-brand-700">新增貸款 →</NuxtLink>
+            </div>
             <template v-else>
-              <p class="mt-2 text-xs text-slate-500">未償餘額合計（{{ d.loans.activeCount }} 筆還款中）</p>
-              <p class="num text-xl font-bold">{{ formatMoney(d.loans.outstandingTotal) }}</p>
+              <p class="mt-2 text-xs text-slate-500">未償餘額合計（{{ data.loans.activeCount }} 筆還款中）</p>
+              <p class="num text-xl font-bold">{{ formatMoney(data.loans.outstandingTotal) }}</p>
               <p class="mt-3 text-xs font-semibold text-slate-500">未來 14 天的還款日</p>
-              <p v-if="!d.loans.upcomingPayments.length" class="text-sm text-slate-500">沒有</p>
+              <p v-if="!data.loans.upcomingPayments.length" class="text-sm text-slate-500">沒有</p>
               <ul v-else class="text-sm">
-                <li v-for="p in d.loans.upcomingPayments" :key="p.loanId" class="flex justify-between py-1">
+                <li v-for="p in data.loans.upcomingPayments" :key="`${p.loanId}-${p.date}`" class="flex justify-between py-1">
                   <span>{{ p.name }} · {{ formatDateShort(p.date) }}</span><span class="num font-semibold">{{ formatMoney(p.monthlyPayment) }}</span>
                 </li>
               </ul>
             </template>
           </section>
         </div>
-        -->
       </template>
     </StateView>
 
