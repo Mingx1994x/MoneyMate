@@ -21,7 +21,7 @@ export class CreateOnboardingDto {
     minimum: 0,
     maximum: 100000000,
     description:
-      '現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）',
+      '現在大概有多少存款，整數 0–100,000,000。> 0 時建立一般的銀行帳戶「現有存款」（不是估計帳戶，D-D-004）；省略、null 或 0 時不建立帳戶',
     example: 800000,
   })
   @IsOptional()

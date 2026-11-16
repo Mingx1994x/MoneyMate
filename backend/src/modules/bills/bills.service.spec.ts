@@ -5,6 +5,7 @@ import { Prisma, PrismaModule, PrismaService } from '../../prisma/index.js';
 import { FakeClock } from '../../../test/utils/fake-clock.js';
 import type { AccountsService } from '../accounts/index.js';
 import type { CategoriesService } from '../categories/index.js';
+import type { TransactionsService } from '../transactions/index.js';
 // 從 index 匯入，確認 C 用的入口匯出了模組與 service
 import { BillsModule, BillsService } from './index.js';
 
@@ -55,6 +56,7 @@ describe('BillsService', () => {
         FakeClock.onTaipeiDate('2026-10-28'),
         {} as AccountsService,
         {} as CategoriesService,
+        {} as TransactionsService,
       ).getBillAlerts('user-id', '2026-10-28');
 
       expect(findMany).toHaveBeenCalledWith(

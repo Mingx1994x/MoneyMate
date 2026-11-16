@@ -1,3 +1,10 @@
+import {
+  addDays,
+  monthOf,
+  monthStart,
+  type DateOnly,
+  type MonthString,
+} from '../../common/date-only.js';
 import { Prisma } from '../../prisma/index.js';
 
 /**
@@ -82,4 +89,43 @@ export function goalPercent(
     .times(100)
     .toDecimalPlaces(1, Prisma.Decimal.ROUND_HALF_UP);
   return Math.min(percent.toNumber(), 99.9);
+}
+
+/** 至少要幾個有記帳的完整月，才用實際的平均儲蓄（PRD 15.7） */
+export const MIN_SAVING_MONTHS = 3;
+/** 最多看最近幾個完整月（PRD 15.7） */
+export const MAX_SAVING_MONTHS = 6;
+
+/** 最近 n 個完整月（不含 today 所在的月），由近到遠，例：2026-11-11、3 → 2026-10、2026-09、2026-08 */
+export function recentCompleteMonths(
+  today: DateOnly,
+  n: number,
+): MonthString[] {
+  const months: MonthString[] = [];
+  let month = monthOf(today);
+  for (let i = 0; i < n; i++) {
+    month = monthOf(addDays(monthStart(month), -1));
+    months.push(month);
+  }
+  return months;
+}
+
+/**
+ * 每月平均儲蓄（PRD 15.7）：傳入最近最多 6 個完整月的收入、支出合計。
+ * 有記帳的月（收入或支出不是 0）才算；不滿 3 個月回 null（改用自估值）。
+ * 沒記帳的月不當成存 0，不然忘了記帳的月會把平均拉低。保留完整精度，不四捨五入。
+ */
+export function averageMonthlySaving(
+  months: { income: Prisma.Decimal; expense: Prisma.Decimal }[],
+): Prisma.Decimal | null {
+  const recorded = months.filter(
+    (m) => !m.income.isZero() || !m.expense.isZero(),
+  );
+  if (recorded.length < MIN_SAVING_MONTHS) return null;
+  return recorded
+    .reduce(
+      (sum, m) => sum.plus(m.income).minus(m.expense),
+      new Prisma.Decimal(0),
+    )
+    .div(recorded.length);
 }
