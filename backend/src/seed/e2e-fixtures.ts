@@ -8,6 +8,7 @@ import {
 } from '../common/date-only.js';
 import { AccountsService } from '../modules/accounts/index.js';
 import { AuthService } from '../modules/auth/auth.service.js';
+import { BillsService } from '../modules/bills/index.js';
 import { GoalsService } from '../modules/goals/index.js';
 import { LoansService } from '../modules/loans/index.js';
 import { TransactionsService } from '../modules/transactions/index.js';
@@ -15,6 +16,7 @@ import {
   AccountType,
   Prisma,
   PrismaService,
+  Recurrence,
   TransactionType,
 } from '../prisma/index.js';
 import { seedSystemCategories } from './system-categories.js';
@@ -27,7 +29,8 @@ import { seedSystemCategories } from './system-categories.js';
  * - 交易日期都是「本月 1 號」：不管哪一天跑，本月收支都一樣，而且不會是未來的交易。
  * - 安全界線：只會刪除、重建下面這 3 個 Email（users 會 CASCADE 到他們的資料），不會動其他使用者。
  *   Email 用 @moneymate.test（測試帳號規則，不會是真人的信箱）；密碼從環境變數 E2E_PASSWORD 傳入。
- * - AC-22 的房租本來是帳單，帳單繳費（E 的 #78）合併前先記成一般支出，金額一樣。
+ * - AC-22 的房租是每月帳單：到期日本月 1 號、當天繳費（用 E 的 BillsService.pay），繳費產生的支出就是本月的房租，
+ *   並自動產生下一期待繳（下個月 1 號）。
  */
 
 /** 已註冊、還沒做問卷：登入後應該被帶到問卷頁 */
@@ -101,7 +104,7 @@ export async function seedE2e(
   await account(goalUser, '銀行', AccountType.bank, '300000.00');
   await account(goalUser, '信用卡', AccountType.credit_card, '-50000.00');
 
-  // ── e2e-dashboard（AC-22）：每月 4 萬；銀行 30 萬、信用卡 0、房貸 100 萬；本月 4 筆交易
+  // ── e2e-dashboard（AC-22）：每月 4 萬；銀行 30 萬、信用卡 0、房貸 100 萬；本月 3 筆交易＋已繳的房租帳單
   const userId = await register(E2E_DASHBOARD_EMAIL, 'Dashboard 測試');
   await onboard(userId);
   const bank = await account(userId, '銀行', AccountType.bank, '300000.00');
@@ -148,6 +151,17 @@ export async function seedE2e(
   const { income, expense, transfer } = TransactionType;
   await add(income, '50000.00', bank, { categoryCode: 'salary' }, '薪資');
   await add(expense, '30000.00', card, { categoryCode: 'living' }, '生活');
-  await add(expense, '80000.00', bank, { categoryCode: 'housing' }, '房租');
   await add(transfer, '10000.00', bank, { toAccountId: card }, '繳卡費');
+
+  // 房租帳單：每月 1 號到期、當天繳 80,000（銀行）→ 支出 80,000，下一期（下個月 1 號）待繳
+  const bills = app.get(BillsService);
+  const rent = await bills.create(userId, {
+    name: '房租',
+    amount: '80000.00',
+    categoryId: categories.housing,
+    accountId: bank,
+    dueDate: firstDay,
+    recurrence: Recurrence.monthly,
+  });
+  await bills.pay(userId, rent.id, { paidDate: firstDay });
 }
