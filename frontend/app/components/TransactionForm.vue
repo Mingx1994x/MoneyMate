@@ -58,8 +58,8 @@ if (props.initial) {
     form.value.kind = props.startKind
     if (props.cardId) form.value.toAccountId = props.cardId
   }
-  // 日期預設今天（AC-21）：草稿是前幾天留下的，日期不要停在那天；未來日期是使用者自己選的，保留
-  if (form.value.transactionDate < today) form.value.transactionDate = today
+  // 日期一律從今天開始（AC-21）：草稿只留金額、分類等內容，日期不沿用上次選的；要補記別天的，在表單裡改
+  form.value.transactionDate = today
 }
 
 const showMore = ref(props.mode === 'full')
