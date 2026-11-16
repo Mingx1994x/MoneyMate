@@ -370,8 +370,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * 【未實作】刪除帳戶
-         * @description 只限沒有任何交易（轉出或轉入）、也沒有被帳單使用的帳戶，否則回 ACCOUNT_IN_USE，請改用停用。
+         * 刪除帳戶
+         * @description 只限沒有任何交易（轉出或轉入）、也沒有被帳單使用的帳戶，否則回 ACCOUNT_IN_USE，請改用停用。估計帳戶也可以刪除（D-D-004）。
          *
          *     帶 addBackToEstimate=true 而且帳戶有 deductedFromEstimate 時，在同一個資料庫交易內把金額加回估計帳戶；估計帳戶已停用就重新啟用（PRD 15.9）。沒帶或 false 時不加回。
          */
@@ -379,7 +379,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * 【未實作】修改、停用或重新啟用帳戶
+         * 修改、停用或重新啟用帳戶
          * @description 沒傳的欄位保持原值；note 傳 null 代表清空，其他欄位傳 null 回 400。accountType 不能改。
          *
          *     停用的帳戶只能重新啟用：請求只帶 isActive = true 時通過；帶了其他欄位回 ACCOUNT_INACTIVE（先重新啟用，再修改）。
@@ -489,8 +489,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 【未實作】送出問卷（建立目標與估計帳戶）
-         * @description 同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300），並呼叫 C 的 createAccount 建立估計帳戶「現有資產（估計）」（bank、isEstimate: true、餘額 ＝ currentAssets，跳過時為 0）。
+         * 送出問卷（建立目標與「現有存款」帳戶）
+         * @description 同一個資料庫交易內：建立目標（targetAmount ＝ monthlySpending × 300）；currentAssets > 0 時，再呼叫 C 的 createAccount 建立一般的銀行帳戶「現有存款」（餘額 ＝ currentAssets）。不建立估計帳戶；跳過 Q2（省略、null）或填 0 時不建立帳戶（D-D-004）。
          *
          *     已經完成過問卷回 409 ONBOARDING_ALREADY_DONE（兩個請求同時送出時，也只會有一個成功）。
          *
@@ -536,12 +536,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 【未實作】目標進度與財富自由年齡
+         * 目標進度與財富自由年齡
          * @description 目前金額 ＝ 帳戶合計（PRD 15.1：啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易），「今天」用台北時間。
          *
          *     里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。
          *
-         *     年儲蓄：有 3 個以上完整月的記帳時，用最近最多 6 個完整月的平均（savingSource: actual）；否則用 estMonthlySaving（estimate）；都沒有時 fireAgeStatus 是 need_saving。
+         *     年儲蓄：最近 6 個完整月（不含本月）裡有記帳（收入或支出不是 0）的月有 3 個以上時，用那些月的平均（收入 − 支出）× 12（savingSource: actual），沒記帳的月不算進平均；否則用 estMonthlySaving × 12（estimate）；都沒有時 fireAgeStatus 是 need_saving。
          *
          *     狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。
          */
@@ -1366,7 +1366,7 @@ export interface components {
              */
             monthlySpending: number;
             /**
-             * @description 現在大概有多少存款，整數 0–100,000,000；省略或 null 代表跳過（當作 0）
+             * @description 現在大概有多少存款，整數 0–100,000,000。> 0 時建立一般的銀行帳戶「現有存款」（不是估計帳戶，D-D-004）；省略、null 或 0 時不建立帳戶
              * @example 800000
              */
             currentAssets?: number | null;
@@ -2815,15 +2815,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Accounts_update: {
@@ -2890,15 +2881,6 @@ export interface operations {
              *     `ACCOUNT_INACTIVE`：這個帳戶已停用，請先重新啟用
              */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3305,15 +3287,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Goals_findOne: {
@@ -3435,15 +3408,6 @@ export interface operations {
             };
             /** @description `ONBOARDING_REQUIRED`：請先完成問卷 */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
