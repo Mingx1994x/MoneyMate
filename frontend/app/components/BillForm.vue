@@ -1,9 +1,12 @@
 <script setup lang="ts">
-/** 帳單表單（B）。只能用支出分類、扣款帳戶必須啟用；已繳帳單只能改名稱與備註（PRD §16.6） */
-import { errorText } from '~/lib/api-error'
-import { addDays, isValidDate, todayTaipei } from '~/lib/date'
+/**
+ * 帳單表單（B）。只能用支出分類、扣款帳戶必須啟用；已繳帳單只能改名稱與備註（PRD §16.6）。
+ * 到期日可以是過去（建立後就是逾期），最晚到台北今天加 50 年。
+ */
+import { errorText, fieldErrors } from '~/lib/api-error'
+import { addDays, addMonthsClamped, isValidDate, todayTaipei } from '~/lib/date'
 import { normalizeAmount, validateAmount } from '~/lib/money'
-import type { Bill, BillBody, Recurrence } from '~/types/api'
+import type { Bill, CreateBillBody, Recurrence, UpdateBillBody } from '~/types/api'
 import { CATEGORY_ICON } from '~/utils/labels'
 
 const props = defineProps<{ initial?: Bill | null }>()
@@ -15,6 +18,9 @@ const { bump } = useDataVersion()
 const { usableAccounts, categoriesOf, accounts } = useLookups()
 
 const paid = computed(() => props.initial?.status === 'paid')
+const maxDueDate = addMonthsClamped(todayTaipei(), 50 * 12)
+/** 跟後端一樣以字元（code point）計算，emoji 算 1 個字 */
+const charCount = (s: string) => Array.from(s).length
 const blank = () => ({
   name: '', amount: '', categoryId: '', accountId: '', dueDate: addDays(todayTaipei(), 7), recurrence: 'monthly' as Recurrence, note: '',
 })
@@ -30,29 +36,38 @@ watch(() => accounts.data.value, () => {
   if (!form.value.accountId) form.value.accountId = usableAccounts.value.find((a) => a.accountType === 'bank')?.id ?? usableAccounts.value[0]?.id ?? ''
 })
 
+/** 表單上有顯示錯誤的欄位（和後端 details.field 同名） */
+const FORM_FIELDS = ['name', 'amount', 'categoryId', 'accountId', 'dueDate', 'note']
+
 const errors = ref<Record<string, string | undefined>>({})
 const submitError = ref<string | null>(null)
 const saving = ref(false)
 
 async function submit() {
   const f = form.value
+  const name = !f.name.trim() ? '請輸入帳單名稱' : charCount(f.name.trim()) > 30 ? '名稱最多 30 個字' : undefined
+  const note = charCount(f.note.trim()) > 200 ? '備註最多 200 字' : undefined
   errors.value = paid.value
-    ? { name: f.name.trim() ? undefined : '請輸入帳單名稱' }
+    ? { name, note }
     : {
-        name: !f.name.trim() ? '請輸入帳單名稱' : f.name.trim().length > 30 ? '名稱最多 30 個字' : undefined,
+        name,
+        note,
         amount: validateAmount(f.amount),
         categoryId: f.categoryId ? undefined : '請選擇分類',
         accountId: f.accountId ? undefined : '請選擇扣款帳戶',
-        dueDate: isValidDate(f.dueDate) ? undefined : '請選擇到期日',
+        dueDate: !isValidDate(f.dueDate) ? '請選擇到期日' : f.dueDate > maxDueDate ? '到期日最晚到 50 年後' : undefined,
       }
   if (Object.values(errors.value).some(Boolean)) return
   saving.value = true
   submitError.value = null
   try {
     if (paid.value) {
-      await api.patch(`/bills/${props.initial!.id}`, { name: f.name.trim(), note: f.note.trim() || null })
+      // 已繳只能改名稱、備註；其他欄位不送（送了值不同會回 BILL_ALREADY_PAID）。
+      // 用 Pick：產生的 UpdateBillDto 因為 Swagger 標了 default，把 recurrence 標成必填，實際上 PATCH 可以不帶
+      const body: Pick<UpdateBillBody, 'name' | 'note'> = { name: f.name.trim(), note: f.note.trim() || null }
+      await api.patch(`/bills/${props.initial!.id}`, body)
     } else {
-      const body: BillBody = {
+      const body: CreateBillBody = {
         name: f.name.trim(), amount: normalizeAmount(f.amount), categoryId: f.categoryId, accountId: f.accountId,
         dueDate: f.dueDate, recurrence: f.recurrence, note: f.note.trim() || null,
       }
@@ -64,7 +79,10 @@ async function submit() {
     bump()
     emit('saved')
   } catch (e) {
-    submitError.value = errorText(e)
+    // 後端的欄位錯誤（例如 ACCOUNT_INACTIVE 在 accountId、CATEGORY_TYPE_MISMATCH 在 categoryId）顯示在對應欄位下面
+    const fields = fieldErrors(e)
+    if (FORM_FIELDS.some((k) => fields[k])) errors.value = fields
+    else submitError.value = errorText(e)
   } finally {
     saving.value = false
   }
@@ -83,7 +101,7 @@ const RECURRENCES = [
     <p v-if="paid" class="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">這張帳單已繳，只能改名稱與備註。要改金額或日期，請先取消繳費。</p>
 
     <AppField label="帳單名稱" for="bill-name" :error="errors.name" required>
-      <input id="bill-name" v-model="form.name" class="field-input" maxlength="30" placeholder="例如：電費、房租" :aria-invalid="!!errors.name || undefined">
+      <input id="bill-name" v-model="form.name" class="field-input" placeholder="例如：電費、房租" :aria-invalid="!!errors.name || undefined">
     </AppField>
 
     <template v-if="!paid">
@@ -125,8 +143,8 @@ const RECURRENCES = [
       </AppField>
     </template>
 
-    <AppField label="備註" for="bill-note">
-      <input id="bill-note" v-model="form.note" class="field-input" maxlength="200" placeholder="選填">
+    <AppField label="備註" for="bill-note" :error="errors.note">
+      <input id="bill-note" v-model="form.note" class="field-input" placeholder="選填">
     </AppField>
 
     <div class="flex justify-end gap-2 pt-1">
