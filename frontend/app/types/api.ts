@@ -72,8 +72,8 @@ export interface ApiErrorBody {
 }
 
 // ---------- Loans、Bills：暫時手寫 ----------
-// ⚠️ 後端的 loans、bills API 還是 501，頁面目前只能接假後端。
-//    #60（貸款頁）、#61（帳單頁）接上真的 API 時改用產生的型別，和後端不同的地方：
+// ⚠️ 後端的 loans、bills API 都完成了，產生的型別裡已經有 LoanResponseDto、BillResponseDto。
+//    這裡暫時手寫是因為頁面還接假後端；#60（貸款頁）、#61（帳單頁）接 API 時改用產生的型別，和後端不同的地方：
 //    - Loan.loanType 是 LoanType 列舉、interestRate 是 number
 //    - LoanPaymentPreview 是 { monthlyPayment, totalInterest, installments }
 //    - GET /bills 是分頁格式，Bill 多了 isOverdue

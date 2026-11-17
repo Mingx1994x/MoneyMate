@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   HttpCode,
-  NotImplementedException,
   Param,
   Patch,
   Post,
@@ -20,11 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { ClockService } from '../../clock/clock.service.js';
 import { ParseIdPipe } from '../../common/id.js';
-import {
-  ApiAuth,
-  ApiErrors,
-  ApiNotImplemented,
-} from '../../common/swagger/api-decorators.js';
+import { ApiAuth, ApiErrors } from '../../common/swagger/api-decorators.js';
 import { CurrentUser, type AuthUser } from '../auth/index.js';
 import {
   AccountDeleteQueryDto,
@@ -39,7 +34,7 @@ import { CreateAccountDto } from './dto/create-account.dto.js';
 import { UpdateAccountDto } from './dto/update-account.dto.js';
 
 /**
- * accounts（C）。已實作：列表、新增、單筆；修改、刪除在 W3（暫時回 501）。
+ * accounts（C）：列表、新增、單筆、修改（含停用、重新啟用）、刪除。
  * - 「今天」用 ClockService.today()，一個請求只取一次往下傳。
  * - 餘額、合計一律由 FinanceCalcService 計算（PRD 15.1），這裡不另外寫公式。
  */
@@ -135,12 +130,12 @@ export class AccountsController {
     'ACCOUNT_INACTIVE',
     'ACCOUNT_NOT_FOUND',
   )
-  @ApiNotImplemented()
   update(
-    @Param('id', new ParseIdPipe('ACCOUNT_NOT_FOUND')) _id: string,
-    @Body() _dto: UpdateAccountDto,
-  ): AccountResponseDto {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('ACCOUNT_NOT_FOUND')) id: string,
+    @Body() dto: UpdateAccountDto,
+  ): Promise<AccountResponseDto> {
+    return this.accounts.update(user.id, id, dto, this.clock.today());
   }
 
   @Delete(':id')
@@ -148,18 +143,18 @@ export class AccountsController {
   @ApiOperation({
     summary: '刪除帳戶',
     description: [
-      '只限沒有任何交易（轉出或轉入）、也沒有被帳單使用的帳戶，否則回 ACCOUNT_IN_USE，請改用停用。',
+      '只限沒有任何交易（轉出或轉入）、也沒有被帳單使用的帳戶，否則回 ACCOUNT_IN_USE，請改用停用。估計帳戶也可以刪除（D-D-004）。',
       '帶 addBackToEstimate=true 而且帳戶有 deductedFromEstimate 時，在同一個資料庫交易內把金額加回估計帳戶；估計帳戶已停用就重新啟用（PRD 15.9）。沒帶或 false 時不加回。',
     ].join('\n\n'),
   })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiNoContentResponse()
   @ApiErrors('VALIDATION_FAILED', 'ACCOUNT_IN_USE', 'ACCOUNT_NOT_FOUND')
-  @ApiNotImplemented()
   remove(
-    @Param('id', new ParseIdPipe('ACCOUNT_NOT_FOUND')) _id: string,
-    @Query() _query: AccountDeleteQueryDto,
-  ): void {
-    throw new NotImplementedException();
+    @CurrentUser() user: AuthUser,
+    @Param('id', new ParseIdPipe('ACCOUNT_NOT_FOUND')) id: string,
+    @Query() query: AccountDeleteQueryDto,
+  ): Promise<void> {
+    return this.accounts.remove(user.id, id, query.addBackToEstimate ?? false);
   }
 }
