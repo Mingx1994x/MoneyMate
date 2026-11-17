@@ -8,8 +8,8 @@ import { DashboardSummaryQueryDto } from './dto/dashboard-query.dto.js';
 import { DashboardSummaryResponseDto } from './dto/dashboard-summary.dto.js';
 
 /**
- * dashboard（C）。目前接上：本月收支、儲蓄率、帳戶合計、可用現金（C），帳單、貸款（E，未實作時列進 unavailable）。
- * 目標（D）在 W4 接上，之前 goal、nextStep 是 null。GET /dashboard/trend 是 P1，P0 不建。
+ * dashboard（C）：本月收支、儲蓄率、帳戶合計、可用現金（C），帳單、貸款（E），目標（D）；未實作的區塊列進 unavailable。
+ * 目標接上 D 的 getGoalProgress：還沒完成問卷時 goal 是 null、nextStep 是 onboarding。GET /dashboard/trend 是 P1，P0 不建。
  */
 @ApiTags('dashboard')
 @ApiAuth()

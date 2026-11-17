@@ -4,10 +4,12 @@ import { toMoneyString } from '../../common/money.js';
 import { Prisma } from '../../prisma/index.js';
 import { BillsService, type BillAlertItem } from '../bills/index.js';
 import { FinanceCalcService } from '../finance/index.js';
+import { GoalsService } from '../goals/index.js';
 import { LoansService } from '../loans/index.js';
 import { DashboardSection } from './dto/dashboard-section.enum.js';
 import type {
   DashboardBillBriefDto,
+  DashboardGoalDto,
   DashboardLoansDto,
   DashboardSummaryResponseDto,
 } from './dto/dashboard-summary.dto.js';
@@ -22,6 +24,7 @@ export class DashboardService {
     private readonly finance: FinanceCalcService,
     private readonly loans: LoansService,
     private readonly bills: BillsService,
+    private readonly goals: GoalsService,
   ) {}
 
   /**
@@ -67,18 +70,33 @@ export class DashboardService {
         )
       : null;
 
-    // ── 目標（D 的 getGoalProgress 在 W4 實作，接上前一律 unavailable）
-    unavailable.push(DashboardSection.goal);
+    // ── 目標（D 的 getGoalProgress）。三種結果要分開：
+    // 沒實作（undefined）→ unavailable；還沒完成問卷（null）→ goal 是 null、下一步是 onboarding；有目標 → 進度
+    const goalProgress = await whenImplemented(() =>
+      this.goals.getGoalProgress(userId, today),
+    );
+    const goalReady = goalProgress !== undefined;
+    if (!goalReady) unavailable.push(DashboardSection.goal);
 
-    // 一句下一步要同時有帳單與目標的資料；目標接上前一律 null（不給可能錯誤的建議）。
-    // W4 接上 D 的 getGoalProgress 後，把 goal 換成真的目標進度（沒有目標時是 null → onboarding）。
-    const goalReady = !unavailable.includes(DashboardSection.goal);
+    // 一句下一步要同時有帳單與目標的資料；任一個未完成時是 null（不給可能錯誤的建議）
     const nextStep =
       alerts && goalReady
         ? decideNextStep({
             overdueCount: alerts.overdueCount,
             fundingGap,
-            goal: null,
+            goal: goalProgress
+              ? {
+                  achieved: goalProgress.achieved,
+                  nextMilestone: goalProgress.nextMilestone
+                    ? {
+                        index: goalProgress.nextMilestone.index,
+                        remaining: new Prisma.Decimal(
+                          goalProgress.nextMilestone.remaining,
+                        ),
+                      }
+                    : null,
+                }
+              : null,
           })
         : null;
 
@@ -101,7 +119,7 @@ export class DashboardService {
         : null,
       fundingGap: fundingGap ? toMoneyString(fundingGap) : null,
       loans: loanSummary ? toLoansDto(loanSummary) : null,
-      goal: null,
+      goal: goalProgress ? toGoalDto(goalProgress) : null,
       nextStep: nextStep
         ? {
             type: nextStep.type,
@@ -164,6 +182,26 @@ function toBillBrief(b: BillAlertItem): DashboardBillBriefDto {
     amount: toMoneyString(b.amount),
     dueDate: b.dueDate,
     daysUntilDue: b.daysUntilDue,
+  };
+}
+
+/** D 的完整目標進度 → Dashboard 只要的摘要（里程碑列表、財富自由年齡在 GET /goal/progress） */
+function toGoalDto(
+  g: NonNullable<Awaited<ReturnType<GoalsService['getGoalProgress']>>>,
+): DashboardGoalDto {
+  return {
+    targetAmount: g.targetAmount,
+    currentAmount: g.currentAmount,
+    percent: g.percent,
+    achieved: g.achieved,
+    nextMilestone: g.nextMilestone
+      ? {
+          index: g.nextMilestone.index,
+          amount: g.nextMilestone.amount,
+          label: g.nextMilestone.label,
+          remaining: g.nextMilestone.remaining,
+        }
+      : null,
   };
 }
 

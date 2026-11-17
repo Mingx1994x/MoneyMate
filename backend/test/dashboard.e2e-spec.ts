@@ -7,6 +7,8 @@ import {
   type BillAlertItem,
   type BillAlerts,
 } from '../src/modules/bills/index.js';
+import type { GoalProgressDto } from '../src/modules/goals/dto/goal-progress.dto.js';
+import { GoalsService } from '../src/modules/goals/index.js';
 import { LoansService, type LoanSummary } from '../src/modules/loans/index.js';
 import {
   CategoryType,
@@ -28,11 +30,11 @@ const TODAY = '2026-11-20';
 
 /**
  * Dashboard（最小流程 ④：本月收支正確）。
- * E 的 LoansService、BillsService 換成 vi.fn()，測試結果不受 E 有沒有實作影響，分三組：
+ * E 的 LoansService、BillsService 與 D 的 GoalsService 換成 vi.fn()，測試結果不受各模組的實作影響，分四組：
  * 1. 丟 NotImplementedException（預設）：分階段交付，區塊是 null 並列進 unavailable
- * 2. 回傳假資料：接上後的淨資產、資金缺口、帳單清單取前 5 筆
- * 3. 丟一般的 Error：整支回 500，不回傳部分數字（PRD 18）
- * 目標（D 的 getGoalProgress）還沒接上，goal 一律在 unavailable。
+ * 2. 帳單、貸款回傳假資料：接上後的淨資產、資金缺口、帳單清單取前 5 筆（目標維持未完成）
+ * 3. 目標也接上：goal 摘要與一句下一步的四種結果（PRD 15.5）
+ * 4. 丟一般的 Error：整支回 500，不回傳部分數字（PRD 18）
  */
 describe('Dashboard API（e2e）', () => {
   let app: INestApplication<App>;
@@ -46,6 +48,9 @@ describe('Dashboard API（e2e）', () => {
     vi.fn<(userId: string, today: string) => Promise<BillAlerts>>();
   const fakeLoans: Pick<LoansService, 'getLoanSummary'> = { getLoanSummary };
   const fakeBills: Pick<BillsService, 'getBillAlerts'> = { getBillAlerts };
+  const getGoalProgress =
+    vi.fn<(userId: string, today: string) => Promise<GoalProgressDto | null>>();
+  const fakeGoals: Pick<GoalsService, 'getGoalProgress'> = { getGoalProgress };
   const notImplemented = () => Promise.reject(new NotImplementedException());
 
   const summary = (query = '') =>
@@ -63,7 +68,9 @@ describe('Dashboard API（e2e）', () => {
           .overrideProvider(LoansService)
           .useValue(fakeLoans)
           .overrideProvider(BillsService)
-          .useValue(fakeBills),
+          .useValue(fakeBills)
+          .overrideProvider(GoalsService)
+          .useValue(fakeGoals),
     });
     prisma = app.get(PrismaService);
   });
@@ -75,6 +82,7 @@ describe('Dashboard API（e2e）', () => {
     // 預設：E 的 service 還沒實作
     getLoanSummary.mockReset().mockImplementation(notImplemented);
     getBillAlerts.mockReset().mockImplementation(notImplemented);
+    getGoalProgress.mockReset().mockImplementation(notImplemented);
   });
 
   afterAll(async () => {
@@ -496,10 +504,165 @@ describe('Dashboard API（e2e）', () => {
     });
   });
 
-  describe('E 的 service 出錯（不是 NotImplementedException）', () => {
+  describe('目標也接上（D 的 getGoalProgress）', () => {
+    const D = (v: string | number) => new Prisma.Decimal(v);
+    /** AC-22 的目標進度：目前 240,000、第 2 站 1,000,000 還差 760,000 */
+    const progress = (
+      over: Partial<GoalProgressDto> = {},
+    ): GoalProgressDto => ({
+      targetAmount: '12000000.00',
+      currentAmount: '240000.00',
+      remaining: '11760000.00',
+      percent: 2,
+      achieved: false,
+      milestones: [],
+      nextMilestone: {
+        index: 2,
+        amount: '1000000.00',
+        label: '第一桶金',
+        reached: false,
+        remaining: '760000.00',
+      },
+      fireAge: null,
+      fireAgeStatus: 'need_birth_year',
+      fireAssumptions: {
+        annualSpending: '480000.00',
+        annualSaving: null,
+        savingSource: null,
+        currentAssets: '240000.00',
+        age: null,
+      },
+      activeLoanTotal: '0.00',
+      ...over,
+    });
+    const alerts = (overdueCount = 0, dueTotal = 0): BillAlerts => ({
+      overdue: [],
+      overdueCount,
+      dueSoon: [],
+      dueSoonCount: dueTotal > 0 ? 1 : 0,
+      dueTotal: D(dueTotal),
+    });
+
+    beforeEach(() => {
+      getLoanSummary.mockResolvedValue({
+        activeCount: 0,
+        outstandingTotal: D(0),
+        upcomingPayments: [],
+      });
+      getBillAlerts.mockResolvedValue(alerts());
+    });
+
+    it('還沒完成問卷（getGoalProgress 回 null）：goal 是 null、下一步是先做問卷，不列進 unavailable', async () => {
+      getGoalProgress.mockResolvedValue(null);
+      const res = await summary().expect(200);
+      expect(res.body).toMatchObject({
+        goal: null,
+        nextStep: {
+          type: 'onboarding',
+          message: '先完成 30 秒問卷',
+          amount: null,
+        },
+        unavailable: [],
+      });
+    });
+
+    it('有目標：goal 是摘要，下一步是下一站（AC-22：再存 760,000 元就到第 2 站）', async () => {
+      getGoalProgress.mockResolvedValue(progress());
+      const res = await summary().expect(200);
+      expect(res.body).toMatchObject({
+        goal: {
+          targetAmount: '12000000.00',
+          currentAmount: '240000.00',
+          percent: 2,
+          achieved: false,
+          nextMilestone: {
+            index: 2,
+            amount: '1000000.00',
+            label: '第一桶金',
+            remaining: '760000.00',
+          },
+        },
+        nextStep: {
+          type: 'next_milestone',
+          message: '再存 760,000 元就到第 2 站',
+          amount: '760000.00',
+        },
+        unavailable: [],
+      });
+      // 只回摘要：里程碑列表、財富自由年齡要看 GET /goal/progress
+      const goal = (res.body as { goal: Record<string, unknown> }).goal;
+      expect(Object.keys(goal).sort()).toEqual(
+        [
+          'achieved',
+          'currentAmount',
+          'nextMilestone',
+          'percent',
+          'targetAmount',
+        ].sort(),
+      );
+    });
+
+    it('呼叫 getGoalProgress 時帶登入者與台北今天', async () => {
+      getGoalProgress.mockResolvedValue(null);
+      await summary().expect(200);
+      expect(getGoalProgress).toHaveBeenCalledWith(userId, TODAY);
+    });
+
+    it('已達成目標：nextMilestone 是 null，下一步是 goal_achieved', async () => {
+      getGoalProgress.mockResolvedValue(
+        progress({ achieved: true, percent: 100, nextMilestone: null }),
+      );
+      const res = await summary().expect(200);
+      expect(res.body).toMatchObject({
+        goal: { achieved: true, percent: 100, nextMilestone: null },
+        nextStep: { type: 'goal_achieved', amount: null },
+      });
+    });
+
+    it('有逾期帳單：先提醒逾期，比下一站優先（PRD 15.5 ①）', async () => {
+      getGoalProgress.mockResolvedValue(progress());
+      getBillAlerts.mockResolvedValue(alerts(2));
+      const res = await summary().expect(200);
+      expect(res.body).toMatchObject({
+        nextStep: { type: 'overdue_bills', message: '有 2 張帳單逾期' },
+      });
+    });
+
+    it('有資金缺口：先提醒缺口，比下一站優先（PRD 15.5 ②）', async () => {
+      await prisma.account.create({
+        data: {
+          userId,
+          name: '銀行',
+          accountType: 'bank',
+          openingBalance: 1000,
+        },
+      });
+      getGoalProgress.mockResolvedValue(progress());
+      getBillAlerts.mockResolvedValue(alerts(0, 5000));
+      const res = await summary().expect(200);
+      expect(res.body).toMatchObject({
+        fundingGap: '4000.00',
+        nextStep: { type: 'funding_gap', amount: '4000.00' },
+      });
+    });
+
+    it('目標接上但帳單還沒完成：goal 照樣顯示，下一步是 null（資料不完整不給建議）', async () => {
+      getGoalProgress.mockResolvedValue(progress());
+      getBillAlerts.mockImplementation(notImplemented);
+      const res = await summary().expect(200);
+      expect(res.body).toMatchObject({
+        goal: { percent: 2 },
+        nextStep: null,
+        unavailable: ['bills'],
+      });
+    });
+  });
+
+  describe('各模組的 service 出錯（不是 NotImplementedException）', () => {
     it.each([
       ['貸款', () => getLoanSummary],
       ['帳單', () => getBillAlerts],
+      ['目標', () => getGoalProgress],
     ])(
       '%s查詢失敗：整支回 500，不回傳部分數字（PRD 18）',
       async (_name, mock) => {
@@ -515,6 +678,7 @@ describe('Dashboard API（e2e）', () => {
           dueSoonCount: 0,
           dueTotal: new Prisma.Decimal(0),
         });
+        getGoalProgress.mockResolvedValue(null);
         mock().mockRejectedValue(new Error('資料庫連線中斷'));
 
         const res = await summary().expect(500);
