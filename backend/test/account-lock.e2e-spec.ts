@@ -16,6 +16,7 @@ import { bearer } from './utils/test-token.js';
  *
  * 會改到帳戶餘額的寫入都測一次：
  * - 一般記帳（POST /transactions）支出、轉入
+ * - 修改交易（PATCH /transactions/:id）改金額、把交易移進這個帳戶
  * - 刪除交易（DELETE /transactions/:id）
  * - 帳單繳費、取消繳費（POST /bills/:id/pay、unpay → C 的 createBillTransaction、deleteBillTransaction）
  * 同時送的請求誰先不固定，所以每種重複 20 次；兩種先後都只能有一邊成功。
@@ -113,6 +114,40 @@ describe('帳戶的鎖：同時停用與寫交易（e2e）', () => {
               accountId: otherId,
               toAccountId: accountId,
             }),
+        };
+      },
+    },
+    {
+      name: '修改交易：金額 100 改成 50（餘額變 50）',
+      writeOk: 200,
+      setup: async (round) => {
+        const accountId = await account(`改金額 ${round}`, 100);
+        const created = await expense(accountId).expect(201);
+        const txId = (created.body as { id: string }).id;
+        return {
+          accountId,
+          write: () =>
+            api()
+              .patch(`/api/v1/transactions/${txId}`)
+              .set('Authorization', auth)
+              .send({ amount: '50' }),
+        };
+      },
+    },
+    {
+      name: '修改交易：把別的帳戶的支出移進這個帳戶（餘額變 −100）',
+      writeOk: 200,
+      setup: async (round) => {
+        const accountId = await account(`移入 ${round}`, 0);
+        const created = await expense(otherId).expect(201);
+        const txId = (created.body as { id: string }).id;
+        return {
+          accountId,
+          write: () =>
+            api()
+              .patch(`/api/v1/transactions/${txId}`)
+              .set('Authorization', auth)
+              .send({ accountId }),
         };
       },
     },
