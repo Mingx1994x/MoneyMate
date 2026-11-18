@@ -94,6 +94,27 @@ describe('帳單交易 service（e2e）', () => {
     await app?.close();
   });
 
+  /**
+   * 模擬「同時停用扣款帳戶」：另一個資料庫交易先 FOR UPDATE 鎖住帳戶（停用帳戶時的鎖），
+   * 等一下才停用並 commit。回傳停用完成的 Promise 與「鎖已經拿到」的時間點。
+   */
+  const deactivateSlowly = async () => {
+    let locked!: () => void;
+    const lockTaken = new Promise<void>((r) => (locked = r));
+    const done = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM accounts WHERE id = ${bankId}::uuid FOR UPDATE`;
+      locked();
+      await new Promise((r) => setTimeout(r, 300));
+      await tx.account.update({
+        where: { id: bankId },
+        data: { isActive: false },
+      });
+    });
+    await lockTaken;
+    // 包在物件裡回傳：async 函式直接 return Promise 會被 await 攤開，變成等停用完成才回來
+    return { done };
+  };
+
   describe('createBillTransaction（繳費）', () => {
     it('建立一筆支出：bill_id 指向帳單，交易列表標 isBillGenerated，餘額減少', async () => {
       const { id } = await pay();
@@ -169,6 +190,16 @@ describe('帳單交易 service（e2e）', () => {
       ).rejects.toThrow(/扣款帳戶不存在/);
       expect(await prisma.transaction.count()).toBe(0);
     });
+
+    it('繳費時帳戶正在被停用：等停用完成後回 409，不會在停用的帳戶留下支出（#91 review）', async () => {
+      const { done: deactivated } = await deactivateSlowly();
+      // 鎖已經被拿走：沒有鎖的話這裡會讀到「啟用中」直接寫入
+      await expect(pay('100')).rejects.toMatchObject({
+        code: 'ACCOUNT_INACTIVE',
+      });
+      await deactivated;
+      expect(await prisma.transaction.count()).toBe(0);
+    });
   });
 
   describe('deleteBillTransaction（取消繳費）', () => {
@@ -197,6 +228,14 @@ describe('帳單交易 service（e2e）', () => {
       await pay();
       const otherId = await createUser(prisma, 'c-other@example.com');
       await expect(unpay(otherId)).rejects.toThrow(/找不到/);
+      expect(await prisma.transaction.count()).toBe(1);
+    });
+
+    it('取消繳費時帳戶正在被停用：等停用完成後回 409，支出還在（#91 review）', async () => {
+      await pay();
+      const { done: deactivated } = await deactivateSlowly();
+      await expect(unpay()).rejects.toMatchObject({ code: 'ACCOUNT_INACTIVE' });
+      await deactivated;
       expect(await prisma.transaction.count()).toBe(1);
     });
   });
