@@ -1,5 +1,6 @@
 # CI-1：前後端的 lint、型別檢查、建置（後端另跑單元測試）；DEP-1：後端映像檔能 build 並啟動。
 # CI-2：backend-e2e 從空資料庫跑 migration、prisma migrate diff、再跑 e2e。
+# CI-4：playwright 在同一台機器啟動前後端，用 Chromium 跑端到端測試。
 # 分支保護只設 ci-ok 一個必要檢查。
 name: CI
 
@@ -26,6 +27,7 @@ jobs:
     outputs:
       backend: ${{ steps.result.outputs.backend }}
       frontend: ${{ steps.result.outputs.frontend }}
+      playwright: ${{ steps.result.outputs.playwright }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,9 +56,17 @@ jobs:
           frontend=false
           if [ "$BACKEND_CHANGED" = true ] && [ -f backend/package-lock.json ]; then backend=true; fi
           if [ "$FRONTEND_CHANGED" = true ] && [ -f frontend/package-lock.json ]; then frontend=true; fi
+          # 前端或後端有改，而且 Playwright 的設定已經合併，才跑瀏覽器測試
+          playwright=false
+          if { [ "$backend" = true ] || [ "$frontend" = true ]; } \
+            && [ -f backend/package-lock.json ] && [ -f frontend/package-lock.json ] \
+            && [ -f frontend/playwright.config.ts ]; then
+            playwright=true
+          fi
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
-          echo "backend=$backend frontend=$frontend"
+          echo "playwright=$playwright" >> "$GITHUB_OUTPUT"
+          echo "backend=$backend frontend=$frontend playwright=$playwright"
 
   backend:
     needs: changes
@@ -212,10 +222,134 @@ jobs:
       - name: e2e
         run: npm run test:e2e
 
+  # CI-4：在同一台機器上啟動資料庫、後端、前端，用 Chromium 跑 frontend/e2e/ 的 Playwright 測試。
+  # frontend/playwright.config.ts 合併前一定是 skipped。
+  playwright:
+    needs: changes
+    if: needs.changes.outputs.playwright == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+          TZ: UTC
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    # 後端用 production 模式啟動時不讀 .env.test，資料庫連線要從環境變數拿；seed 也用同一組。
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/app_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/app_test
+      # 只給 CI 的測試帳號用（seed-e2e 建帳號、Playwright 登入用同一個值），8 字元以上
+      E2E_PASSWORD: ci-e2e-insecure-password
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: backend/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: 後端：安裝與 build
+        working-directory: backend
+        run: |
+          npm ci
+          npm run build
+      # seed 用 test 模式：其他必填變數讀 .env.test。
+      # 直接執行 dist/，不用 npm run seed:*（那兩個 script 會再 build 一次）。
+      - name: 後端：migration 與測試資料
+        working-directory: backend
+        env:
+          NODE_ENV: test
+        run: |
+          cp .env.test.example .env.test
+          npm run db:test:prepare
+          node dist/seed/seed-categories.js
+          node dist/seed/seed-e2e.js
+      # 用 production 模式：test 模式的日誌是 silent，失敗時看不到後端發生什麼事。
+      # 設定跟 docker job 相同；JWT_SECRET 只給這個 job 用。
+      # AUTH_IP_LIMIT_PER_MINUTE 調高：所有請求都來自同一個 IP，預設一分鐘第 10 次註冊／登入就 429。
+      - name: 啟動後端
+        working-directory: backend
+        env:
+          NODE_ENV: production
+          PORT: 3001
+          CORS_ORIGIN: http://localhost:3000
+          DATABASE_SSL: false
+          TRUST_PROXY_HOPS: 0
+          JWT_SECRET: ci-playwright-only-jwt-secret-0123456789abcdef
+          AUTH_IP_LIMIT_PER_MINUTE: 1000
+        run: |
+          nohup node dist/main.js > "$RUNNER_TEMP/backend.log" 2>&1 &
+          for i in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/health || true)" = 200 ]; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::後端沒有在 30 秒內回應 /health"
+          cat "$RUNNER_TEMP/backend.log"
+          exit 1
+
+      - name: 前端：安裝與 build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      # apiMode、apiBase 是執行時設定，啟動時用環境變數蓋掉就好，不用重新 build。
+      # 明確寫出來，預設值改了也不會默默測到 mock 或連錯後端。
+      - name: 啟動前端
+        working-directory: frontend
+        env:
+          PORT: 3000
+          NUXT_PUBLIC_API_MODE: http
+          NUXT_PUBLIC_API_BASE: http://localhost:3001/api/v1
+        run: |
+          nohup node .output/server/index.mjs > "$RUNNER_TEMP/frontend.log" 2>&1 &
+          for i in $(seq 1 30); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ || true)" = 200 ]; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::前端沒有在 30 秒內回應"
+          cat "$RUNNER_TEMP/frontend.log"
+          exit 1
+
+      - name: 安裝 Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Playwright
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+        run: npm run test:e2e
+
+      # 失敗時不用在本機重現：報告、trace、截圖與前後端日誌都在 artifact
+      - name: 上傳報告與日誌
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            ${{ runner.temp }}/backend.log
+            ${{ runner.temp }}/frontend.log
+          retention-days: 7
+
   # 分支保護唯一的必要檢查。changes 失敗時其他 job 都是 skipped，
   # 所以 changes 必須是 success，其他只接受 success 或 skipped。
   ci-ok:
-    needs: [changes, backend, docker, frontend, backend-e2e]
+    needs: [changes, backend, docker, frontend, backend-e2e, playwright]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -227,13 +361,14 @@ jobs:
           DOCKER: ${{ needs.docker.result }}
           FRONTEND: ${{ needs.frontend.result }}
           BACKEND_E2E: ${{ needs['backend-e2e'].result }}
+          PLAYWRIGHT: ${{ needs.playwright.result }}
         run: |
-          echo "changes=$CHANGES backend=$BACKEND docker=$DOCKER frontend=$FRONTEND backend-e2e=$BACKEND_E2E"
+          echo "changes=$CHANGES backend=$BACKEND docker=$DOCKER frontend=$FRONTEND backend-e2e=$BACKEND_E2E playwright=$PLAYWRIGHT"
           if [ "$CHANGES" != success ]; then
             echo "::error::changes job 不是 success（$CHANGES）"
             exit 1
           fi
-          for result in "$BACKEND" "$DOCKER" "$FRONTEND" "$BACKEND_E2E"; do
+          for result in "$BACKEND" "$DOCKER" "$FRONTEND" "$BACKEND_E2E" "$PLAYWRIGHT"; do
             case "$result" in
               success | skipped) ;;
               *)
