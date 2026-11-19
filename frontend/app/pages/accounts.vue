@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
  * 帳戶頁（B）— PRD §17、§15.9、§15.10
- * - 目前餘額由後端計算（currentBalance）；估計帳戶標示「估計」
- * - 有交易只顯示「停用」，沒交易才顯示「刪除」
- * - 新增真實帳戶時詢問是否從估計值扣掉；刪除時詢問是否加回
+ * - 目前餘額由後端計算（currentBalance）；舊的估計帳戶標示「估計」
+ * - 有交易只顯示「停用」，沒交易才顯示「刪除」；估計帳戶也可以刪除（D-D-004）。被帳單用到的帳戶後端回 ACCOUNT_IN_USE
+ * - 「從估計值扣除」先拿掉（11/15 會議；問卷也不再建立估計帳戶，D-D-004），之後需要再加回來：
+ *   新增時不帶 deductFromEstimate（後端預設 false），刪除時不帶 addBackToEstimate
  */
 import { errorText } from '~/lib/api-error'
 import { formatMoney, toCents } from '~/lib/money'
-import type { Account, DashboardSummary, ListResponse } from '~/types/api'
+import type { Account, DashboardSummary, ListResponse, UpdateAccountBody } from '~/types/api'
 import { ACCOUNT_TYPE_ICON, ACCOUNT_TYPE_LABEL } from '~/utils/labels'
 
 const api = useApi()
@@ -24,7 +25,6 @@ const summary = useResource(() => api.get<DashboardSummary>('/dashboard/summary'
 
 const visible = computed(() => (list.data.value ?? []).filter((a) => showInactive.value || a.isActive))
 const inactiveCount = computed(() => (list.data.value ?? []).filter((a) => !a.isActive).length)
-const estimate = computed(() => (list.data.value ?? []).find((a) => a.isEstimate && a.isActive))
 
 // ---------- 新增／編輯 ----------
 const editing = ref<Account | 'new' | null>(null)
@@ -38,25 +38,12 @@ onMounted(() => {
 
 async function save(values: { name: string; accountType: Account['accountType']; openingBalance: string; note?: string | null }) {
   if (editing.value === 'new') {
-    // 15.9：初始餘額 > 0 且有估計帳戶時，詢問要不要從估計值扣掉
-    let deductFromEstimate = false
-    const x = toCents(values.openingBalance)
-    if (estimate.value && x > 0 && toCents(estimate.value.currentBalance) > 0) {
-      const actual = Math.min(x, toCents(estimate.value.currentBalance))
-      deductFromEstimate = await confirm({
-        title: `要從「${estimate.value.name}」扣掉 ${formatMoney(actual / 100)} 嗎？`,
-        message:
-          `問卷時你估計自己有 ${formatMoney(estimate.value.currentBalance)}。\n` +
-          `如果「${values.name}」裡的錢就是其中一部分，扣掉才不會重複計算，總資產不變。` +
-          (actual < x ? `\n（估計值只剩 ${formatMoney(estimate.value.currentBalance)}，最多扣到 0）` : ''),
-        confirmText: '扣掉（建議）',
-        cancelText: '不用，兩個都保留',
-      })
-    }
-    await api.post<Account>('/accounts', { ...values, deductFromEstimate })
-    toast.success(deductFromEstimate ? '帳戶已建立，並從估計值扣除' : '帳戶已建立')
+    await api.post<Account>('/accounts', values)
+    toast.success('帳戶已建立')
   } else if (editing.value) {
-    await api.patch<Account>(`/accounts/${editing.value.id}`, values)
+    // 帳戶類型不能改：後端 UpdateAccountDto 沒有 accountType，帶了會回 400
+    const body: UpdateAccountBody = { name: values.name, openingBalance: values.openingBalance, note: values.note }
+    await api.patch<Account>(`/accounts/${editing.value.id}`, body)
     toast.success('帳戶已更新')
   }
   editing.value = null
@@ -93,18 +80,7 @@ async function toggleActive(a: Account) {
 
 async function remove(a: Account) {
   const ok = await confirm({ title: `刪除「${a.name}」？`, message: '這個帳戶沒有任何交易，刪除後無法復原。', confirmText: '刪除', danger: true })
-  if (!ok) return
-  let addBack = false
-  if (a.deductedFromEstimate && toCents(a.deductedFromEstimate) > 0) {
-    addBack = await confirm({
-      title: `要把 ${formatMoney(a.deductedFromEstimate)} 加回估計值嗎？`,
-      message: '建立這個帳戶時，有從「現有資產（估計）」扣掉這筆錢。加回後總資產會恢復原狀。',
-      confirmText: '加回（建議）',
-      cancelText: '不用加回',
-    })
-  }
-  // 已跟 C 確認：勾「加回」才帶 addBackToEstimate=true，否則不帶
-  await run(a.id, () => api.del(`/accounts/${a.id}`, { addBackToEstimate: addBack || undefined }), addBack ? '已刪除，並加回估計值' : '已刪除')
+  if (ok) await run(a.id, () => api.del(`/accounts/${a.id}`), '已刪除')
 }
 
 function balanceNote(a: Account) {
@@ -159,7 +135,7 @@ function balanceNote(a: Account) {
                 <AppBadge v-if="!a.isActive">已停用</AppBadge>
               </div>
               <p class="truncate text-xs text-slate-500">
-                {{ a.isEstimate ? '問卷填的存款，新增真實帳戶時可以從這裡扣掉' : ACCOUNT_TYPE_LABEL[a.accountType] }}{{ a.note && !a.isEstimate ? ` · ${a.note}` : '' }}
+                {{ a.isEstimate ? '問卷填的存款（估計），可以直接修改金額' : ACCOUNT_TYPE_LABEL[a.accountType] }}{{ a.note && !a.isEstimate ? ` · ${a.note}` : '' }}
               </p>
             </div>
             <div class="ml-auto text-right">
@@ -171,7 +147,7 @@ function balanceNote(a: Account) {
               <AppButton v-if="a.isActive" size="sm" variant="ghost" @click="editing = a">編輯</AppButton>
               <AppButton size="sm" variant="ghost" :loading="busy === a.id" @click="toggleActive(a)">{{ a.isActive ? '停用' : '啟用' }}</AppButton>
               <!-- 有交易只能停用，沒有交易才顯示刪除（§17） -->
-              <AppButton v-if="!a.hasTransactions && !a.isEstimate" size="sm" variant="ghost" class="text-rose-600" @click="remove(a)">刪除</AppButton>
+              <AppButton v-if="!a.hasTransactions" size="sm" variant="ghost" class="text-rose-600" @click="remove(a)">刪除</AppButton>
             </div>
           </li>
         </ul>
