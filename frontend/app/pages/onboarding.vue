@@ -25,6 +25,11 @@ const result = ref<GoalProgress | null>(null)
 const Q1 = [30000, 40000, 50000, 80000]
 const Q2 = [0, 100000, 500000, 1000000]
 
+// 換了選項、改了輸入或切換題目，就清掉上一次的錯誤訊息（Q1、Q2 共用同一個 error）
+watch([spending, spendingCustom, assets, assetsCustom, step], () => {
+  error.value = null
+})
+
 function q1Value(): number | null {
   const v = spending.value === 'custom' ? Number(spendingCustom.value) : spending.value
   return Number.isInteger(v) && v >= 1000 && v <= 333000 ? v : null
