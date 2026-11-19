@@ -4,13 +4,14 @@
  * Q1 每月想花多少（預選 4 萬）；Q2 現在大概有多少存款（可跳過）。
  * Q2 > 0 時後端建立一般的銀行帳戶「現有存款」；0 或跳過不建立（D-D-004）。
  */
-import { errorText } from '~/lib/api-error'
+import { ApiError, errorText } from '~/lib/api-error'
 import { formatMoney, formatWan } from '~/lib/money'
 import type { GoalProgress } from '~/types/api'
 
 definePageMeta({ layout: 'auth' })
 
 const api = useApi()
+const toast = useToast()
 const { me, logout } = useAuth()
 
 const step = ref<1 | 2 | 3>(1)
@@ -55,6 +56,13 @@ async function submit(skip = false) {
     if (me.value) me.value = { ...me.value, hasCompletedOnboarding: true }
     step.value = 3
   } catch (e) {
+    // 已經完成過問卷（例如另一個分頁先送出了）：這次的答案不會生效，直接回首頁。
+    // 先把 hasCompletedOnboarding 改成 true，middleware 才不會再導回問卷頁。
+    if (e instanceof ApiError && e.code === 'ONBOARDING_ALREADY_DONE') {
+      if (me.value) me.value = { ...me.value, hasCompletedOnboarding: true }
+      toast.info('你已經完成過問卷了，已幫你回到首頁')
+      return navigateTo('/')
+    }
     error.value = errorText(e)
   } finally {
     saving.value = false
