@@ -45,10 +45,16 @@ async function submit(skip = false) {
   error.value = null
   let currentAssets: number | undefined
   if (!skip) {
-    const v = assets.value === 'custom' ? Number(assetsCustom.value) : assets.value
-    if (v === null) return (error.value = '請選一個，或按「跳過」')
-    if (!Number.isInteger(v) || v < 0 || v > 100_000_000) return (error.value = '請輸入 0–1 億之間的整數')
-    currentAssets = v
+    if (assets.value === null) return (error.value = '請選一個，或按「跳過」')
+    if (assets.value === 'custom') {
+      // 自己填至少 1 元：空白會被 Number() 當成 0，沒有存款的人請選「0」或按「跳過」
+      const v = Number(assetsCustom.value)
+      if (v === 0) return (error.value = '請輸入金額；沒有存款可以選「0」或按「跳過」')
+      if (!Number.isInteger(v) || v < 1 || v > 100_000_000) return (error.value = '請輸入 1–100,000,000 之間的整數')
+      currentAssets = v
+    } else {
+      currentAssets = assets.value
+    }
   }
   saving.value = true
   try {
@@ -98,7 +104,7 @@ async function submit(skip = false) {
           <button v-for="v in Q2" :key="v" class="chip py-4 text-lg" :class="assets === v ? 'chip-on' : 'chip-off'" @click="assets = v">{{ v === 0 ? '0' : `${v / 10000} 萬` }}</button>
           <button class="chip col-span-2 py-3" :class="assets === 'custom' ? 'chip-on' : 'chip-off'" @click="assets = 'custom'">自己填</button>
         </div>
-        <div v-if="assets === 'custom'" class="mt-3"><MoneyInput v-model="assetsCustom" placeholder="0–100,000,000" /></div>
+        <div v-if="assets === 'custom'" class="mt-3"><MoneyInput v-model="assetsCustom" placeholder="1–100,000,000" /></div>
         <p v-if="error" class="mt-3 text-sm text-rose-600">{{ error }}</p>
         <div class="mt-6 flex gap-2">
           <AppButton block size="lg" :loading="saving" @click="submit()">看我的目標</AppButton>
