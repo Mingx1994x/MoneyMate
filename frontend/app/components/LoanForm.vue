@@ -24,9 +24,22 @@ const maxEndDate = addMonthsClamped(today, 50 * 12)
 
 const LOAN_TYPE_OPTIONS = Object.entries(LOAN_TYPE_LABEL) as [LoanType, string][]
 
+/**
+ * 第 n 期的還款日，期數的數法跟後端試算一樣（D-E-002）：
+ * 本月的還款日（短月用月底）還沒過就從本月算，今天剛好是還款日也算一期；已過就從下個月算。
+ * 例：11/19 新增、每月 5 號繳 → 第 1 期 2026-12-05，第 60 期 2031-11-05
+ */
+function nthPaymentDate(paymentDay: number, n: number) {
+  const thisMonth = addMonthsClamped(today, 0, paymentDay)
+  const first = thisMonth >= today ? thisMonth : addMonthsClamped(today, 1, paymentDay)
+  return addMonthsClamped(first, n - 1, paymentDay)
+}
+
+const DEFAULT_PAYMENT_DAY = 5
 const blank = () => ({
-  name: '', loanType: 'mortgage' as LoanType, outstandingBalance: '', interestRate: '', endDate: addMonthsClamped(today, 59),
-  paymentDay: '5', monthlyPayment: '', status: 'active' as LoanStatus, note: '',
+  // 預設 60 期（5 年）：結清日＝第 60 期的還款日
+  name: '', loanType: 'mortgage' as LoanType, outstandingBalance: '', interestRate: '', endDate: nthPaymentDate(DEFAULT_PAYMENT_DAY, 60),
+  paymentDay: String(DEFAULT_PAYMENT_DAY), monthlyPayment: '', status: 'active' as LoanStatus, note: '',
 })
 const draft = useDraft('loan-new', blank)
 // 舊版草稿的類型存的是中文（「房貸」），改回預設值
