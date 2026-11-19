@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * 30 秒財富自由問卷 —— A 負責（這是暫時版本）。PRD §12、FR-04
+ * 30 秒財富自由問卷 —— A 負責。PRD §12、FR-04、AC-15
  * Q1 每月想花多少（預選 4 萬）；Q2 現在大概有多少存款（可跳過）。
+ * Q2 > 0 時後端建立一般的銀行帳戶「現有存款」；0 或跳過不建立（D-D-004）。
  */
 import { errorText } from '~/lib/api-error'
 import { formatMoney, formatWan } from '~/lib/money'
@@ -58,7 +59,6 @@ async function submit(skip = false) {
 
 <template>
   <div>
-    <OwnerNote owner="A" />
     <div class="card p-6 sm:p-8">
       <div class="mb-6 flex gap-1.5">
         <div v-for="i in 3" :key="i" class="h-1.5 flex-1 rounded-full" :class="i <= step ? 'bg-brand-600' : 'bg-slate-200'" />
@@ -67,7 +67,7 @@ async function submit(skip = false) {
       <template v-if="step === 1">
         <p class="text-sm font-semibold text-brand-700">問題 1 / 2</p>
         <h1 class="mt-1 text-2xl font-bold">財富自由後，每月想花多少？</h1>
-        <p class="mt-1 text-sm text-slate-500">不用很精準，之後可以改</p>
+        <p class="mt-1 text-sm text-slate-500">請選一個最接近心裡預期的金額</p>
         <div class="mt-5 grid grid-cols-2 gap-3">
           <button v-for="v in Q1" :key="v" class="chip py-4 text-lg" :class="spending === v ? 'chip-on' : 'chip-off'" @click="spending = v">{{ v / 10000 }} 萬</button>
           <button class="chip col-span-2 py-3" :class="spending === 'custom' ? 'chip-on' : 'chip-off'" @click="spending = 'custom'">自己填</button>
@@ -80,7 +80,7 @@ async function submit(skip = false) {
       <template v-else-if="step === 2">
         <p class="text-sm font-semibold text-brand-700">問題 2 / 2</p>
         <h1 class="mt-1 text-2xl font-bold">現在大概有多少存款？</h1>
-        <p class="mt-1 text-sm text-slate-500">會先建立一個「現有資產（估計）」帳戶，之後新增真實帳戶時可以從這裡扣掉</p>
+        <p class="mt-1 text-sm text-slate-500">請選一個最接近目前存款的金額</p>
         <div class="mt-5 grid grid-cols-2 gap-3">
           <button v-for="v in Q2" :key="v" class="chip py-4 text-lg" :class="assets === v ? 'chip-on' : 'chip-off'" @click="assets = v">{{ v === 0 ? '0' : `${v / 10000} 萬` }}</button>
           <button class="chip col-span-2 py-3" :class="assets === 'custom' ? 'chip-on' : 'chip-off'" @click="assets = 'custom'">自己填</button>
@@ -88,8 +88,8 @@ async function submit(skip = false) {
         <div v-if="assets === 'custom'" class="mt-3"><MoneyInput v-model="assetsCustom" placeholder="0–100,000,000" /></div>
         <p v-if="error" class="mt-3 text-sm text-rose-600">{{ error }}</p>
         <div class="mt-6 flex gap-2">
-          <AppButton variant="secondary" :disabled="saving" @click="submit(true)">跳過</AppButton>
           <AppButton block size="lg" :loading="saving" @click="submit()">看我的目標</AppButton>
+          <AppButton variant="secondary" :disabled="saving" @click="submit(true)">跳過</AppButton>
         </div>
         <button class="mt-3 w-full text-center text-sm text-slate-500" @click="step = 1">← 上一題</button>
       </template>
