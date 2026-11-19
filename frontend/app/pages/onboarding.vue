@@ -110,7 +110,7 @@ async function submit(skip = false) {
           <AppButton block size="lg" :loading="saving" @click="submit()">看我的目標</AppButton>
           <AppButton variant="secondary" :disabled="saving" @click="submit(true)">跳過</AppButton>
         </div>
-        <button class="mt-3 w-full text-center text-sm text-slate-500" @click="step = 1">← 上一題</button>
+        <button class="mt-3 w-full text-center text-sm text-slate-500 disabled:opacity-50" :disabled="saving" @click="step = 1">← 上一題</button>
       </template>
 
       <template v-else-if="result">
