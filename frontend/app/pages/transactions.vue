@@ -57,7 +57,6 @@ function amountClass(t: Transaction) {
   <div>
     <PageHeader title="交易紀錄" description="收入、支出與轉帳。轉帳和繳卡費不算收入或支出。">
       <template #actions>
-        <AppButton variant="secondary" @click="quick.open('transfer')">轉帳</AppButton>
         <AppButton @click="quick.open('quick')">＋ 記一筆</AppButton>
       </template>
     </PageHeader>
