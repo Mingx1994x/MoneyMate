@@ -3,11 +3,13 @@
  * 貸款頁（B）— PRD §17、§15.8
  * 未償餘額、每月還款、繳款日、「餘額最後更新：X 天前」（超過 45 天提醒）。
  * 還款不會自動扣未償餘額，請使用者每月手動更新。
+ * 已結清的貸款不算進任何金額（D-E-003）：餘額顯示「已結清」，也不提醒更新餘額。
  */
 import { errorText } from '~/lib/api-error'
 import { daysSince, formatDate } from '~/lib/date'
 import { formatMoney } from '~/lib/money'
 import type { DashboardSummary, ListResponse, Loan } from '~/types/api'
+import { LOAN_TYPE_LABEL } from '~/utils/labels'
 
 const api = useApi()
 const toast = useToast()
@@ -73,7 +75,7 @@ async function remove(l: Loan) {
                 <h2 class="font-semibold text-slate-900">{{ l.name }}</h2>
                 <AppBadge :tone="l.status === 'active' ? 'blue' : 'gray'">{{ l.status === 'active' ? '還款中' : '已結清' }}</AppBadge>
               </div>
-              <p class="text-xs text-slate-500">{{ l.loanType }}{{ l.interestRate ? ` · 年利率 ${l.interestRate}%` : '' }}{{ l.note ? ` · ${l.note}` : '' }}</p>
+              <p class="text-xs text-slate-500">{{ LOAN_TYPE_LABEL[l.loanType] }}{{ l.interestRate !== null ? ` · 年利率 ${l.interestRate}%` : '' }}{{ l.note ? ` · ${l.note}` : '' }}</p>
             </div>
             <div class="flex gap-1">
               <AppButton size="sm" variant="ghost" @click="editing = l">編輯</AppButton>
@@ -82,7 +84,9 @@ async function remove(l: Loan) {
           </div>
 
           <p class="mt-3 text-xs text-slate-500">未償餘額</p>
-          <p class="num text-2xl font-bold">{{ formatMoney(l.outstandingBalance) }}</p>
+          <!-- 已結清的餘額不算進任何金額，顯示「已結清」；編輯表單才顯示資料庫裡的真實餘額（D-E-003） -->
+          <p v-if="l.status === 'closed'" class="text-2xl font-bold text-slate-500">已結清</p>
+          <p v-else class="num text-2xl font-bold">{{ formatMoney(l.outstandingBalance) }}</p>
 
           <dl class="mt-3 grid grid-cols-3 gap-2 text-sm">
             <div><dt class="text-xs text-slate-500">每月還款</dt><dd class="num font-semibold">{{ formatMoney(l.monthlyPayment) }}</dd></div>

@@ -1,4 +1,4 @@
-import type { AccountType, Recurrence, TransactionType } from '~/types/api'
+import type { AccountType, LoanType, Recurrence, TransactionType } from '~/types/api'
 
 export const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
   cash: '現金',
@@ -26,7 +26,13 @@ export const RECURRENCE_LABEL: Record<Recurrence, string> = {
   yearly: '每年',
 }
 
-export const LOAN_TYPES = ['房貸', '車貸', '信貸', '學貸', '其他']
+export const LOAN_TYPE_LABEL: Record<LoanType, string> = {
+  mortgage: '房貸',
+  car: '車貸',
+  personal: '信貸',
+  student: '學貸',
+  other: '其他',
+}
 
 export const CATEGORY_ICON: Record<string, string> = {
   salary: '💼',
