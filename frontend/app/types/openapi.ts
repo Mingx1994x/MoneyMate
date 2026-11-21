@@ -462,14 +462,14 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * 【未實作】刪除交易
+         * 刪除交易
          * @description 帳單產生的交易回 BILL_LINKED_TRANSACTION（請到帳單取消繳費）；轉出或轉入帳戶停用時回 ACCOUNT_INACTIVE。
          */
         delete: operations["Transactions_remove"];
         options?: never;
         head?: never;
         /**
-         * 【未實作】修改交易
+         * 修改交易
          * @description 沒傳的欄位保持原值；categoryId、toAccountId、note 傳 null 代表清空，其他欄位傳 null 回 400。
          *
          *     可以改交易類型：用「原值合併請求」後的結果檢查欄位規則（同新增），例如支出改轉帳時要帶 toAccountId，並把 categoryId 設成 null。
@@ -3138,15 +3138,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponseDto"];
                 };
             };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
         };
     };
     Transactions_update: {
@@ -3221,15 +3212,6 @@ export interface operations {
              *     `BILL_LINKED_TRANSACTION`：這筆交易由帳單產生，請到帳單修改
              */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponseDto"];
-                };
-            };
-            /** @description `NOT_IMPLEMENTED`：這個功能還在開發中 */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
