@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
  * 帳單頁（B）— PRD §16、§17
- * 待繳／已繳／逾期；繳費、取消繳費、停止重複。逾期＝待繳且到期日 < 今天（不另存狀態）。
- * 語氣：提醒而非責備。
+ * 待繳／逾期／已繳分開顯示；繳費、取消繳費、停止重複（AC-10～AC-14）。
+ * 逾期以後端回傳的 isOverdue 為準（待繳且到期日早於台北今天）。語氣：提醒而非責備。
  */
-import { errorText } from '~/lib/api-error'
+import { errorText, fieldErrors } from '~/lib/api-error'
 import { diffDays, formatDate, relativeDue, todayTaipei } from '~/lib/date'
 import { formatMoney, normalizeAmount, validateAmount } from '~/lib/money'
-import type { Bill, ListResponse } from '~/types/api'
+import type { Bill, Paginated, PayBillResponse, StopRecurrenceResponse } from '~/types/api'
 import { CATEGORY_ICON, RECURRENCE_LABEL } from '~/utils/labels'
 
 const api = useApi()
@@ -19,24 +19,37 @@ const router = useRouter()
 const { accountName, categories, accounts } = useLookups()
 const today = todayTaipei()
 
-const bills = useResource(() => api.get<ListResponse<Bill>>('/bills').then((r) => r.items))
+/**
+ * GET /bills 是分頁格式（每頁最多 100 張），一次載完全部：
+ * 提醒、各分頁的數字和「停止重複」都要看整個系列，個人的帳單數量也不多。
+ * 排序用後端的：待繳在前、到期日由近到遠；已繳在後、由新到舊。
+ */
+const PAGE_SIZE = 100
+async function fetchAllBills() {
+  const items: Bill[] = []
+  for (let page = 1; ; page++) {
+    const r = await api.get<Paginated<Bill>>('/bills', { page, pageSize: PAGE_SIZE })
+    items.push(...r.items)
+    if (items.length >= r.total || r.items.length === 0) return items
+  }
+}
+const bills = useResource(fetchAllBills)
 const all = computed(() => bills.data.value ?? [])
 
-type Tab = 'pending' | 'paid' | 'all'
+type Tab = 'pending' | 'overdue' | 'paid' | 'all'
 const tab = ref<Tab>('pending')
-const TABS = [
+const overdue = computed(() => all.value.filter((b) => b.isOverdue))
+const days = (b: Bill) => diffDays(today, b.dueDate)
+const dueSoon = computed(() => all.value.filter((b) => b.status === 'pending' && !b.isOverdue && days(b) <= 14))
+const TABS = computed(() => [
   { value: 'pending' as Tab, label: '待繳' },
+  { value: 'overdue' as Tab, label: overdue.value.length ? `逾期 ${overdue.value.length}` : '逾期' },
   { value: 'paid' as Tab, label: '已繳' },
   { value: 'all' as Tab, label: '全部' },
-]
-
-const days = (b: Bill) => diffDays(today, b.dueDate)
-const overdue = computed(() => all.value.filter((b) => b.status === 'pending' && days(b) < 0))
-const dueSoon = computed(() => all.value.filter((b) => b.status === 'pending' && days(b) >= 0 && days(b) <= 14))
-const visible = computed(() => {
-  const list = all.value.filter((b) => tab.value === 'all' || b.status === tab.value)
-  return tab.value === 'paid' ? [...list].sort((a, b) => b.dueDate.localeCompare(a.dueDate)) : list
-})
+])
+const visible = computed(() =>
+  all.value.filter((b) => tab.value === 'all' || (tab.value === 'overdue' ? b.isOverdue : b.status === tab.value)),
+)
 /** 同系列還有「會重複的待繳帳單」才顯示停止重複 */
 const seriesRecurring = computed(() => new Set(all.value.filter((b) => b.status === 'pending' && b.recurrence !== 'none').map((b) => b.seriesId)))
 const categoryCode = (id: string) => (categories.data.value ?? []).find((c) => c.id === id)?.code ?? ''
@@ -44,7 +57,7 @@ const categoryCode = (id: string) => (categories.data.value ?? []).find((c) => c
 function statusBadge(b: Bill): { tone: 'green' | 'red' | 'amber' | 'gray'; text: string } {
   if (b.status === 'paid') return { tone: 'green', text: '已繳' }
   const d = days(b)
-  if (d < 0) return { tone: 'red', text: relativeDue(d) }
+  if (b.isOverdue) return { tone: 'red', text: relativeDue(d) }
   if (d <= 3) return { tone: 'amber', text: relativeDue(d) }
   return { tone: 'gray', text: relativeDue(d) }
 }
@@ -79,12 +92,19 @@ async function submitPay() {
   payError.value = null
   try {
     const b = paying.value
-    await api.post(`/bills/${b.id}/pay`, { paidAmount: normalizeAmount(payForm.value.paidAmount), paidDate: payForm.value.paidDate })
-    toast.success(`已繳「${b.name}」${b.recurrence !== 'none' ? '，下一期已自動建立' : ''}`)
+    const { nextBill } = await api.post<PayBillResponse>(`/bills/${b.id}/pay`, { paidAmount: normalizeAmount(payForm.value.paidAmount), paidDate: payForm.value.paidDate })
+    // 下一期的到期日從本期推算（不是繳費日），逾期補繳後下一期可能也已經逾期
+    toast.success(
+      `已繳「${b.name}」` +
+        (nextBill ? `，下一期（${formatDate(nextBill.dueDate)}）已自動建立${nextBill.isOverdue ? '，也已經過了到期日' : ''}` : ''),
+    )
     paying.value = null
     bump()
   } catch (e) {
-    payError.value = errorText(e)
+    // 欄位錯誤（例如 PAID_DATE_IN_FUTURE 在 paidDate）顯示在欄位下面，其他的顯示在表單上方
+    const fields = fieldErrors(e)
+    if (fields.paidAmount || fields.paidDate) payErrors.value = fields
+    else payError.value = errorText(e)
   } finally {
     paySaving.value = false
   }
@@ -119,7 +139,7 @@ async function run(id: string, fn: () => Promise<unknown>, okText: string) {
 async function unpay(b: Bill) {
   const ok = await confirm({
     title: `取消「${b.name}」的繳費？`,
-    message: `會刪除這次繳費產生的支出 ${formatMoney(b.paidAmount)}，帳單改回待繳。` + (b.recurrence !== 'none' ? '\n已經自動產生、還沒繳的下一期也會一起刪掉。' : ''),
+    message: `會刪除這次繳費產生的支出 ${formatMoney(b.paidAmount)}，帳單改回待繳。` + (b.recurrence !== 'none' ? '\n已經自動產生、還沒繳的下一期也會一起刪掉；下一期已經繳了的話，要先取消下一期。' : ''),
     confirmText: '取消繳費',
   })
   if (ok) await run(b.id, () => api.post(`/bills/${b.id}/unpay`), '已取消繳費')
@@ -130,7 +150,17 @@ const stopOpen = computed({ get: () => stopping.value !== null, set: (v) => !v &
 async function stop(keepCurrent: boolean) {
   const b = stopping.value!
   stopping.value = null
-  await run(b.id, () => api.post(`/bills/${b.id}/stop-recurrence`, { keepCurrent }), keepCurrent ? '已停止重複，這期繳完就不會再產生' : '已停止重複，並刪除這期')
+  busy.value = b.id
+  try {
+    const r = await api.post<StopRecurrenceResponse>(`/bills/${b.id}/stop-recurrence`, { keepCurrent })
+    // 系列已經沒有待繳帳單時後端什麼都不做（stopped: false）
+    toast.success(!r.stopped ? '這個系列已經沒有待繳帳單，不會再產生下一期' : keepCurrent ? '已停止重複，這期繳完就不會再產生' : '已停止重複，並刪除這期')
+    bump()
+  } catch (e) {
+    toast.error(errorText(e))
+  } finally {
+    busy.value = null
+  }
 }
 
 async function remove(b: Bill) {
@@ -168,7 +198,7 @@ const pendingOfStopping = computed(() =>
       </div>
     </div>
 
-    <div class="mb-3 max-w-xs"><Segmented v-model="tab" :options="TABS" label="帳單狀態" /></div>
+    <div class="mb-3 max-w-md"><Segmented v-model="tab" :options="TABS" label="帳單狀態" /></div>
 
     <div class="card overflow-hidden">
       <StateView
@@ -176,8 +206,8 @@ const pendingOfStopping = computed(() =>
         :error="bills.error.value"
         :has-data="!!bills.data.value"
         :empty="visible.length === 0"
-        :empty-title="tab === 'pending' ? '沒有待繳帳單 🎉' : '還沒有帳單'"
-        :empty-text="tab === 'pending' ? '目前沒有需要處理的帳單' : '把電費、房租、訂閱這類固定支出建成帳單，就不怕忘記繳'"
+        :empty-title="tab === 'pending' ? '沒有待繳帳單 🎉' : tab === 'overdue' ? '沒有逾期帳單 🎉' : tab === 'paid' ? '還沒有繳過的帳單' : '還沒有帳單'"
+        :empty-text="tab === 'pending' || tab === 'overdue' ? '目前沒有需要處理的帳單' : tab === 'paid' ? '按「繳費」之後，會出現在這裡' : '把電費、房租、訂閱這類固定支出建成帳單，就不怕忘記繳'"
         @retry="bills.reload"
       >
         <template #empty-action><AppButton variant="secondary" @click="editing = 'new'">新增帳單</AppButton></template>
@@ -207,7 +237,7 @@ const pendingOfStopping = computed(() =>
               <template v-else>
                 <AppButton size="sm" variant="ghost" :loading="busy === b.id" @click="unpay(b)">取消繳費</AppButton>
                 <AppButton size="sm" variant="ghost" @click="editing = b">編輯</AppButton>
-                <AppButton v-if="seriesRecurring.has(b.seriesId)" size="sm" variant="ghost" @click="stopping = b">停止重複</AppButton>
+                <AppButton v-if="seriesRecurring.has(b.seriesId)" size="sm" variant="ghost" :loading="busy === b.id" @click="stopping = b">停止重複</AppButton>
               </template>
             </div>
           </li>

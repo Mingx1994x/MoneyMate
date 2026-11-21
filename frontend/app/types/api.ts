@@ -79,38 +79,11 @@ export type CreateLoanBody = Schemas['CreateLoanDto']
 export type UpdateLoanBody = Schemas['UpdateLoanDto']
 export type LoanPaymentPreview = Schemas['LoanPaymentPreviewResponseDto']
 
-// ---------- Bills：暫時手寫 ----------
-// ⚠️ 後端的 bills API 都完成了，產生的型別裡已經有 BillResponseDto。
-//    這裡暫時手寫是因為頁面還接假後端；#61（帳單頁）接 API 時改用產生的型別，和後端不同的地方：
-//    - GET /bills 是分頁格式，Bill 多了 isOverdue
-export type Recurrence = 'none' | 'monthly' | 'yearly'
-export type BillStatus = 'pending' | 'paid'
-
-export interface Bill {
-  id: string
-  name: string
-  amount: Money
-  categoryId: string
-  accountId: string
-  dueDate: DateString
-  dueDay: number
-  dueMonth: number | null
-  seriesId: string
-  recurrence: Recurrence
-  status: BillStatus
-  paidAmount: Money | null
-  paidDate: DateString | null
-  note: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface BillBody {
-  name: string
-  amount: Money
-  categoryId: string
-  accountId: string
-  dueDate: DateString
-  recurrence: Recurrence
-  note?: string | null
-}
+// ---------- Bills ----------
+export type Recurrence = Schemas['Recurrence']
+export type BillStatus = Schemas['BillStatus']
+export type Bill = Schemas['BillResponseDto']
+export type CreateBillBody = Schemas['CreateBillDto']
+export type UpdateBillBody = Schemas['UpdateBillDto']
+export type PayBillResponse = Schemas['PayBillResponseDto']
+export type StopRecurrenceResponse = Schemas['StopRecurrenceResponseDto']
