@@ -21,7 +21,7 @@ Nuxt 4（SPA，`ssr: false`）。初版由 B 依 **PRD v0.5.8** 做成，需求�
 | 繳卡費（銀行 → 信用卡轉帳，不算支出） | 帳戶頁信用卡「繳卡費」 | AC-08 |
 | 新增真實帳戶 → 詢問是否從估計值扣掉 | 帳戶頁「新增帳戶」 | §15.9、AC-18 |
 | 帳單繳費 → 自動產生下一期；取消繳費；停止重複 | 帳單頁 | §16、AC-10～14 |
-| 貸款：輸入 1,000,000／3%／結清日 5 年後 → 自動算出 17,969、總利息 78,120 | 貸款頁「新增貸款」 | §15.8、AC-28 |
+| 貸款：輸入 1,000,000／3%，繳款日、結清日用預設值（每月 5 號、第 60 期的還款日）→ 自動算出 17,969、總利息 78,120 | 貸款頁「新增貸款」 | §15.8、AC-28、D-E-002 |
 | 預先記一筆下個月的收入 → 目前餘額不變 | 快速記帳 →「更多」改日期 | AC-19 |
 | Dashboard 一句下一步、14 天資金缺口 | 總覽 | §15.5 |
 
@@ -58,7 +58,6 @@ npm run generate   # 產生靜態網站到 .output/public
 3. `npm run dev`，打開 `http://localhost:3000`
 
 - 後端的 `CORS_ORIGIN` 預設就是 `http://localhost:3000`，照 `backend/.env.example` 建 `.env` 就不用改。
-- ⚠️ 問卷 API（`POST /onboarding`）還沒完成，`.env.example` 先打開 `NUXT_PUBLIC_SKIP_ONBOARDING=true`，登入後不會被導去問卷頁。問卷 API 完成後移除這個開關。
 - 還沒實作的 API 會回 501，畫面會顯示「這個功能還在開發中」。
 
 ## 架構
@@ -161,7 +160,6 @@ PRD 第二十九節第 4 項：W1–W5 前端部署在 Vercel。一個 Vercel �
    |---|---|---|
    | `NUXT_PUBLIC_API_MODE` | `http` | Production、Preview |
    | `NUXT_PUBLIC_API_BASE` | `https://moneymate-sclr.onrender.com/api/v1` | Production、Preview |
-   | `NUXT_PUBLIC_SKIP_ONBOARDING` | `true` | 只有 Preview。⚠️ 暫時的，問卷 API 完成後刪掉 |
 
 2. 改了環境變數要重新部署才會生效（Deployments → 最新一筆 → Redeploy）。最新一筆沒有改到 `frontend/` 的話，要取消勾選 Use project's Ignore Build Step，不然會被跳過
 3. Render 的 `CORS_ORIGIN` 要包含 `https://money-mate-tan-dev.vercel.app` 和 `https://money-mate-tan.vercel.app`（用逗號分隔，包含 `https://`）；漏掉哪個環境，那個環境呼叫 API 就會被瀏覽器擋掉

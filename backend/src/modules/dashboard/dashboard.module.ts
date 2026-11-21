@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { BillsModule } from '../bills/index.js';
 import { FinanceModule } from '../finance/index.js';
+import { GoalsModule } from '../goals/index.js';
 import { LoansModule } from '../loans/index.js';
 import { DashboardController } from './dashboard.controller.js';
 import { DashboardService } from './dashboard.service.js';
 
-// 目標（D 的 GoalsModule、getGoalProgress）在 W4 實作後再接上
 @Module({
-  imports: [FinanceModule, LoansModule, BillsModule],
+  imports: [FinanceModule, LoansModule, BillsModule, GoalsModule],
   controllers: [DashboardController],
   providers: [DashboardService],
 })
