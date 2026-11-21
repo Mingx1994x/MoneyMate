@@ -58,7 +58,6 @@ npm run generate   # 產生靜態網站到 .output/public
 3. `npm run dev`，打開 `http://localhost:3000`
 
 - 後端的 `CORS_ORIGIN` 預設就是 `http://localhost:3000`，照 `backend/.env.example` 建 `.env` 就不用改。
-- ⚠️ 問卷 API（`POST /onboarding`）還沒完成，`.env.example` 先打開 `NUXT_PUBLIC_SKIP_ONBOARDING=true`，登入後不會被導去問卷頁。問卷 API 完成後移除這個開關。
 - 還沒實作的 API 會回 501，畫面會顯示「這個功能還在開發中」。
 
 ## 架構
@@ -162,7 +161,6 @@ PRD 第二十九節第 4 項：W1–W5 前端部署在 Vercel。一個 Vercel �
    |---|---|---|
    | `NUXT_PUBLIC_API_MODE` | `http` | Production、Preview |
    | `NUXT_PUBLIC_API_BASE` | `https://moneymate-sclr.onrender.com/api/v1` | Production、Preview |
-   | `NUXT_PUBLIC_SKIP_ONBOARDING` | `true` | 只有 Preview。⚠️ 暫時的，問卷 API 完成後刪掉 |
 
 2. 改了環境變數要重新部署才會生效（Deployments → 最新一筆 → Redeploy）。最新一筆沒有改到 `frontend/` 的話，要取消勾選 Use project's Ignore Build Step，不然會被跳過
 3. Render 的 `CORS_ORIGIN` 要包含 `https://money-mate-tan-dev.vercel.app` 和 `https://money-mate-tan.vercel.app`（用逗號分隔，包含 `https://`）；漏掉哪個環境，那個環境呼叫 API 就會被瀏覽器擋掉
