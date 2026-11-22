@@ -49,6 +49,18 @@ const unavailable = (k: DashboardSection) => !!data.value?.unavailable.includes(
 const upcomingBills = computed(() => [...(data.value?.billsOverdue ?? []), ...(data.value?.billsDueSoon ?? [])])
 const moreOverdue = computed(() => (data.value?.billsOverdueCount ?? 0) - (data.value?.billsOverdue?.length ?? 0))
 
+// ===== 自選顯示區塊（#117、D-A-008）=====
+const layout = useDashboardLayout()
+onMounted(() => void layout.load())
+const toast = useToast()
+async function showBlock(code: string) {
+  try {
+    await layout.show(code)
+  } catch {
+    toast.error('沒有存到，請再試一次')
+  }
+}
+
 // ===== 原本的寫法（照 mock 資料寫的，暫時保留對照）=====
 // import { addMonthsClamped, formatDateShort, monthOf, relativeDue, todayTaipei } from '~/lib/date'
 // import { formatMoney, formatWan, toCents } from '~/lib/money'
@@ -140,11 +152,30 @@ const moreOverdue = computed(() => (data.value?.billsOverdueCount ?? 0) - (data.
 
         <!-- ===== 以下報表區塊：B 負責 ===== -->
         <!-- 原本是 mt-8（和上面的第一屏隔開），第一屏還沒接上，先拿掉 -->
-        <h2 class="mb-3 text-lg font-bold text-slate-900">報表</h2>
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <h2 class="text-lg font-bold text-slate-900">報表</h2>
+          <AppButton size="sm" :variant="layout.editing.value ? 'primary' : 'ghost'" @click="layout.editing.value = !layout.editing.value">
+            {{ layout.editing.value ? '完成' : '編輯版面' }}
+          </AppButton>
+        </div>
+
+        <!-- 編輯版面：已隱藏的區塊可以加回來；不在編輯時只提示隱藏了幾個 -->
+        <div v-if="layout.editing.value" class="mb-4 rounded-2xl bg-slate-50 p-4">
+          <p class="text-sm text-slate-600">按區塊右上角的「隱藏」收起不需要的區塊；報表至少要留一個。</p>
+          <div v-if="layout.hiddenBlocks.value.length" class="mt-3 flex flex-wrap gap-2">
+            <span class="self-center text-xs font-semibold text-slate-500">已隱藏：</span>
+            <AppButton v-for="b in layout.hiddenBlocks.value" :key="b.code" size="sm" variant="secondary" @click="showBlock(b.code)">＋ {{ b.label }}</AppButton>
+          </div>
+        </div>
+        <p v-else-if="layout.hiddenBlocks.value.length" class="mb-3 text-xs text-slate-500">
+          已隱藏 {{ layout.hiddenBlocks.value.length }} 個區塊 ·
+          <button type="button" class="underline" @click="layout.editing.value = true">顯示回來</button>
+        </p>
 
         <!-- 月收支（W2 最小流程 ④）。順序：有收支 → 顯示數字；沒有現金／銀行帳戶 → 引導建立帳戶；都沒有 → 尚未有收支資料 -->
-        <section class="card mb-4 p-5">
-          <div class="flex items-center justify-between gap-2">
+        <DashboardBlock code="monthly-summary" class="mb-4">
+        <section class="card p-5">
+          <div class="flex items-center justify-between gap-2" :class="layout.editing.value ? 'pr-16' : ''">
             <div class="flex items-center gap-2">
               <h3 class="font-semibold">{{ monthLabel }}收支</h3>
               <AppBadge>{{ monthAbbr }}</AppBadge>
@@ -175,26 +206,42 @@ const moreOverdue = computed(() => (data.value?.billsOverdueCount ?? 0) - (data.
           </div>
           <p v-if="hasMonthlyRecords" class="mt-2 text-xs text-slate-400">轉帳、繳卡費不算收支；未來日期的交易不算</p>
         </section>
+        </DashboardBlock>
 
         <!-- 帳戶合計、淨資產。淨資產要扣貸款，貸款區塊還沒完成時後端回 null -->
-        <div class="mb-4 grid gap-4 sm:grid-cols-2">
-          <section class="card p-5">
-            <h3 class="text-sm text-slate-500">帳戶合計</h3>
-            <p class="num mt-1 text-2xl font-bold" :class="toCents(data.accountsTotal) < 0 ? 'text-rose-600' : ''">{{ formatMoney(data.accountsTotal) }}</p>
-            <p class="mt-1 text-xs text-slate-400">啟用帳戶加總（含投資、信用卡欠款），不扣貸款</p>
-          </section>
-          <section class="card p-5">
-            <h3 class="text-sm text-slate-500">淨資產</h3>
-            <p v-if="data.netWorth === null" class="mt-1 text-2xl font-bold text-slate-400">準備中</p>
-            <p v-else class="num mt-1 text-2xl font-bold" :class="toCents(data.netWorth) < 0 ? 'text-rose-600' : ''">{{ formatMoney(data.netWorth) }}</p>
-            <p class="mt-1 text-xs text-slate-400">所有帳戶 − 還款中貸款</p>
-          </section>
+        <!-- 帳戶合計、淨資產可以分別隱藏；兩個都顯示時並排，只剩一個時佔滿整行 -->
+        <div
+          v-if="layout.isVisible('accounts-total') || layout.isVisible('net-worth')"
+          class="mb-4 grid gap-4"
+          :class="layout.isVisible('accounts-total') && layout.isVisible('net-worth') ? 'sm:grid-cols-2' : ''"
+        >
+          <DashboardBlock code="accounts-total">
+            <section class="card h-full p-5">
+              <h3 class="text-sm text-slate-500">帳戶合計</h3>
+              <p class="num mt-1 text-2xl font-bold" :class="toCents(data.accountsTotal) < 0 ? 'text-rose-600' : ''">{{ formatMoney(data.accountsTotal) }}</p>
+              <p class="mt-1 text-xs text-slate-400">啟用帳戶加總（含投資、信用卡欠款），不扣貸款</p>
+            </section>
+          </DashboardBlock>
+          <DashboardBlock code="net-worth">
+            <section class="card h-full p-5">
+              <h3 class="text-sm text-slate-500">淨資產</h3>
+              <p v-if="data.netWorth === null" class="mt-1 text-2xl font-bold text-slate-400">準備中</p>
+              <p v-else class="num mt-1 text-2xl font-bold" :class="toCents(data.netWorth) < 0 ? 'text-rose-600' : ''">{{ formatMoney(data.netWorth) }}</p>
+              <p class="mt-1 text-xs text-slate-400">所有帳戶 − 還款中貸款</p>
+            </section>
+          </DashboardBlock>
         </div>
 
-        <div class="grid gap-4 md:grid-cols-2">
+        <!-- 帳單、貸款都顯示時並排；只剩一個時佔滿整行 -->
+        <div
+          v-if="layout.isVisible('upcoming-bills') || layout.isVisible('loans')"
+          class="grid gap-4"
+          :class="layout.isVisible('upcoming-bills') && layout.isVisible('loans') ? 'md:grid-cols-2' : ''"
+        >
           <!-- 帳單：逾期＋14 天內到期 -->
-          <section class="card p-5">
-            <div class="flex items-center justify-between">
+          <DashboardBlock code="upcoming-bills">
+          <section class="card h-full p-5">
+            <div class="flex items-center justify-between" :class="layout.editing.value ? 'pr-16' : ''">
               <h3 class="font-semibold">14 天內與逾期帳單</h3>
               <NuxtLink to="/bills" class="text-sm font-semibold text-brand-700">全部 →</NuxtLink>
             </div>
@@ -220,9 +267,12 @@ const moreOverdue = computed(() => (data.value?.billsOverdueCount ?? 0) - (data.
             </ul>
           </section>
 
+          </DashboardBlock>
+
           <!-- 貸款：未償餘額合計＋14 天內的還款日 -->
-          <section class="card p-5">
-            <div class="flex items-center justify-between">
+          <DashboardBlock code="loans">
+          <section class="card h-full p-5">
+            <div class="flex items-center justify-between" :class="layout.editing.value ? 'pr-16' : ''">
               <h3 class="font-semibold">貸款</h3>
               <NuxtLink to="/loans" class="text-sm font-semibold text-brand-700">全部 →</NuxtLink>
             </div>
@@ -243,6 +293,7 @@ const moreOverdue = computed(() => (data.value?.billsOverdueCount ?? 0) - (data.
               </ul>
             </template>
           </section>
+          </DashboardBlock>
         </div>
       </template>
     </StateView>
