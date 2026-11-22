@@ -6,7 +6,7 @@ import {
   type MonthString,
 } from '../../common/date-only.js';
 import { Prisma } from '../../prisma/index.js';
-import { FinishEstimateStatus } from './dto/fire.enum.js';
+import { EmergencyFundStatus, FinishEstimateStatus } from './dto/fire.enum.js';
 
 /**
  * 目標進度的純函式（PRD 15.3、15.4）：只算數字，不讀資料庫。
@@ -117,18 +117,68 @@ export function recentCompleteMonths(
  * 沒記帳的月不當成存 0，不然忘了記帳的月會把平均拉低。保留完整精度，不四捨五入。
  */
 export function averageMonthlySaving(
-  months: { income: Prisma.Decimal; expense: Prisma.Decimal }[],
+  months: MonthTotals[],
+): Prisma.Decimal | null {
+  return averageOfRecorded(months, (m) => m.income.minus(m.expense));
+}
+
+/**
+ * 每月平均支出（緊急預備金 D-A-006、建議目標 D-A-007）：和 averageMonthlySaving 同一組月份、同一個規則，
+ * 有記帳的月不滿 3 個回 null。保留完整精度，不四捨五入。
+ */
+export function averageMonthlyExpense(
+  months: MonthTotals[],
+): Prisma.Decimal | null {
+  return averageOfRecorded(months, (m) => m.expense);
+}
+
+type MonthTotals = { income: Prisma.Decimal; expense: Prisma.Decimal };
+
+/** 只看有記帳的月（收入或支出不是 0），不滿 MIN_SAVING_MONTHS 個回 null，否則回 pick 的平均 */
+function averageOfRecorded(
+  months: MonthTotals[],
+  pick: (m: MonthTotals) => Prisma.Decimal,
 ): Prisma.Decimal | null {
   const recorded = months.filter(
     (m) => !m.income.isZero() || !m.expense.isZero(),
   );
   if (recorded.length < MIN_SAVING_MONTHS) return null;
   return recorded
-    .reduce(
-      (sum, m) => sum.plus(m.income).minus(m.expense),
-      new Prisma.Decimal(0),
-    )
+    .reduce((sum, m) => sum.plus(pick(m)), new Prisma.Decimal(0))
     .div(recorded.length);
+}
+
+export interface EmergencyFund {
+  status: EmergencyFundStatus;
+  /** 可撐幾個月，小數一位（無條件捨去）；status 不是 ok 時是 null */
+  months: number | null;
+}
+
+/**
+ * 緊急預備金夠幾個月（D-A-006）：可撐月數 ＝ 可用現金 ÷ 平均每月支出。
+ * - 平均每月支出 null（有記帳的完整月不滿 3 個）→ need_data。
+ * - 平均每月支出 ≤ 0（只有收入沒有支出）→ no_expense，除以 0 沒有意義。
+ * - 可用現金 ≤ 0 → 0 個月。無條件捨去到小數一位，不把「撐 2.96 個月」說成 3 個月。
+ */
+export function estimateEmergencyFund(
+  availableCash: Prisma.Decimal,
+  monthlyExpense: Prisma.Decimal | null,
+): EmergencyFund {
+  if (monthlyExpense === null) {
+    return { status: EmergencyFundStatus.need_data, months: null };
+  }
+  if (monthlyExpense.lte(0)) {
+    return { status: EmergencyFundStatus.no_expense, months: null };
+  }
+  if (availableCash.lte(0))
+    return { status: EmergencyFundStatus.ok, months: 0 };
+  return {
+    status: EmergencyFundStatus.ok,
+    months: availableCash
+      .div(monthlyExpense)
+      .toDecimalPlaces(1, Prisma.Decimal.ROUND_DOWN)
+      .toNumber(),
+  };
 }
 
 /** 推算達成日最多算幾個月，超過就是「以目前速度超過 50 年」（PRD 15.6） */
@@ -188,5 +238,38 @@ export function estimateFinish(
     status: FinishEstimateStatus.ok,
     monthsLeft: months,
     finishMonth: addMonths(monthOf(today), months),
+  };
+}
+
+/** 目標金額 ＝ 每月花費 × 300（PRD 15.3：4% 提領率，× 12 ÷ 4%） */
+export const TARGET_MULTIPLIER = 300;
+
+export interface TargetSuggestion {
+  /** 實際平均每月支出，四捨五入到 2 位 */
+  monthlySpending: Prisma.Decimal;
+  /** monthlySpending × 300 */
+  targetAmount: Prisma.Decimal;
+  /** targetAmount − 目前目標，可為負 */
+  difference: Prisma.Decimal;
+}
+
+/**
+ * 依真實支出建議目標（D-A-007、US-13）：平均每月支出 null（不滿 3 個完整月）或 ≤ 0 → null，不建議。
+ * 先把每月支出四捨五入到 2 位再 × 300，前端用這個 monthlySpending 呼叫 PATCH /goal 時，算出的目標會一樣。
+ */
+export function suggestTarget(
+  currentTarget: Prisma.Decimal,
+  monthlyExpense: Prisma.Decimal | null,
+): TargetSuggestion | null {
+  if (monthlyExpense === null || monthlyExpense.lte(0)) return null;
+  const monthlySpending = monthlyExpense.toDecimalPlaces(
+    2,
+    Prisma.Decimal.ROUND_HALF_UP,
+  );
+  const targetAmount = monthlySpending.times(TARGET_MULTIPLIER);
+  return {
+    monthlySpending,
+    targetAmount,
+    difference: targetAmount.minus(currentTarget),
   };
 }

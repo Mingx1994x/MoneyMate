@@ -45,3 +45,18 @@ export const FinishEstimateStatus = {
 
 export type FinishEstimateStatus =
   (typeof FinishEstimateStatus)[keyof typeof FinishEstimateStatus];
+
+/**
+ * 緊急預備金夠幾個月的狀態（D-A-006）。ok 時 months 有值，其他狀態 months 是 null，前端依狀態顯示一句提示。
+ */
+export const EmergencyFundStatus = {
+  /** 算得出可撐幾個月 */
+  ok: 'ok',
+  /** 最近 6 個完整月裡有記帳的月不滿 3 個 →「記帳滿 3 個月後就能算」 */
+  need_data: 'need_data',
+  /** 平均每月支出是 0（只記了收入）→ 無法計算 */
+  no_expense: 'no_expense',
+} as const;
+
+export type EmergencyFundStatus =
+  (typeof EmergencyFundStatus)[keyof typeof EmergencyFundStatus];

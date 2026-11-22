@@ -1,11 +1,14 @@
 import { Prisma } from '../../prisma/index.js';
 import {
   addMonths,
+  averageMonthlyExpense,
   averageMonthlySaving,
   buildMilestones,
+  estimateEmergencyFund,
   estimateFinish,
   goalPercent,
   recentCompleteMonths,
+  suggestTarget,
 } from './goal-progress.js';
 
 const D = (v: string | number): Prisma.Decimal => new Prisma.Decimal(v);
@@ -302,5 +305,96 @@ describe('estimateFinish：推算達成日（PRD 15.6、D-A-004）', () => {
 
   it('每月儲蓄四捨五入後是 0（例：0.004 元）→ unreachable', () => {
     expect(est(100000, 0, 0.004).status).toBe('unreachable');
+  });
+});
+
+describe('averageMonthlyExpense：每月平均支出（D-A-006、D-A-007）', () => {
+  const m = (income: number, expense: number) => ({
+    income: D(income),
+    expense: D(expense),
+  });
+
+  it('3 個有記帳的月 → 支出平均，不看收入', () => {
+    expect(
+      averageMonthlyExpense([
+        m(100000, 40000),
+        m(0, 50000),
+        m(90000, 60000),
+      ])?.toFixed(2),
+    ).toBe('50000.00');
+  });
+
+  it('沒記帳的月（收入、支出都是 0）不算進平均', () => {
+    expect(
+      averageMonthlyExpense([
+        m(0, 0),
+        m(1, 30000),
+        m(0, 30000),
+        m(0, 0),
+        m(0, 30000),
+      ])?.toFixed(2),
+    ).toBe('30000.00');
+  });
+
+  it('有記帳的月只有 2 個 → null', () => {
+    expect(averageMonthlyExpense([m(0, 1), m(0, 1), m(0, 0)])).toBeNull();
+  });
+});
+
+describe('estimateEmergencyFund：緊急預備金夠幾個月（D-A-006）', () => {
+  it('可用現金 24 萬、每月支出 5 萬 → 4.8 個月', () => {
+    expect(estimateEmergencyFund(D(240000), D(50000))).toEqual({
+      status: 'ok',
+      months: 4.8,
+    });
+  });
+
+  it('無條件捨去到小數一位：10 萬 ÷ 33,400 ＝ 2.994… → 2.9（不說成 3）', () => {
+    expect(estimateEmergencyFund(D(100000), D(33400)).months).toBe(2.9);
+  });
+
+  it('可用現金 0 或負數 → 0 個月', () => {
+    expect(estimateEmergencyFund(D(0), D(30000)).months).toBe(0);
+    expect(estimateEmergencyFund(D(-5000), D(30000)).months).toBe(0);
+  });
+
+  it('平均支出 null（不滿 3 個完整月）→ need_data', () => {
+    expect(estimateEmergencyFund(D(240000), null)).toEqual({
+      status: 'need_data',
+      months: null,
+    });
+  });
+
+  it('平均支出 0（只記收入）→ no_expense', () => {
+    expect(estimateEmergencyFund(D(240000), D(0))).toEqual({
+      status: 'no_expense',
+      months: null,
+    });
+  });
+});
+
+describe('suggestTarget：依真實支出建議目標（D-A-007）', () => {
+  it('目前目標 1,200 萬、實際每月 4.5 萬 → 建議 1,350 萬，差 +150 萬', () => {
+    const s = suggestTarget(D(12000000), D(45000));
+    expect(s?.monthlySpending.toFixed(2)).toBe('45000.00');
+    expect(s?.targetAmount.toFixed(2)).toBe('13500000.00');
+    expect(s?.difference.toFixed(2)).toBe('1500000.00');
+  });
+
+  it('實際花得比較少 → 差距是負數（建議調低）', () => {
+    expect(suggestTarget(D(12000000), D(30000))?.difference.toFixed(2)).toBe(
+      '-3000000.00',
+    );
+  });
+
+  it('每月支出先四捨五入到 2 位再 × 300：33,333.335 → 33,333.34 → 10,000,002', () => {
+    expect(
+      suggestTarget(D(12000000), D('33333.335'))?.targetAmount.toFixed(2),
+    ).toBe('10000002.00');
+  });
+
+  it('不滿 3 個完整月（null）或平均支出 0 → null，不建議', () => {
+    expect(suggestTarget(D(12000000), null)).toBeNull();
+    expect(suggestTarget(D(12000000), D(0))).toBeNull();
   });
 });
