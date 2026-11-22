@@ -2,12 +2,11 @@
 /**
  * Dashboard —— 第一屏（3 個問題＋一句下一步）由 A 負責；往下的報表區塊（收支、帳單、貸款）由 B 負責。
  * 所有數字都來自一支 API：GET /dashboard/summary（PRD FR-19）。還沒完成的區塊會列在 unavailable，顯示「準備中」。
- * ⚠️ 開發中：B 的報表區塊（收支、帳戶合計與淨資產、帳單、貸款）都已接上；A 的第一屏還沒接。
- *    第一屏原本照 mock 資料寫的版本先註解保留（script 在下方，template 在第一屏的位置），對照完再刪。
+ * 第一屏依 PRD 第三節、第十七節、15.5：一句下一步＋1 個大數字、今天要處理的帳單、14 天資金缺口。
  */
 import { addMonthsClamped, formatDateShort, monthOf, relativeDue } from '~/lib/date'
-import { formatMoney, toCents } from '~/lib/money'
-import type { DashboardSection, DashboardSummary } from '~/types/api'
+import { formatMoney, formatWan, toCents } from '~/lib/money'
+import type { DashboardSection, DashboardSummary, NextStep } from '~/types/api'
 
 const api = useApi()
 const quick = useQuickAdd()
@@ -49,98 +48,95 @@ const unavailable = (k: DashboardSection) => !!data.value?.unavailable.includes(
 const upcomingBills = computed(() => [...(data.value?.billsOverdue ?? []), ...(data.value?.billsDueSoon ?? [])])
 const moreOverdue = computed(() => (data.value?.billsOverdueCount ?? 0) - (data.value?.billsOverdue?.length ?? 0))
 
-// ===== 原本的寫法（照 mock 資料寫的，暫時保留對照）=====
-// import { addMonthsClamped, formatDateShort, monthOf, relativeDue, todayTaipei } from '~/lib/date'
-// import { formatMoney, formatWan, toCents } from '~/lib/money'
-// import type { DashboardSummary } from '~/types/api'
-//
-// const api = useApi()
-// const { displayName } = useAuth()
-//
-// const r = useResource(() => api.get<DashboardSummary>('/dashboard/summary', { month: month.value }), { watch: [month] })
-// const d = computed(() => r.data.value)
-// const unavailable = (k: string) => d.value?.unavailable.includes(k)
-//
-// /** 今天要處理：逾期＋今天到期 */
-// const todayBills = computed(() => [
-//   ...(d.value?.billsOverdue ?? []),
-//   ...(d.value?.billsDueSoon ?? []).filter((b) => b.daysUntilDue === 0),
-// ])
-// const nextStepTone = computed(() => {
-//   const t = d.value?.nextStep.type
-//   if (t === 'overdue_bills') return 'from-rose-500 to-rose-600'
-//   if (t === 'funding_gap') return 'from-amber-500 to-orange-500'
-//   return 'from-brand-600 to-brand-800'
-// })
-// const greeting = computed(() => {
-//   const h = new Date().getHours()
-//   return h < 11 ? '早安' : h < 18 ? '午安' : '晚安'
-// })
+// ===== 第一屏（A）=====
+// ③ 一句下一步：nextStep.message 是後端組好的句子，直接顯示；amount 是句子裡的大數字（缺口、還差多少），
+// 逾期、已達成、問卷三種情況是 null，只顯示句子。nextStep 是 null（bills 或 goal 區塊未完成）時顯示「準備中」
+const NEXT_STEP_TONE: Record<NextStep['type'], string> = {
+  overdue_bills: 'from-rose-500 to-rose-600',
+  funding_gap: 'from-amber-500 to-orange-500',
+  next_milestone: 'from-brand-600 to-brand-800',
+  goal_achieved: 'from-brand-600 to-brand-800',
+  onboarding: 'from-brand-600 to-brand-800',
+}
+const NEXT_STEP_ACTION: Record<NextStep['type'], { to: string; label: string }> = {
+  overdue_bills: { to: '/bills', label: '去看帳單' },
+  funding_gap: { to: '/bills', label: '去看帳單' },
+  next_milestone: { to: '/goal', label: '看目標進度' },
+  goal_achieved: { to: '/goal', label: '看目標進度' },
+  onboarding: { to: '/onboarding', label: '開始問卷' },
+}
+
+// ① 今天要處理的帳單：逾期（後端由舊到新，最多 5 筆）＋今天到期（billsDueSoon 裡 daysUntilDue 是 0 的）
+const todayBills = computed(() => [
+  ...(data.value?.billsOverdue ?? []),
+  ...(data.value?.billsDueSoon ?? []).filter((b) => b.daysUntilDue === 0),
+])
 </script>
 
 <template>
   <div>
     <StateView :loading="loading" :error="error" :has-data="!!data" @retry="reload">
       <template v-if="data">
-        <!--
-        ===== 原本的第一屏（照 mock 資料寫的，暫時保留對照）=====
-        HTML 註解不能巢狀，所以裡面原本的區塊註解改寫成 <!- … -> 。
+        <!-- ===== 第一屏：A 負責（PRD 第三節的 3 個問題）===== -->
 
-        <p class="mb-3 text-sm text-slate-500">{{ greeting }}，{{ displayName }} 👋</p>
-        <OwnerNote owner="A" text="第一屏（3 個問題＋一句下一步）由 A 負責，這裡是暫時版本；下方的報表區塊由 B 負責。" />
-
-        <!- ③ 一句下一步＋1 個大數字 ->
-        <section class="mb-4 rounded-3xl bg-gradient-to-br p-6 text-white shadow-lg" :class="nextStepTone">
+        <!-- ③ 我現在只需要做哪一件事？一句下一步＋1 個大數字（15.5） -->
+        <section v-if="!data.nextStep" class="card mb-4 p-6">
+          <p class="text-sm font-medium text-slate-500">現在只需要做這一件事</p>
+          <p class="mt-2 text-xl font-bold text-slate-400">準備中</p>
+        </section>
+        <section v-else class="mb-4 rounded-3xl bg-gradient-to-br p-6 text-white shadow-lg" :class="NEXT_STEP_TONE[data.nextStep.type]">
           <p class="text-sm font-medium text-white/80">現在只需要做這一件事</p>
-          <p class="mt-2 text-2xl leading-snug font-bold sm:text-3xl">{{ d.nextStep.message }}</p>
-          <div class="mt-4 flex flex-wrap gap-2">
-            <NuxtLink v-if="d.nextStep.type === 'overdue_bills' || d.nextStep.type === 'funding_gap'" to="/bills">
-              <AppButton variant="secondary">去看帳單</AppButton>
+          <p v-if="data.nextStep.amount" class="num mt-2 text-4xl font-bold tracking-tight sm:text-5xl">{{ formatMoney(data.nextStep.amount) }}</p>
+          <p class="mt-2 leading-snug font-bold" :class="data.nextStep.amount ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'">{{ data.nextStep.message }}</p>
+          <div class="mt-4">
+            <NuxtLink :to="NEXT_STEP_ACTION[data.nextStep.type].to">
+              <AppButton variant="secondary">{{ NEXT_STEP_ACTION[data.nextStep.type].label }}</AppButton>
             </NuxtLink>
-            <NuxtLink v-else-if="d.nextStep.type === 'onboarding'" to="/onboarding"><AppButton variant="secondary">開始問卷</AppButton></NuxtLink>
-            <NuxtLink v-else to="/goal"><AppButton variant="secondary">看目標進度</AppButton></NuxtLink>
           </div>
-          <p v-if="d.goal" class="mt-3 text-xs text-white/70">目標進度 {{ d.goal.percent }}%（{{ formatWan(d.goal.currentAmount) }} / {{ formatWan(d.goal.targetAmount) }}）</p>
+          <p v-if="data.goal" class="mt-3 text-xs text-white/75">
+            目標進度 {{ data.goal.percent }}%（{{ formatWan(data.goal.currentAmount) }} / {{ formatWan(data.goal.targetAmount) }}）
+          </p>
         </section>
 
         <div class="grid gap-4 md:grid-cols-2">
-          <!- ① 今天有什麼帳單要處理？ ->
+          <!-- ① 今天有什麼帳單要處理？逾期＋今天到期，附「去繳費」 -->
           <section class="card p-5">
             <h2 class="text-sm font-semibold text-slate-500">今天有什麼帳單要處理？</h2>
-            <p v-if="todayBills.length === 0" class="mt-3 font-semibold text-emerald-700">✓ 今天沒有要處理的帳單</p>
+            <p v-if="unavailable('bills')" class="mt-3 text-slate-400">準備中</p>
+            <p v-else-if="!todayBills.length" class="mt-3 font-semibold text-emerald-700">✓ 今天沒有要處理的帳單</p>
             <ul v-else class="mt-3 space-y-2">
               <li v-for="b in todayBills" :key="b.id" class="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2">
-                <div>
-                  <p class="font-semibold">{{ b.name }} <span class="num font-normal">{{ formatMoney(b.amount) }}</span></p>
+                <div class="min-w-0">
+                  <p class="truncate font-semibold">{{ b.name }} <span class="num font-normal">{{ formatMoney(b.amount) }}</span></p>
                   <p class="text-xs" :class="b.daysUntilDue < 0 ? 'text-rose-600' : 'text-amber-700'">{{ relativeDue(b.daysUntilDue) }}</p>
                 </div>
-                <NuxtLink :to="{ path: '/bills', query: { pay: b.id } }"><AppButton size="sm">去繳費</AppButton></NuxtLink>
+                <NuxtLink :to="{ path: '/bills', query: { pay: b.id } }" class="shrink-0"><AppButton size="sm">去繳費</AppButton></NuxtLink>
               </li>
-              <li v-if="d.billsOverdueCount > d.billsOverdue.length" class="text-xs text-slate-500">還有 {{ d.billsOverdueCount - d.billsOverdue.length }} 張逾期帳單</li>
+              <li v-if="moreOverdue > 0" class="text-xs text-slate-500">還有 {{ moreOverdue }} 張逾期帳單，到帳單頁查看</li>
             </ul>
           </section>
 
-          <!- ② 這個月的錢夠不夠用？（14 天資金缺口） ->
+          <!-- ② 這個月的錢夠不夠用？14 天資金缺口（15.5）。fundingGap 只有缺口 > 0 才有值 -->
           <section class="card p-5">
-            <h2 class="text-sm font-semibold text-slate-500">接下來的錢夠不夠用？</h2>
-            <template v-if="!d.hasCashAccounts">
+            <h2 class="text-sm font-semibold text-slate-500">這個月的錢夠不夠用？</h2>
+            <p v-if="unavailable('bills')" class="mt-3 text-slate-400">準備中</p>
+            <template v-else-if="!data.hasCashAccounts">
               <p class="mt-3 text-slate-700">新增現金或銀行帳戶後，就能幫你檢查</p>
               <NuxtLink to="/accounts?new=1" class="mt-2 inline-block text-sm font-semibold text-brand-700">新增帳戶 →</NuxtLink>
             </template>
-            <p v-else-if="d.fundingGap === null" class="mt-3 font-semibold text-emerald-700">✓ 未來 14 天沒有待繳帳單</p>
-            <p v-else-if="toCents(d.fundingGap) === 0" class="mt-3 font-semibold text-emerald-700">✓ 14 天內的帳單付得出來</p>
+            <p v-else-if="data.fundingGap === null" class="mt-3 font-semibold text-emerald-700">✓ 14 天內的帳單付得出來</p>
             <div v-else class="mt-3">
               <p class="font-semibold text-amber-800">未來 14 天的已知帳單，整體資金可能不足</p>
-              <p class="num mt-1 text-2xl font-bold text-amber-700">差 {{ formatMoney(d.fundingGap) }}</p>
+              <p class="num mt-1 text-2xl font-bold text-amber-700">差 {{ formatMoney(data.fundingGap) }}</p>
             </div>
-            <p v-if="d.hasCashAccounts" class="mt-2 text-xs text-slate-500">可用現金（現金＋銀行）{{ formatMoney(d.availableCash) }}；不含投資、信用卡與估計帳戶</p>
+            <p v-if="!unavailable('bills') && data.hasCashAccounts" class="mt-2 text-xs text-slate-500">
+              可用現金（現金＋銀行）{{ formatMoney(data.availableCash) }}；不含投資、信用卡與估計帳戶
+            </p>
           </section>
         </div>
-        -->
 
         <!-- ===== 以下報表區塊：B 負責 ===== -->
-        <!-- 原本是 mt-8（和上面的第一屏隔開），第一屏還沒接上，先拿掉 -->
-        <h2 class="mb-3 text-lg font-bold text-slate-900">報表</h2>
+        <h2 class="mt-8 mb-3 text-lg font-bold text-slate-900">報表</h2>
 
         <!-- 月收支（W2 最小流程 ④）。順序：有收支 → 顯示數字；沒有現金／銀行帳戶 → 引導建立帳戶；都沒有 → 尚未有收支資料 -->
         <section class="card mb-4 p-5">
