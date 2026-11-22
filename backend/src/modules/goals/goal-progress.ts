@@ -6,6 +6,7 @@ import {
   type MonthString,
 } from '../../common/date-only.js';
 import { Prisma } from '../../prisma/index.js';
+import { FinishEstimateStatus } from './dto/fire.enum.js';
 
 /**
  * 目標進度的純函式（PRD 15.3、15.4）：只算數字，不讀資料庫。
@@ -128,4 +129,64 @@ export function averageMonthlySaving(
       new Prisma.Decimal(0),
     )
     .div(recorded.length);
+}
+
+/** 推算達成日最多算幾個月，超過就是「以目前速度超過 50 年」（PRD 15.6） */
+export const MAX_FINISH_MONTHS = 600;
+
+export interface FinishEstimate {
+  status: FinishEstimateStatus;
+  /** 還要幾個月；status 不是 ok 時是 null */
+  monthsLeft: number | null;
+  /** 預計達成的月份（YYYY-MM）；status 不是 ok 時是 null */
+  finishMonth: MonthString | null;
+}
+
+/** 月份加 n 個月，例：2026-11 加 3 → 2027-02 */
+export function addMonths(month: MonthString, n: number): MonthString {
+  const index =
+    Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + n;
+  const year = Math.floor(index / 12);
+  return `${year}-${String((index % 12) + 1).padStart(2, '0')}`;
+}
+
+/**
+ * 推算達成日（PRD 15.6、D-A-004）：只算數字，不讀資料庫。
+ * - 每月儲蓄由呼叫的 service 準備：最近完整月的平均，不足 3 個月用自估值；都沒有傳 null（不當成 0）。
+ * - 所需月數 ＝（目標 − 目前）÷ 每月儲蓄（四捨五入到 2 位），無條件進位；預計達成月 ＝ 本月 ＋ 所需月數。
+ * - 判斷順序：achieved → need_saving → unreachable（儲蓄 ≤ 0）→ over_50_years（> 600 個月）→ ok。
+ *   已達成不需要儲蓄資料，所以最先判斷（和財富自由年齡的順序一樣）。
+ */
+export function estimateFinish(
+  target: Prisma.Decimal,
+  current: Prisma.Decimal,
+  monthlySaving: Prisma.Decimal | null,
+  today: DateOnly,
+): FinishEstimate {
+  const none = { monthsLeft: null, finishMonth: null };
+  if (current.gte(target)) {
+    return { status: FinishEstimateStatus.achieved, ...none };
+  }
+  if (monthlySaving === null) {
+    return { status: FinishEstimateStatus.need_saving, ...none };
+  }
+  // 每月儲蓄先四捨五入到 2 位（和回應裡顯示的 monthlySaving 一樣），
+  // 這樣「每月存 X 元 × 所需月數」可以用畫面上的數字驗算
+  const saving = monthlySaving.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+  if (saving.lte(0)) {
+    return { status: FinishEstimateStatus.unreachable, ...none };
+  }
+  const months = target
+    .minus(current)
+    .div(saving)
+    .toDecimalPlaces(0, Prisma.Decimal.ROUND_CEIL)
+    .toNumber();
+  if (months > MAX_FINISH_MONTHS) {
+    return { status: FinishEstimateStatus.over_50_years, ...none };
+  }
+  return {
+    status: FinishEstimateStatus.ok,
+    monthsLeft: months,
+    finishMonth: addMonths(monthOf(today), months),
+  };
 }

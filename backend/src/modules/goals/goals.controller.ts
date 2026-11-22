@@ -56,6 +56,7 @@ export class GoalsController {
       '里程碑照 PRD 15.4；財富自由年齡照 PRD 15.7（實質報酬 3.92%、年儲蓄年底投入、100 歲上限）。驗算案例：40 歲、年支出 60 萬、年儲蓄 60 萬、資產 500 萬 → 51 歲。',
       '年儲蓄：最近 6 個完整月（不含本月）裡有記帳（收入或支出不是 0）的月有 3 個以上時，用那些月的平均（收入 − 支出）× 12（savingSource: actual），沒記帳的月不算進平均；否則用 estMonthlySaving × 12（estimate）；都沒有時 fireAgeStatus 是 need_saving。',
       '狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。',
+      '推算達成日 finishEstimate（PRD 15.6）：每月儲蓄和上面的年儲蓄同一個來源（÷ 12 前的值）；所需月數 ＝（目標 − 目前）÷ 每月儲蓄，無條件進位，預計達成月 ＝ 台北的本月 ＋ 所需月數。判斷順序：achieved → need_saving → unreachable（每月儲蓄 ≤ 0）→ over_50_years（> 600 個月）→ ok；不是 ok 時 monthsLeft、finishMonth 是 null。',
     ].join('\n\n'),
   })
   @ApiOkResponse({ type: GoalProgressDto })

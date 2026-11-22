@@ -26,3 +26,22 @@ export const SavingSource = {
 } as const;
 
 export type SavingSource = (typeof SavingSource)[keyof typeof SavingSource];
+
+/**
+ * 推算達成日的狀態（PRD 15.6）。ok 時 monthsLeft、finishMonth 有值，其他狀態都是 null，前端依狀態顯示一句提示。
+ */
+export const FinishEstimateStatus = {
+  /** 算得出還要幾個月 */
+  ok: 'ok',
+  /** 目前金額已經 ≥ 目標金額 */
+  achieved: 'achieved',
+  /** 記帳不滿 3 個完整月，而且沒有自估的每月儲蓄 →「資料不足，請填每月收支自估」 */
+  need_saving: 'need_saving',
+  /** 每月儲蓄 ≤ 0 →「以目前收支無法達成」 */
+  unreachable: 'unreachable',
+  /** 超過 600 個月 →「以目前速度超過 50 年」 */
+  over_50_years: 'over_50_years',
+} as const;
+
+export type FinishEstimateStatus =
+  (typeof FinishEstimateStatus)[keyof typeof FinishEstimateStatus];
