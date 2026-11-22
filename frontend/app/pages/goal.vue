@@ -77,41 +77,8 @@ async function saveGoal(body: UpdateGoalBody) {
     </PageHeader>
     <StateView :loading="r.loading.value" :error="r.error.value" :has-data="!!g" @retry="r.reload">
       <template v-if="g">
-        <!-- 主數字是「再存 X 就到第 N 站」，總百分比放小字（15.4） -->
-        <section class="card p-6">
-          <p class="text-sm text-slate-500">{{ g.nextMilestone ? `第 ${g.nextMilestone.index} 站：${g.nextMilestone.label}` : '已達成' }}</p>
-          <p class="mt-1 text-3xl font-bold">
-            <template v-if="g.nextMilestone">再存 <span class="num text-brand-700">{{ formatMoney(g.nextMilestone.remaining) }}</span></template>
-            <template v-else>🎉 你已達成財富自由目標</template>
-          </p>
-          <p v-if="!g.achieved" class="mt-1 text-sm text-slate-500">
-            離財富自由目標還差 <span class="num font-semibold text-slate-700">{{ formatMoney(g.remaining) }}</span>
-          </p>
-          <div class="mt-5 h-3 overflow-hidden rounded-full bg-slate-100">
-            <div class="h-full rounded-full bg-brand-600 transition-all" :style="{ width: `${Math.max(g.percent, 1)}%` }" />
-          </div>
-          <div class="mt-2 flex justify-between text-sm text-slate-600">
-            <span>目前 <strong class="num">{{ formatMoney(g.currentAmount) }}</strong></span>
-            <span>{{ g.percent }}%</span>
-            <span>目標 <strong class="num">{{ formatWan(g.targetAmount) }}</strong></span>
-          </div>
-        </section>
-
-        <section class="card mt-4 p-6">
-          <h2 class="font-semibold">里程碑</h2>
-          <ol class="mt-3 space-y-2">
-            <li v-for="m in g.milestones" :key="m.index" class="flex items-center gap-3">
-              <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold" :class="m.reached ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'">
-                {{ m.reached ? '✓' : m.index }}
-              </span>
-              <span class="flex-1">{{ m.label }}</span>
-              <span class="num text-sm font-semibold">{{ formatWan(m.amount) }}</span>
-            </li>
-          </ol>
-        </section>
-
         <!-- 財富自由年齡（15.7） -->
-        <section class="card mt-4 p-6">
+        <section class="card p-6">
           <template v-if="g.fireAgeStatus === 'ok'">
             <p class="text-lg">照現在的速度，你可以在 <strong class="text-2xl text-brand-700">{{ g.fireAge }} 歲</strong>財富自由</p>
           </template>
@@ -143,6 +110,39 @@ async function saveGoal(body: UpdateGoalBody) {
             <template v-if="Number(g.activeLoanTotal) > 0">目前資產未扣除貸款 {{ formatMoney(g.activeLoanTotal) }}。</template>
             本結果為依假設試算，非投資建議。
           </p>
+        </section>
+
+        <!-- 主數字是「再存 X 就到第 N 站」，總百分比放小字（15.4） -->
+        <section class="card mt-4 p-6">
+          <p class="text-sm text-slate-500">{{ g.nextMilestone ? `第 ${g.nextMilestone.index} 站：${g.nextMilestone.label}` : '已達成' }}</p>
+          <p class="mt-1 text-3xl font-bold">
+            <template v-if="g.nextMilestone">再存 <span class="num text-brand-700">{{ formatMoney(g.nextMilestone.remaining) }}</span></template>
+            <template v-else>🎉 你已達成財富自由目標</template>
+          </p>
+          <p v-if="!g.achieved" class="mt-1 text-sm text-slate-500">
+            離財富自由目標還差 <span class="num font-semibold text-slate-700">{{ formatMoney(g.remaining) }}</span>
+          </p>
+          <div class="mt-5 h-3 overflow-hidden rounded-full bg-slate-100">
+            <div class="h-full rounded-full bg-brand-600 transition-all" :style="{ width: `${Math.max(g.percent, 1)}%` }" />
+          </div>
+          <div class="mt-2 flex justify-between text-sm text-slate-600">
+            <span>目前 <strong class="num">{{ formatMoney(g.currentAmount) }}</strong></span>
+            <span>{{ g.percent }}%</span>
+            <span>目標 <strong class="num">{{ formatWan(g.targetAmount) }}</strong></span>
+          </div>
+        </section>
+
+        <section class="card mt-4 p-6">
+          <h2 class="font-semibold">里程碑</h2>
+          <ol class="mt-3 space-y-2">
+            <li v-for="m in g.milestones" :key="m.index" class="flex items-center gap-3">
+              <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold" :class="m.reached ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'">
+                {{ m.reached ? '✓' : m.index }}
+              </span>
+              <span class="flex-1">{{ m.label }}</span>
+              <span class="num text-sm font-semibold">{{ formatWan(m.amount) }}</span>
+            </li>
+          </ol>
         </section>
 
         <p class="mt-4 text-xs leading-relaxed text-slate-500">
