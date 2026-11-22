@@ -2,7 +2,7 @@
 /**
  * 調整目標（A）：每月花費、出生年、自估每月儲蓄，送 PATCH /goal。
  * 目標金額由後端依每月花費 × 300 重算，前端不自己算（PRD §15.3）。
- * 只送有改的欄位；出生年、自估儲蓄清空代表送 null。
+ * 只送有改的欄位；自估儲蓄清空代表送 null。出生年選了就不能清回「請選擇」，不想看年齡可以在目標頁收合那張卡片。
  */
 import { errorText, fieldErrors } from '~/lib/api-error'
 import { normalizeAmount, toCents, validateAmount } from '~/lib/money'
@@ -27,21 +27,13 @@ function spendingValue(): number | null {
   return Number.isInteger(v) && v >= 1000 && v <= 333000 ? v : null
 }
 
-/** 出生年只擋 1900 以前；「不能晚於今年」用台北的今年判斷，交給後端檢查 */
-function birthYearValue(): number | null | undefined {
-  const raw = form.value.birthYear.trim()
-  if (!raw) return null
-  const v = Number(raw)
-  return Number.isInteger(v) && v >= 1900 ? v : undefined
-}
-
 async function submit() {
   const f = form.value
   const spending = spendingValue()
-  const birthYear = birthYearValue()
+  // 出生年用選單（BirthYearSelect），只選得到 1900 到台北的今年；還沒填過、也沒選時是 null，不會送出
+  const birthYear = f.birthYear ? Number(f.birthYear) : null
   errors.value = {
     monthlySpending: spending === null ? '請輸入 1,000–333,000 之間的整數' : undefined,
-    birthYear: birthYear === undefined ? '請輸入西元出生年，例如 1996' : undefined,
     // 自估儲蓄可以是 0 或負數（入不敷出）；空白代表清空
     estMonthlySaving: f.estMonthlySaving.trim()
       ? validateAmount(f.estMonthlySaving, { allowZero: true, allowNegative: true, label: '每月儲蓄' })
@@ -51,7 +43,7 @@ async function submit() {
 
   const body: UpdateGoalBody = {}
   if (spending !== Number(props.initial.monthlySpending)) body.monthlySpending = spending!
-  if (birthYear !== props.initial.birthYear) body.birthYear = birthYear!
+  if (birthYear !== props.initial.birthYear) body.birthYear = birthYear
   const est = f.estMonthlySaving.trim() ? normalizeAmount(f.estMonthlySaving) : null
   const estChanged = est === null || props.initial.estMonthlySaving === null
     ? est !== props.initial.estMonthlySaving
@@ -68,7 +60,7 @@ async function submit() {
   } catch (e) {
     // 後端的欄位錯誤顯示在對應的欄位下面，其他的顯示在表單上方。
     // 後端欄位訊息是通用的「輸入的資料有誤」，換成看得懂的說明；
-    // 前端已經先擋過格式，出生年會被後端擋下來的只剩「晚於台北的今年」
+    // 出生年選單只到台北的今年，會被後端擋下來只剩手機時間不準、選到「晚於今年」的情況
     const fields = fieldErrors(e)
     if (fields.monthlySpending || fields.birthYear || fields.estMonthlySaving) {
       errors.value = {
@@ -99,16 +91,8 @@ async function submit() {
       <MoneyInput id="goal-spending" v-model="form.monthlySpending" :invalid="!!errors.monthlySpending" />
     </AppField>
 
-    <AppField label="出生年（西元）" for="goal-birth-year" :error="errors.birthYear" hint="用來算你幾歲財富自由；清空就不顯示年齡">
-      <input
-        id="goal-birth-year"
-        v-model="form.birthYear"
-        inputmode="numeric"
-        autocomplete="off"
-        class="field-input"
-        placeholder="例如 1996"
-        :aria-invalid="!!errors.birthYear || undefined"
-      >
+    <AppField label="出生年（西元）" for="goal-birth-year" :error="errors.birthYear" hint="用來算你幾歲財富自由">
+      <BirthYearSelect id="goal-birth-year" v-model="form.birthYear" :invalid="!!errors.birthYear" />
     </AppField>
 
     <AppField

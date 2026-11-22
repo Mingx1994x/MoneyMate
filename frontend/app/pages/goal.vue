@@ -23,10 +23,9 @@ async function answer(field: 'birthYear' | 'estMonthlySaving') {
   askError.value = null
   let body: UpdateGoalBody
   if (field === 'birthYear') {
-    // 只擋 1900 以前；「不能晚於今年」用台北的今年判斷，交給後端檢查（前端不自己取今天）
-    const y = Number(birthYear.value)
-    if (!Number.isInteger(y) || y < 1900) return (askError.value = '請輸入西元出生年，例如 1996')
-    body = { birthYear: y }
+    // 出生年用選單（BirthYearSelect），只選得到 1900 到台北的今年；選了才會呼叫（見下面的 watch）
+    if (!birthYear.value) return
+    body = { birthYear: Number(birthYear.value) }
   } else {
     // 第一次問只收 0 以上，手機才能跳數字鍵盤；入不敷出要填負數，從「調整目標」改
     const e = validateAmount(saving.value, { allowZero: true, label: '每月儲蓄' })
@@ -39,12 +38,16 @@ async function answer(field: 'birthYear' | 'estMonthlySaving') {
     toast.success('已記住')
     bump()
   } catch (e) {
-    // 後端欄位訊息是通用的「輸入的資料有誤」；前端已經先擋過格式，出生年會被擋下來的只剩「晚於台北的今年」
+    // 後端欄位訊息是通用的「輸入的資料有誤」；出生年會被擋下來只剩手機時間不準、選到「晚於今年」的情況
     askError.value = field === 'birthYear' && fieldErrors(e).birthYear ? '出生年不能晚於今年' : errorText(e)
   } finally {
     asking.value = false
   }
 }
+// 出生年選好就直接儲存，不用再按送出；儲存中選單會停用，避免連續送出
+watch(birthYear, (v) => {
+  if (v) void answer('birthYear')
+})
 
 // 調整目標：打開時才讀 GET /goal，表單帶入目前的設定
 const editing = ref<Goal | null>(null)
@@ -66,54 +69,87 @@ async function saveGoal(body: UpdateGoalBody) {
   toast.success('目標已更新')
   bump()
 }
+
+// 財富自由年齡卡片可以從標題旁的按鈕收合；狀態記在這台瀏覽器，登出時清掉（useMemory）
+const memory = useMemory()
+const fireCollapsed = ref(memory.goalFireCollapsed())
+function toggleFire() {
+  fireCollapsed.value = !fireCollapsed.value
+  memory.setGoalFireCollapsed(fireCollapsed.value)
+}
 </script>
 
 <template>
   <div>
     <PageHeader title="財富自由目標">
+      <template #title-extra>
+        <AppButton
+          v-if="g"
+          variant="ghost"
+          size="sm"
+          aria-controls="goal-fire-age"
+          :aria-expanded="!fireCollapsed"
+          @click="toggleFire"
+        >
+          <svg class="h-4 w-4 transition-transform" :class="fireCollapsed ? '' : 'rotate-180'" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.2 7.2a1 1 0 0 1 1.4 0L10 10.6l3.4-3.4a1 1 0 1 1 1.4 1.4l-4.1 4.1a1 1 0 0 1-1.4 0L5.2 8.6a1 1 0 0 1 0-1.4Z" clip-rule="evenodd" />
+          </svg>
+          {{ fireCollapsed ? '展開試算' : '收合試算' }}
+        </AppButton>
+      </template>
       <template #actions>
         <AppButton v-if="g" :loading="loadingGoal" @click="openEdit">調整目標</AppButton>
       </template>
     </PageHeader>
     <StateView :loading="r.loading.value" :error="r.error.value" :has-data="!!g" @retry="r.reload">
       <template v-if="g">
-        <!-- 財富自由年齡（15.7） -->
-        <section class="card p-6">
-          <template v-if="g.fireAgeStatus === 'ok'">
-            <p class="text-lg">照現在的速度，你可以在 <strong class="text-2xl text-brand-700">{{ g.fireAge }} 歲</strong>財富自由</p>
-          </template>
-          <p v-else-if="g.fireAgeStatus === 'achieved'" class="text-lg font-semibold">你已經財富自由了 🎉</p>
-          <p v-else-if="g.fireAgeStatus === 'unreachable'" class="text-lg">以目前收支無法達成</p>
-          <p v-else-if="g.fireAgeStatus === 'over_100'" class="text-lg">以目前速度，100 歲前無法達成</p>
-          <div v-else-if="g.fireAgeStatus === 'need_birth_year'">
-            <p class="font-semibold">補上出生年，就能算出你幾歲財富自由</p>
-            <form class="mt-3 flex gap-2" @submit.prevent="answer('birthYear')">
-              <input v-model="birthYear" inputmode="numeric" class="field-input max-w-40" placeholder="例如 1996">
-              <AppButton type="submit" :loading="asking">送出</AppButton>
-            </form>
+        <!-- 財富自由年齡（15.7）；收合時高度動畫到 0，inert 讓裡面的選單、按鈕不會被 Tab 到 -->
+        <div
+          id="goal-fire-age"
+          class="grid transition-[grid-template-rows] duration-200 ease-out"
+          :class="fireCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'"
+          :inert="fireCollapsed || undefined"
+        >
+          <!-- -mx-1 px-1：overflow-hidden 會切掉卡片左右的陰影，留一點空間 -->
+          <div class="-mx-1 overflow-hidden px-1">
+            <section class="card mb-4 p-6">
+              <template v-if="g.fireAgeStatus === 'ok'">
+                <p class="text-lg">照現在的速度，你可以在 <strong class="text-2xl text-brand-700">{{ g.fireAge }} 歲</strong>財富自由</p>
+              </template>
+              <p v-else-if="g.fireAgeStatus === 'achieved'" class="text-lg font-semibold">你已經財富自由了 🎉</p>
+              <p v-else-if="g.fireAgeStatus === 'unreachable'" class="text-lg">以目前收支無法達成</p>
+              <p v-else-if="g.fireAgeStatus === 'over_100'" class="text-lg">以目前速度，100 歲前無法達成</p>
+              <div v-else-if="g.fireAgeStatus === 'need_birth_year'">
+                <label for="goal-ask-birth-year" class="block font-semibold">出生年（西元）</label>
+                <div class="mt-3 max-w-40">
+                  <BirthYearSelect id="goal-ask-birth-year" v-model="birthYear" :disabled="asking" />
+                </div>
+                <p class="mt-1.5 text-sm text-slate-500">補上出生年，就能算出你幾歲財富自由</p>
+              </div>
+              <div v-else-if="g.fireAgeStatus === 'need_saving'">
+                <p class="font-semibold">你現在每月大概能存多少？</p>
+                <p class="text-sm text-slate-500">記帳滿 3 個完整月後，會改用實際數字</p>
+                <form class="mt-3 flex gap-2" @submit.prevent="answer('estMonthlySaving')">
+                  <div class="max-w-48"><MoneyInput v-model="saving" /></div>
+                  <AppButton type="submit" :loading="asking">送出</AppButton>
+                </form>
+              </div>
+              <p v-if="askError" class="mt-2 text-sm text-rose-600">{{ askError }}</p>
+              <p class="mt-3 text-xs leading-relaxed text-slate-500">
+                假設：<template v-if="g.fireAssumptions.age !== null">現在 {{ g.fireAssumptions.age }} 歲；</template>
+                現在資產 {{ formatMoney(g.fireAssumptions.currentAssets) }}；
+                年支出 {{ formatMoney(g.fireAssumptions.annualSpending) }}；
+                年儲蓄 {{ g.fireAssumptions.annualSaving ? formatMoney(g.fireAssumptions.annualSaving) : '—' }}{{ g.fireAssumptions.savingSource === 'actual' ? '（近幾個月實際平均）' : g.fireAssumptions.savingSource === 'estimate' ? '（自估）' : '' }}；
+                提領率 4%、投資報酬率 6%、通膨 2%，全部以今日幣值計算。
+                <template v-if="Number(g.activeLoanTotal) > 0">目前資產未扣除貸款 {{ formatMoney(g.activeLoanTotal) }}。</template>
+                本結果為依假設試算，非投資建議。
+              </p>
+            </section>
           </div>
-          <div v-else-if="g.fireAgeStatus === 'need_saving'">
-            <p class="font-semibold">你現在每月大概能存多少？</p>
-            <p class="text-sm text-slate-500">記帳滿 3 個完整月後，會改用實際數字</p>
-            <form class="mt-3 flex gap-2" @submit.prevent="answer('estMonthlySaving')">
-              <div class="max-w-48"><MoneyInput v-model="saving" /></div>
-              <AppButton type="submit" :loading="asking">送出</AppButton>
-            </form>
-          </div>
-          <p v-if="askError" class="mt-2 text-sm text-rose-600">{{ askError }}</p>
-          <p class="mt-3 text-xs leading-relaxed text-slate-500">
-            假設：<template v-if="g.fireAssumptions.age !== null">現在 {{ g.fireAssumptions.age }} 歲；</template>
-            現在資產 {{ formatMoney(g.fireAssumptions.currentAssets) }}；
-            年支出 {{ formatMoney(g.fireAssumptions.annualSpending) }}；
-            年儲蓄 {{ g.fireAssumptions.annualSaving ? formatMoney(g.fireAssumptions.annualSaving) : '—' }}{{ g.fireAssumptions.savingSource === 'actual' ? '（近幾個月實際平均）' : g.fireAssumptions.savingSource === 'estimate' ? '（自估）' : '' }}；
-            提領率 4%、投資報酬率 6%、通膨 2%，全部以今日幣值計算。
-            <template v-if="Number(g.activeLoanTotal) > 0">目前資產未扣除貸款 {{ formatMoney(g.activeLoanTotal) }}。</template>
-            本結果為依假設試算，非投資建議。
-          </p>
-        </section>
+        </div>
 
-        <!-- 主數字是「再存 X 就到第 N 站」，總百分比放小字（15.4） -->
-        <section class="card mt-4 p-6">
+        <!-- 主數字是「再存 X 就到第 N 站」，總百分比放小字（15.4）；和上面的間距放在年齡卡片的 mb-4，收合時才不會多一段空白 -->
+        <section class="card p-6">
           <p class="text-sm text-slate-500">{{ g.nextMilestone ? `第 ${g.nextMilestone.index} 站：${g.nextMilestone.label}` : '已達成' }}</p>
           <p class="mt-1 text-3xl font-bold">
             <template v-if="g.nextMilestone">再存 <span class="num text-brand-700">{{ formatMoney(g.nextMilestone.remaining) }}</span></template>
