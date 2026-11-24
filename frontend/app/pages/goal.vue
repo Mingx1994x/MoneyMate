@@ -40,6 +40,9 @@ async function answer(field: 'birthYear' | 'estMonthlySaving') {
   } catch (e) {
     // 後端欄位訊息是通用的「輸入的資料有誤」；出生年會被擋下來只剩手機時間不準、選到「晚於今年」的情況
     askError.value = field === 'birthYear' && fieldErrors(e).birthYear ? '出生年不能晚於今年' : errorText(e)
+    // 自動儲存靠 watch，值有變才會送；失敗時清回「請選擇」，同一年才能再選一次重試（#121 review）。
+    // 清成空字串也會觸發 watch，但 watch 只在有值時送出，不會多送一次
+    if (field === 'birthYear') birthYear.value = ''
   } finally {
     asking.value = false
   }
