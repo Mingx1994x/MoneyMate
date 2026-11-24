@@ -24,6 +24,13 @@ export interface AccountBalance {
   balance: Prisma.Decimal;
 }
 
+/** 某月的收入、支出合計（getMonthlyTotalsRange 的一筆） */
+export interface MonthTotals {
+  month: MonthString;
+  income: Prisma.Decimal;
+  expense: Prisma.Decimal;
+}
+
 /**
  * PRD 15.1 的唯一計算服務（C）。餘額、合計、淨資產、可用現金、月收支一律從這裡算，
  * 其他模組（goals、dashboard、bills）不得自己寫公式。
@@ -179,5 +186,47 @@ export class FinanceCalcService {
       income: new Prisma.Decimal(row?.income ?? 0),
       expense: new Prisma.Decimal(row?.expense ?? 0),
     };
+  }
+
+  /**
+   * 連續幾個月的收入、支出合計（月收支趨勢圖，D-A-005）：規則與 getMonthlyTotals 相同，
+   * 只是一個 SQL 算完 from～to（含）每個月。沒有交易的月也回傳，收支都是 0。依月份由舊到新排序。
+   */
+  async getMonthlyTotalsRange(
+    userId: string,
+    from: MonthString,
+    to: MonthString,
+    today: DateOnly,
+    db: PrismaTx = this.prisma,
+  ): Promise<MonthTotals[]> {
+    const rows = await db.$queryRaw<
+      {
+        month: string;
+        income: Prisma.Decimal | null;
+        expense: Prisma.Decimal | null;
+      }[]
+    >`
+      SELECT
+        to_char(transaction_date, 'YYYY-MM') AS month,
+        SUM(amount) FILTER (WHERE transaction_type = 'income') AS income,
+        SUM(amount) FILTER (WHERE transaction_type = 'expense') AS expense
+      FROM transactions
+      WHERE user_id = ${userId}::uuid
+        AND transaction_date >= ${toDbDate(monthStart(from))}::date
+        AND transaction_date < ${toDbDate(nextMonthStart(to))}::date
+        AND transaction_date <= ${toDbDate(today)}::date
+      GROUP BY 1`;
+    const byMonth = new Map(rows.map((r) => [r.month, r] as const));
+
+    const result: MonthTotals[] = [];
+    for (let m = from; m <= to; m = nextMonthStart(m).slice(0, 7)) {
+      const row = byMonth.get(m);
+      result.push({
+        month: m,
+        income: new Prisma.Decimal(row?.income ?? 0),
+        expense: new Prisma.Decimal(row?.expense ?? 0),
+      });
+    }
+    return result;
   }
 }

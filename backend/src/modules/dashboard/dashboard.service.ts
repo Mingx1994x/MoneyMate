@@ -1,5 +1,11 @@
 import { Injectable, NotImplementedException } from '@nestjs/common';
-import { monthOf, type DateOnly } from '../../common/date-only.js';
+import {
+  addDays,
+  monthOf,
+  monthStart,
+  type DateOnly,
+  type MonthString,
+} from '../../common/date-only.js';
 import { toMoneyString } from '../../common/money.js';
 import { Prisma } from '../../prisma/index.js';
 import { BillsService, type BillAlertItem } from '../bills/index.js';
@@ -13,6 +19,7 @@ import type {
   DashboardLoansDto,
   DashboardSummaryResponseDto,
 } from './dto/dashboard-summary.dto.js';
+import type { DashboardTrendMonthDto } from './dto/dashboard-trend.dto.js';
 import { decideNextStep } from './next-step.js';
 
 /** 每個帳單清單在 Dashboard 最多顯示幾筆（PRD 17） */
@@ -26,6 +33,30 @@ export class DashboardService {
     private readonly bills: BillsService,
     private readonly goals: GoalsService,
   ) {}
+
+  /**
+   * GET /dashboard/trend（D-A-005、US-14）：最近 months 個完整月（不含台北本月）的收入、支出合計，由舊到新。
+   * 數字來自 FinanceCalcService（與 summary 的本月收支同一套規則：不含轉帳、停用帳戶的交易也算）。
+   * 沒有交易的月也回傳 0，前端長條圖的月份才會連續。
+   */
+  async getTrend(
+    userId: string,
+    today: DateOnly,
+    months: number,
+  ): Promise<DashboardTrendMonthDto[]> {
+    const { from, to } = trendRange(today, months);
+    const rows = await this.finance.getMonthlyTotalsRange(
+      userId,
+      from,
+      to,
+      today,
+    );
+    return rows.map((r) => ({
+      month: r.month,
+      incomeTotal: toMoneyString(r.income),
+      expenseTotal: toMoneyString(r.expense),
+    }));
+  }
 
   /**
    * GET /dashboard/summary。數字一律來自 FinanceCalcService 與各模組的 service（PRD 15.1）。
@@ -218,4 +249,26 @@ function toLoansDto(
       monthlyPayment: toMoneyString(p.monthlyPayment),
     })),
   };
+}
+
+/**
+ * 趨勢圖的月份範圍：最近 months 個完整月，不含 today 所在的月。
+ * 例：2026-11-20、6 → 2026-05～2026-10；2026-01-01、1 → 2025-12～2025-12。
+ */
+export function trendRange(
+  today: DateOnly,
+  months: number,
+): { from: MonthString; to: MonthString } {
+  if (!Number.isInteger(months) || months < 1) {
+    throw new Error('trendRange: 月數必須是正整數');
+  }
+  const to = previousMonth(monthOf(today));
+  let from = to;
+  for (let i = 1; i < months; i++) from = previousMonth(from);
+  return { from, to };
+}
+
+/** 上個月，例：2026-01 → 2025-12 */
+function previousMonth(m: MonthString): MonthString {
+  return monthOf(addDays(monthStart(m), -1));
 }
