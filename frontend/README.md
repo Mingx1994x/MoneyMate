@@ -60,6 +60,24 @@ npm run generate   # 產生靜態網站到 .output/public
 - 後端的 `CORS_ORIGIN` 預設就是 `http://localhost:3000`，照 `backend/.env.example` 建 `.env` 就不用改。
 - 還沒實作的 API 會回 501，畫面會顯示「這個功能還在開發中」。
 
+## 端到端測試（Playwright）
+
+測試放在 `e2e/`，用 Chromium 對**本機**的前端＋後端跑，不跑測試機。CI 的 `playwright` job 會自己啟動前後端、跑同一組測試，沒通過就不能合併。
+
+1. 照「連本機後端開發」啟動後端與前端（`http://localhost:3000`）
+2. 第一次執行先安裝瀏覽器：`npx playwright install chromium`
+3. 在 `frontend/` 執行 `E2E_PASSWORD=<跟後端 seed:e2e 同一個> npm run test:e2e`
+
+- 用到 D 的固定帳號（`e2e-new`、`e2e-dashboard`、`e2e-goal`）的測試，要先在 `backend/` 執行 `npm run seed:e2e`；每個帳號的資料與畫面上應該出現的數字見 `docs/e2e-fixtures.md`。
+- 失敗時的截圖與 trace 在 `test-results/`，`npx playwright show-report` 可以看報告。
+
+寫測試的規則：
+
+- 會隨今天變的區塊（下次繳款日、14 天內到期）不要檢查，也不要在測試裡用 `new Date()` 算預期值。
+- D 的 3 個帳號只讀不改；要測新增、修改就註冊新帳號（`e2e-<時間>@moneymate.test`）。
+- 選擇器優先用 `getByRole`、`getByLabel`，不要依賴 CSS class。
+- CI 不重試（`retries: 0`）：只檢查穩定的內容，等待用 `expect(...).toBeVisible()` 這類會自動等的寫法，不寫固定秒數。
+
 ## 架構
 
 ```
