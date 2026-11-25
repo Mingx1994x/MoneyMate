@@ -538,6 +538,13 @@ describe('Dashboard API（e2e）', () => {
         currentAssets: '240000.00',
         age: null,
       },
+      emergencyFund: {
+        status: 'need_data',
+        months: null,
+        availableCash: '240000.00',
+        monthlyExpense: null,
+      },
+      targetSuggestion: null,
       activeLoanTotal: '0.00',
       ...over,
     });

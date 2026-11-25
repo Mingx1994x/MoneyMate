@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  EmergencyFundStatus,
   FinishEstimateStatus,
   FireAgeStatus,
   SavingSource,
@@ -114,6 +115,75 @@ export class FinishEstimateDto {
   monthlySaving!: string | null;
 }
 
+/**
+ * 緊急預備金夠幾個月（D-A-006），接里程碑第 1 站（10 萬緊急預備金）。
+ * 平均每月支出：最近 6 個完整月裡有記帳的月（收入或支出不是 0）的平均，不滿 3 個月時不計算。
+ */
+export class EmergencyFundDto {
+  @ApiProperty({
+    enum: EmergencyFundStatus,
+    enumName: 'EmergencyFundStatus',
+    description:
+      'ok：算得出來；no_cash_account：沒有現金、銀行帳戶；need_data：記帳不滿 3 個完整月；no_expense：平均每月支出是 0，無法計算',
+    example: 'ok',
+  })
+  status!: EmergencyFundStatus;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    minimum: 0,
+    description:
+      '可撐幾個月 ＝ availableCash ÷ monthlyExpense，小數一位（無條件捨去）；可用現金 ≤ 0 時 0；status 不是 ok 時是 null',
+    example: 4.8,
+  })
+  months!: number | null;
+
+  @ApiProperty({
+    description:
+      '可用現金（PRD 15.1）＝ 啟用中現金＋銀行帳戶的目前餘額，不含投資、信用卡，可為負，金額字串',
+    example: '240000.00',
+  })
+  availableCash!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: '平均每月支出，金額字串；有記帳的完整月不滿 3 個時是 null',
+    example: '50000.00',
+  })
+  monthlyExpense!: string | null;
+}
+
+/**
+ * 依真實支出建議的目標（D-A-007、US-13）。前端「一鍵更新」把 monthlySpending 送到 PATCH /goal，
+ * 算出來的目標會剛好等於 targetAmount。
+ */
+export class TargetSuggestionDto {
+  @ApiProperty({
+    type: 'integer',
+    minimum: 1000,
+    maximum: 333000,
+    description:
+      '實際平均每月支出，四捨五入到整數；和 PATCH /goal 的 monthlySpending 同一個格式，可以原樣送出',
+    example: 45000,
+  })
+  monthlySpending!: number;
+
+  @ApiProperty({
+    description: '建議目標 ＝ monthlySpending × 300，金額字串',
+    example: '13500000.00',
+  })
+  targetAmount!: string;
+
+  @ApiProperty({
+    description:
+      '和目前目標的差距 ＝ 建議目標 − 目前目標；正數是建議調高，負數是建議調低，0 是不用調，金額字串',
+    example: '1500000.00',
+  })
+  difference!: string;
+}
+
 /** 目標進度＋財富自由年齡（GET /goal/progress、POST /onboarding 的回應） */
 export class GoalProgressDto {
   @ApiProperty({ description: '目標金額，金額字串', example: '12000000.00' })
@@ -175,6 +245,17 @@ export class GoalProgressDto {
 
   @ApiProperty({ type: FireAssumptionsDto })
   fireAssumptions!: FireAssumptionsDto;
+
+  @ApiProperty({ type: EmergencyFundDto })
+  emergencyFund!: EmergencyFundDto;
+
+  @ApiProperty({
+    type: TargetSuggestionDto,
+    nullable: true,
+    description:
+      '依真實支出建議的目標；有記帳的完整月不滿 3 個、或平均每月支出四捨五入後不在 1,000–333,000（PATCH /goal 的範圍）時是 null（不顯示建議）',
+  })
+  targetSuggestion!: TargetSuggestionDto | null;
 
   @ApiProperty({
     description:

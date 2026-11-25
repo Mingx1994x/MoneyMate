@@ -3877,6 +3877,81 @@
           "age"
         ]
       },
+      "EmergencyFundStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "no_cash_account",
+          "need_data",
+          "no_expense"
+        ],
+        "description": "ok：算得出來；no_cash_account：沒有現金、銀行帳戶；need_data：記帳不滿 3 個完整月；no_expense：平均每月支出是 0，無法計算"
+      },
+      "EmergencyFundDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "description": "ok：算得出來；no_cash_account：沒有現金、銀行帳戶；need_data：記帳不滿 3 個完整月；no_expense：平均每月支出是 0，無法計算",
+            "example": "ok",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EmergencyFundStatus"
+              }
+            ]
+          },
+          "months": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "description": "可撐幾個月 ＝ availableCash ÷ monthlyExpense，小數一位（無條件捨去）；可用現金 ≤ 0 時 0；status 不是 ok 時是 null",
+            "example": 4.8
+          },
+          "availableCash": {
+            "type": "string",
+            "description": "可用現金（PRD 15.1）＝ 啟用中現金＋銀行帳戶的目前餘額，不含投資、信用卡，可為負，金額字串",
+            "example": "240000.00"
+          },
+          "monthlyExpense": {
+            "type": "string",
+            "nullable": true,
+            "description": "平均每月支出，金額字串；有記帳的完整月不滿 3 個時是 null",
+            "example": "50000.00"
+          }
+        },
+        "required": [
+          "status",
+          "months",
+          "availableCash",
+          "monthlyExpense"
+        ]
+      },
+      "TargetSuggestionDto": {
+        "type": "object",
+        "properties": {
+          "monthlySpending": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 333000,
+            "description": "實際平均每月支出，四捨五入到整數；和 PATCH /goal 的 monthlySpending 同一個格式，可以原樣送出",
+            "example": 45000
+          },
+          "targetAmount": {
+            "type": "string",
+            "description": "建議目標 ＝ monthlySpending × 300，金額字串",
+            "example": "13500000.00"
+          },
+          "difference": {
+            "type": "string",
+            "description": "和目前目標的差距 ＝ 建議目標 − 目前目標；正數是建議調高，負數是建議調低，0 是不用調，金額字串",
+            "example": "1500000.00"
+          }
+        },
+        "required": [
+          "monthlySpending",
+          "targetAmount",
+          "difference"
+        ]
+      },
       "GoalProgressDto": {
         "type": "object",
         "properties": {
@@ -3944,6 +4019,19 @@
           "fireAssumptions": {
             "$ref": "#/components/schemas/FireAssumptionsDto"
           },
+          "emergencyFund": {
+            "$ref": "#/components/schemas/EmergencyFundDto"
+          },
+          "targetSuggestion": {
+            "nullable": true,
+            "description": "依真實支出建議的目標；有記帳的完整月不滿 3 個、或平均每月支出四捨五入後不在 1,000–333,000（PATCH /goal 的範圍）時是 null（不顯示建議）",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TargetSuggestionDto"
+              }
+            ]
+          },
           "activeLoanTotal": {
             "type": "string",
             "description": "active 貸款的未償餘額合計，金額字串；> 0 時前端顯示「目前資產未扣除貸款 X 元」",
@@ -3962,6 +4050,8 @@
           "fireAgeStatus",
           "finishEstimate",
           "fireAssumptions",
+          "emergencyFund",
+          "targetSuggestion",
           "activeLoanTotal"
         ]
       },
