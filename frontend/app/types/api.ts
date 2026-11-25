@@ -48,6 +48,7 @@ export interface Paginated<T> {
 
 // ---------- Goal ----------
 export type Goal = Schemas['GoalDto']
+export type UpdateGoalBody = Schemas['UpdateGoalDto']
 export type Milestone = Schemas['MilestoneDto']
 export type FireAgeStatus = Schemas['FireAgeStatus']
 export type GoalProgress = Schemas['GoalProgressDto']

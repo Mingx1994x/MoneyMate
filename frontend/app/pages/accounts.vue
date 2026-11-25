@@ -29,12 +29,20 @@ const inactiveCount = computed(() => (list.data.value ?? []).filter((a) => !a.is
 // ---------- 新增／編輯 ----------
 const editing = ref<Account | 'new' | null>(null)
 const formOpen = computed({ get: () => editing.value !== null, set: (v) => !v && (editing.value = null) })
-onMounted(() => {
-  if (route.query.new) {
+/** 從快速記帳的引導進來（`?new=1&type=credit_card`）時預選的帳戶類型 */
+const newType = ref<Account['accountType'] | undefined>()
+// 用 watch 不用 onMounted：已經在帳戶頁時，從快速記帳的引導按鈕進來，頁面不會重新載入
+watch(
+  () => route.query.new,
+  (v) => {
+    if (!v) return
+    const t = route.query.type
+    newType.value = typeof t === 'string' && t in ACCOUNT_TYPE_LABEL ? (t as Account['accountType']) : undefined
     editing.value = 'new'
     router.replace({ query: {} })
-  }
-})
+  },
+  { immediate: true },
+)
 
 async function save(values: { name: string; accountType: Account['accountType']; openingBalance: string; note?: string | null }) {
   if (editing.value === 'new') {
@@ -96,7 +104,7 @@ function balanceNote(a: Account) {
   <div>
     <PageHeader title="帳戶" description="餘額由系統依交易自動計算。">
       <template #actions>
-        <AppButton @click="editing = 'new'">＋ 新增帳戶</AppButton>
+        <AppButton @click="newType = undefined; editing = 'new'">＋ 新增帳戶</AppButton>
       </template>
     </PageHeader>
 
@@ -124,7 +132,7 @@ function balanceNote(a: Account) {
         empty-text="先建立一個帳戶，例如你的錢包或薪轉帳戶"
         @retry="list.reload"
       >
-        <template #empty-action><AppButton @click="editing = 'new'">新增帳戶</AppButton></template>
+        <template #empty-action><AppButton @click="newType = undefined; editing = 'new'">新增帳戶</AppButton></template>
         <ul class="divide-y divide-slate-100">
           <li v-for="a in visible" :key="a.id" class="flex flex-wrap items-center gap-3 px-4 py-4 sm:flex-nowrap" :class="{ 'opacity-60': !a.isActive }">
             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xl">{{ ACCOUNT_TYPE_ICON[a.accountType] }}</div>
@@ -164,6 +172,7 @@ function balanceNote(a: Account) {
         v-if="editing"
         :key="editing === 'new' ? 'new' : editing.id"
         :initial="editing === 'new' ? null : editing"
+        :default-type="editing === 'new' ? newType : undefined"
         :save="save"
         @cancel="editing = null"
       />

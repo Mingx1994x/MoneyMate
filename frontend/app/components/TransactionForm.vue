@@ -119,6 +119,36 @@ watch(() => form.value.toAccountId, () => {
   if (form.value.kind === 'card' && cardDebt.value > 0 && !isEdit.value) form.value.amount = String(cardDebt.value / 100)
 })
 
+// ---------- 帳戶不夠用時的引導（D-A-009、AC-21） ----------
+// 完全沒有可用帳戶時，整個表單換成「建立帳戶」（下面 template 的第一個判斷）；
+// 這裡處理有帳戶、但不夠目前類型用的情況：顯示說明和新增按鈕，不顯示空的帳戶選單
+type GuideAction = { label: string; to: string }
+const accountGuide = computed<{ title: string; text: string; actions: GuideAction[] } | null>(() => {
+  if (isEdit.value) return null
+  const list = usableAccounts.value
+  if (form.value.kind === 'transfer' && list.length < 2) {
+    return {
+      title: '轉帳需要兩個帳戶',
+      text: `你目前只有「${list[0]?.name ?? ''}」一個帳戶，先新增另一個帳戶，才能在兩個帳戶之間轉帳。`,
+      actions: [{ label: '新增帳戶', to: '/accounts?new=1' }],
+    }
+  }
+  if (form.value.kind === 'card') {
+    const noCard = !list.some((a) => a.accountType === 'credit_card')
+    const noPayer = !list.some((a) => a.accountType === 'cash' || a.accountType === 'bank')
+    if (!noCard && !noPayer) return null
+    const actions: GuideAction[] = []
+    if (noCard) actions.push({ label: '新增信用卡帳戶', to: '/accounts?new=1&type=credit_card' })
+    if (noPayer) actions.push({ label: '新增現金或銀行帳戶', to: '/accounts?new=1&type=bank' })
+    return {
+      title: noCard && noPayer ? '還沒有信用卡，也沒有現金或銀行帳戶' : noCard ? '還沒有信用卡帳戶' : '還沒有現金或銀行帳戶',
+      text: '繳卡費是從現金或銀行帳戶付錢給信用卡，兩種帳戶都要有。',
+      actions,
+    }
+  }
+  return null
+})
+
 function setKind(k: Kind) {
   form.value.kind = k
   errors.value = {}
@@ -239,6 +269,20 @@ const summaryText = computed(() => {
 
     <Segmented :model-value="form.kind" :options="isEdit ? KIND_OPTIONS.slice(0, 3) : KIND_OPTIONS" label="交易類型" @update:model-value="setKind" />
 
+    <!-- 帳戶不夠目前的類型用：說明＋新增按鈕，不顯示空的選單（D-A-009）。切回支出、收入就能繼續記 -->
+    <div v-if="accountGuide" class="rounded-xl bg-slate-50 px-4 py-6 text-center">
+      <p class="font-semibold text-slate-800">{{ accountGuide.title }}</p>
+      <p class="mt-1 text-sm text-slate-500">{{ accountGuide.text }}</p>
+      <div class="mt-4 flex flex-wrap justify-center gap-2">
+        <NuxtLink v-for="g in accountGuide.actions" :key="g.to" :to="g.to" @click="emit('cancel')">
+          <AppButton>{{ g.label }}</AppButton>
+        </NuxtLink>
+        <AppButton variant="secondary" @click="emit('cancel')">取消</AppButton>
+      </div>
+    </div>
+
+    <template v-else>
+
     <AppField label="金額" for="tx-amount" :error="errors.amount" required>
       <MoneyInput id="tx-amount" v-model="form.amount" :size="mode === 'quick' ? 'xl' : 'md'" :invalid="!!errors.amount" autofocus />
       <p v-if="form.kind === 'card' && selectedCard" class="mt-1 text-xs text-slate-500">
@@ -277,7 +321,6 @@ const summaryText = computed(() => {
           <option value="" disabled>請選擇</option>
           <option v-for="a in toOptions" :key="a.id" :value="a.id">{{ accountLabel(a) }}</option>
         </select>
-        <p v-if="form.kind === 'card' && toOptions.length === 0" class="mt-1 text-xs text-amber-700">還沒有信用卡帳戶</p>
       </AppField>
     </div>
 
@@ -311,5 +354,6 @@ const summaryText = computed(() => {
         {{ isEdit ? '儲存修改' : form.kind === 'card' ? '繳卡費' : '記下來' }}
       </AppButton>
     </div>
+    </template>
   </form>
 </template>
