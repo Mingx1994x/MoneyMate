@@ -397,9 +397,45 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
         });
         // 目前目標 5 萬 × 300 ＝ 1,500 萬；實際 4 萬 × 300 ＝ 1,200 萬 → 建議調低 300 萬
         expect(bodyOf(res).targetSuggestion).toEqual({
-          monthlySpending: '40000.00',
+          monthlySpending: 40000,
           targetAmount: '12000000.00',
           difference: '-3000000.00',
+        });
+      });
+
+      it('一鍵更新：targetSuggestion.monthlySpending 原樣送到 PATCH /goal → 200，目標等於建議目標', async () => {
+        // 平均支出 30,508.67（有小數），四捨五入成 30,509 才能通過 PATCH /goal 的整數檢查
+        await recordMonth(bank, '2026-10', '100000.00', '30508.67');
+        await recordMonth(bank, '2026-09', '100000.00', '30508.67');
+        await recordMonth(bank, '2026-08', '100000.00', '30508.67');
+
+        const { targetSuggestion } = bodyOf(await progress().expect(200));
+        expect(targetSuggestion).toMatchObject({
+          monthlySpending: 30509,
+          targetAmount: '9152700.00',
+        });
+
+        const res = await api()
+          .patch('/api/v1/goal')
+          .set('Authorization', auth)
+          .send({ monthlySpending: targetSuggestion?.monthlySpending })
+          .expect(200);
+        expect(bodyOf(res).targetAmount).toBe(targetSuggestion?.targetAmount);
+      });
+
+      it('沒有現金、銀行帳戶（只有信用卡）→ 緊急預備金 no_cash_account，不回 0 個月', async () => {
+        await prisma.account.updateMany({
+          where: { userId, accountType: AccountType.bank },
+          data: { isActive: false },
+        });
+        await createAccount(userId, AccountType.credit_card, '-5000.00');
+
+        const res = await progress().expect(200);
+        expect(bodyOf(res).emergencyFund).toEqual({
+          status: 'no_cash_account',
+          months: null,
+          availableCash: '0.00',
+          monthlyExpense: null,
         });
       });
 

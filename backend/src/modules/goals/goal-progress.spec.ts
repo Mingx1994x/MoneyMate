@@ -342,31 +342,39 @@ describe('averageMonthlyExpense：每月平均支出（D-A-006、D-A-007）', ()
 });
 
 describe('estimateEmergencyFund：緊急預備金夠幾個月（D-A-006）', () => {
+  const cash = (total: number) => ({ total: D(total), hasCashAccounts: true });
+
+  it('沒有現金、銀行帳戶 → no_cash_account，不說成 0 個月', () => {
+    expect(
+      estimateEmergencyFund({ total: D(0), hasCashAccounts: false }, D(30000)),
+    ).toEqual({ status: 'no_cash_account', months: null });
+  });
+
   it('可用現金 24 萬、每月支出 5 萬 → 4.8 個月', () => {
-    expect(estimateEmergencyFund(D(240000), D(50000))).toEqual({
+    expect(estimateEmergencyFund(cash(240000), D(50000))).toEqual({
       status: 'ok',
       months: 4.8,
     });
   });
 
   it('無條件捨去到小數一位：10 萬 ÷ 33,400 ＝ 2.994… → 2.9（不說成 3）', () => {
-    expect(estimateEmergencyFund(D(100000), D(33400)).months).toBe(2.9);
+    expect(estimateEmergencyFund(cash(100000), D(33400)).months).toBe(2.9);
   });
 
   it('可用現金 0 或負數 → 0 個月', () => {
-    expect(estimateEmergencyFund(D(0), D(30000)).months).toBe(0);
-    expect(estimateEmergencyFund(D(-5000), D(30000)).months).toBe(0);
+    expect(estimateEmergencyFund(cash(0), D(30000)).months).toBe(0);
+    expect(estimateEmergencyFund(cash(-5000), D(30000)).months).toBe(0);
   });
 
   it('平均支出 null（不滿 3 個完整月）→ need_data', () => {
-    expect(estimateEmergencyFund(D(240000), null)).toEqual({
+    expect(estimateEmergencyFund(cash(240000), null)).toEqual({
       status: 'need_data',
       months: null,
     });
   });
 
   it('平均支出 0（只記收入）→ no_expense', () => {
-    expect(estimateEmergencyFund(D(240000), D(0))).toEqual({
+    expect(estimateEmergencyFund(cash(240000), D(0))).toEqual({
       status: 'no_expense',
       months: null,
     });
@@ -387,13 +395,24 @@ describe('suggestTarget：依真實支出建議目標（D-A-007）', () => {
     );
   });
 
-  it('每月支出先四捨五入到 2 位再 × 300：33,333.335 → 33,333.34 → 10,000,002', () => {
-    expect(
-      suggestTarget(D(12000000), D('33333.335'))?.targetAmount.toFixed(2),
-    ).toBe('10000002.00');
+  it('每月支出四捨五入到整數再 × 300（PATCH /goal 只收整數）：30,508.67 → 30,509 → 9,152,700', () => {
+    const s = suggestTarget(D(12000000), D('30508.67'));
+    expect(s?.monthlySpending.toFixed(2)).toBe('30509.00');
+    expect(s?.targetAmount.toFixed(2)).toBe('9152700.00');
   });
 
-  it('不滿 3 個完整月（null）或平均支出 0 → null，不建議', () => {
+  it('四捨五入後不在 1,000–333,000（PATCH /goal 會擋）→ null', () => {
+    expect(suggestTarget(D(12000000), D('999.49'))).toBeNull();
+    expect(suggestTarget(D(12000000), D('333000.50'))).toBeNull();
+    expect(
+      suggestTarget(D(12000000), D('999.5'))?.monthlySpending.toFixed(0),
+    ).toBe('1000');
+    expect(
+      suggestTarget(D(12000000), D('333000.49'))?.monthlySpending.toFixed(0),
+    ).toBe('333000');
+  });
+
+  it('不滿 3 個完整月（null）或平均支出 0（低於 1,000）→ null，不建議', () => {
     expect(suggestTarget(D(12000000), null)).toBeNull();
     expect(suggestTarget(D(12000000), D(0))).toBeNull();
   });

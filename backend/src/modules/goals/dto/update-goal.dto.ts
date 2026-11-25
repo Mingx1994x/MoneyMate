@@ -1,6 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsOptional, Max, Min, ValidateIf } from 'class-validator';
 import { IsMoney } from '../../../common/validators.js';
+import {
+  MAX_MONTHLY_SPENDING,
+  MIN_MONTHLY_SPENDING,
+} from '../goal-progress.js';
 
 /**
  * PATCH /goal：沒傳的欄位保持原值。
@@ -9,16 +13,16 @@ import { IsMoney } from '../../../common/validators.js';
 export class UpdateGoalDto {
   @ApiPropertyOptional({
     type: 'integer',
-    minimum: 1000,
-    maximum: 333000,
+    minimum: MIN_MONTHLY_SPENDING,
+    maximum: MAX_MONTHLY_SPENDING,
     description: '每月花費，整數 1,000–333,000；目標金額自動重算為 × 300',
     example: 40000,
   })
   // 可以不帶，但不可為 null（@IsOptional() 會放過 null）
   @ValidateIf((_, v) => v !== undefined)
   @IsInt()
-  @Min(1000)
-  @Max(333000)
+  @Min(MIN_MONTHLY_SPENDING)
+  @Max(MAX_MONTHLY_SPENDING)
   monthlySpending?: number;
 
   @ApiPropertyOptional({

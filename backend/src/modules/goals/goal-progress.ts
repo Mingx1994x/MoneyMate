@@ -156,25 +156,28 @@ export interface EmergencyFund {
 
 /**
  * 緊急預備金夠幾個月（D-A-006）：可撐月數 ＝ 可用現金 ÷ 平均每月支出。
+ * - 沒有啟用中的現金、銀行帳戶 → no_cash_account，不說成「撐 0 個月」（和 14 天資金缺口一樣，AC-20）。
  * - 平均每月支出 null（有記帳的完整月不滿 3 個）→ need_data。
  * - 平均每月支出 ≤ 0（只有收入沒有支出）→ no_expense，除以 0 沒有意義。
  * - 可用現金 ≤ 0 → 0 個月。無條件捨去到小數一位，不把「撐 2.96 個月」說成 3 個月。
  */
 export function estimateEmergencyFund(
-  availableCash: Prisma.Decimal,
+  cash: { total: Prisma.Decimal; hasCashAccounts: boolean },
   monthlyExpense: Prisma.Decimal | null,
 ): EmergencyFund {
+  if (!cash.hasCashAccounts) {
+    return { status: EmergencyFundStatus.no_cash_account, months: null };
+  }
   if (monthlyExpense === null) {
     return { status: EmergencyFundStatus.need_data, months: null };
   }
   if (monthlyExpense.lte(0)) {
     return { status: EmergencyFundStatus.no_expense, months: null };
   }
-  if (availableCash.lte(0))
-    return { status: EmergencyFundStatus.ok, months: 0 };
+  if (cash.total.lte(0)) return { status: EmergencyFundStatus.ok, months: 0 };
   return {
     status: EmergencyFundStatus.ok,
-    months: availableCash
+    months: cash.total
       .div(monthlyExpense)
       .toDecimalPlaces(1, Prisma.Decimal.ROUND_DOWN)
       .toNumber(),
@@ -243,9 +246,12 @@ export function estimateFinish(
 
 /** 目標金額 ＝ 每月花費 × 300（PRD 15.3：4% 提領率，× 12 ÷ 4%） */
 export const TARGET_MULTIPLIER = 300;
+/** 每月花費的範圍，UpdateGoalDto（PATCH /goal）用同樣的 @Min、@Max */
+export const MIN_MONTHLY_SPENDING = 1000;
+export const MAX_MONTHLY_SPENDING = 333000;
 
 export interface TargetSuggestion {
-  /** 實際平均每月支出，四捨五入到 2 位 */
+  /** 實際平均每月支出，四捨五入到整數 */
   monthlySpending: Prisma.Decimal;
   /** monthlySpending × 300 */
   targetAmount: Prisma.Decimal;
@@ -254,18 +260,25 @@ export interface TargetSuggestion {
 }
 
 /**
- * 依真實支出建議目標（D-A-007、US-13）：平均每月支出 null（不滿 3 個完整月）或 ≤ 0 → null，不建議。
- * 先把每月支出四捨五入到 2 位再 × 300，前端用這個 monthlySpending 呼叫 PATCH /goal 時，算出的目標會一樣。
+ * 依真實支出建議目標（D-A-007、US-13）：平均每月支出 null（不滿 3 個完整月）→ null，不建議。
+ * 每月支出四捨五入到整數再 × 300：前端「一鍵更新」把 monthlySpending 原樣送到 PATCH /goal，
+ * 那裡只收 1,000–333,000 的整數，所以超出範圍也回 null（送了會 400）。
  */
 export function suggestTarget(
   currentTarget: Prisma.Decimal,
   monthlyExpense: Prisma.Decimal | null,
 ): TargetSuggestion | null {
-  if (monthlyExpense === null || monthlyExpense.lte(0)) return null;
+  if (monthlyExpense === null) return null;
   const monthlySpending = monthlyExpense.toDecimalPlaces(
-    2,
+    0,
     Prisma.Decimal.ROUND_HALF_UP,
   );
+  if (
+    monthlySpending.lt(MIN_MONTHLY_SPENDING) ||
+    monthlySpending.gt(MAX_MONTHLY_SPENDING)
+  ) {
+    return null;
+  }
   const targetAmount = monthlySpending.times(TARGET_MULTIPLIER);
   return {
     monthlySpending,

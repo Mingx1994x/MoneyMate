@@ -190,7 +190,7 @@ export class GoalsService {
         age,
       },
       emergencyFund: {
-        ...estimateEmergencyFund(cash.total, monthlyExpense),
+        ...estimateEmergencyFund(cash, monthlyExpense),
         availableCash: toMoneyString(cash.total),
         monthlyExpense:
           monthlyExpense === null
@@ -198,7 +198,7 @@ export class GoalsService {
             : toMoneyString(round2(monthlyExpense)),
       },
       targetSuggestion: suggestion && {
-        monthlySpending: toMoneyString(suggestion.monthlySpending),
+        monthlySpending: suggestion.monthlySpending.toNumber(),
         targetAmount: toMoneyString(suggestion.targetAmount),
         difference: toMoneyString(suggestion.difference),
       },

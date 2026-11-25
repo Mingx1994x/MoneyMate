@@ -52,6 +52,8 @@ export type FinishEstimateStatus =
 export const EmergencyFundStatus = {
   /** 算得出可撐幾個月 */
   ok: 'ok',
+  /** 沒有啟用中的現金、銀行帳戶 →「新增現金或銀行帳戶後就能算」 */
+  no_cash_account: 'no_cash_account',
   /** 最近 6 個完整月裡有記帳的月不滿 3 個 →「記帳滿 3 個月後就能算」 */
   need_data: 'need_data',
   /** 平均每月支出是 0（只記了收入）→ 無法計算 */

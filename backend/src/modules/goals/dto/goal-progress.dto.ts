@@ -124,7 +124,7 @@ export class EmergencyFundDto {
     enum: EmergencyFundStatus,
     enumName: 'EmergencyFundStatus',
     description:
-      'ok：算得出來；need_data：記帳不滿 3 個完整月；no_expense：平均每月支出是 0，無法計算',
+      'ok：算得出來；no_cash_account：沒有現金、銀行帳戶；need_data：記帳不滿 3 個完整月；no_expense：平均每月支出是 0，無法計算',
     example: 'ok',
   })
   status!: EmergencyFundStatus;
@@ -161,10 +161,14 @@ export class EmergencyFundDto {
  */
 export class TargetSuggestionDto {
   @ApiProperty({
-    description: '實際平均每月支出（四捨五入到 2 位），金額字串',
-    example: '45000.00',
+    type: 'integer',
+    minimum: 1000,
+    maximum: 333000,
+    description:
+      '實際平均每月支出，四捨五入到整數；和 PATCH /goal 的 monthlySpending 同一個格式，可以原樣送出',
+    example: 45000,
   })
-  monthlySpending!: string;
+  monthlySpending!: number;
 
   @ApiProperty({
     description: '建議目標 ＝ monthlySpending × 300，金額字串',
@@ -249,7 +253,7 @@ export class GoalProgressDto {
     type: TargetSuggestionDto,
     nullable: true,
     description:
-      '依真實支出建議的目標；有記帳的完整月不滿 3 個、或平均每月支出是 0 時是 null（不顯示建議）',
+      '依真實支出建議的目標；有記帳的完整月不滿 3 個、或平均每月支出四捨五入後不在 1,000–333,000（PATCH /goal 的範圍）時是 null（不顯示建議）',
   })
   targetSuggestion!: TargetSuggestionDto | null;
 
