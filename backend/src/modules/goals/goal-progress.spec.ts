@@ -1,7 +1,9 @@
 import { Prisma } from '../../prisma/index.js';
 import {
+  addMonths,
   averageMonthlySaving,
   buildMilestones,
+  estimateFinish,
   goalPercent,
   recentCompleteMonths,
 } from './goal-progress.js';
@@ -202,5 +204,103 @@ describe('averageMonthlySaving：每月平均儲蓄（PRD 15.7）', () => {
 
   it('空陣列 → null', () => {
     expect(averageMonthlySaving([])).toBeNull();
+  });
+});
+
+describe('addMonths', () => {
+  it('同一年內、跨年、剛好 12 個月', () => {
+    expect(addMonths('2026-11', 1)).toBe('2026-12');
+    expect(addMonths('2026-11', 3)).toBe('2027-02');
+    expect(addMonths('2026-12', 12)).toBe('2027-12');
+    expect(addMonths('2026-01', 600)).toBe('2076-01');
+  });
+});
+
+describe('estimateFinish：推算達成日（PRD 15.6、D-A-004）', () => {
+  const TODAY = '2026-11-22';
+  const est = (target: number, current: number, saving: number | null) =>
+    estimateFinish(
+      D(target),
+      D(current),
+      saving === null ? null : D(saving),
+      TODAY,
+    );
+
+  it('目標 1,200 萬、目前 0、每月存 4 萬 → 300 個月，2051-11', () => {
+    expect(est(12000000, 0, 40000)).toEqual({
+      status: 'ok',
+      monthsLeft: 300,
+      finishMonth: '2051-11',
+    });
+  });
+
+  it('除不盡時無條件進位：還差 10 萬、每月 3 萬 → 4 個月（不是 3.33）', () => {
+    expect(est(100000, 0, 30000)).toEqual({
+      status: 'ok',
+      monthsLeft: 4,
+      finishMonth: '2027-03',
+    });
+  });
+
+  it('只差一點點也是 1 個月，預計下個月達成', () => {
+    expect(est(100000, 99999.99, 30000)).toMatchObject({
+      monthsLeft: 1,
+      finishMonth: '2026-12',
+    });
+  });
+
+  it('目前是負的（信用卡欠款）也照算：還差 11 萬、每月 1 萬 → 11 個月', () => {
+    expect(est(100000, -10000, 10000)).toMatchObject({ monthsLeft: 11 });
+  });
+
+  it('目前 ≥ 目標 → achieved，就算沒有儲蓄資料', () => {
+    const none = { monthsLeft: null, finishMonth: null };
+    expect(est(100000, 100000, null)).toEqual({ status: 'achieved', ...none });
+    expect(est(100000, 200000, -5000)).toEqual({
+      status: 'achieved',
+      ...none,
+    });
+  });
+
+  it('沒有每月儲蓄（記帳不滿 3 個月也沒自估值）→ need_saving，不當成 0', () => {
+    expect(est(100000, 0, null)).toEqual({
+      status: 'need_saving',
+      monthsLeft: null,
+      finishMonth: null,
+    });
+  });
+
+  it('每月儲蓄 ≤ 0 → unreachable', () => {
+    expect(est(100000, 0, 0).status).toBe('unreachable');
+    expect(est(100000, 0, -30000).status).toBe('unreachable');
+  });
+
+  it('剛好 600 個月還算 ok；601 個月 → over_50_years', () => {
+    expect(est(600000, 0, 1000)).toMatchObject({
+      status: 'ok',
+      monthsLeft: 600,
+      finishMonth: '2076-11',
+    });
+    expect(est(601000, 0, 1000)).toEqual({
+      status: 'over_50_years',
+      monthsLeft: null,
+      finishMonth: null,
+    });
+  });
+
+  it('平均儲蓄有很多位小數時先四捨五入到 2 位再算：每月 30,000 ÷ 3 ＝ 10,000 → 剛好 10 個月', () => {
+    expect(
+      estimateFinish(D(100000), D(0), D(30000).div(3), TODAY).monthsLeft,
+    ).toBe(10);
+  });
+
+  it('每月 10 萬 ÷ 3 → 33,333.33，存 3 個月是 99,999.99 還不到 10 萬 → 4 個月', () => {
+    expect(
+      estimateFinish(D(100000), D(0), D(100000).div(3), TODAY).monthsLeft,
+    ).toBe(4);
+  });
+
+  it('每月儲蓄四捨五入後是 0（例：0.004 元）→ unreachable', () => {
+    expect(est(100000, 0, 0.004).status).toBe('unreachable');
   });
 });

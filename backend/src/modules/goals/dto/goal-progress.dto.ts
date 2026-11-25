@@ -1,5 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { FireAgeStatus, SavingSource } from './fire.enum.js';
+import {
+  FinishEstimateStatus,
+  FireAgeStatus,
+  SavingSource,
+} from './fire.enum.js';
 
 /** 里程碑（PRD 15.4）：10 萬、100 萬、目標 ÷ 2，刪掉 ≥ 目標的站，最後加上終點 */
 export class MilestoneDto {
@@ -69,6 +73,47 @@ export class FireAssumptionsDto {
   age!: number | null;
 }
 
+/** 推算達成日（PRD 15.6、D-A-004），前端固定標示「依目前儲蓄速度估算，未計入投資報酬」 */
+export class FinishEstimateDto {
+  @ApiProperty({
+    enum: FinishEstimateStatus,
+    enumName: 'FinishEstimateStatus',
+    description:
+      'ok：算得出來；achieved：已達成；need_saving：資料不足，請填每月收支自估；unreachable：以目前收支無法達成；over_50_years：以目前速度超過 50 年',
+    example: 'ok',
+  })
+  status!: FinishEstimateStatus;
+
+  @ApiProperty({
+    type: 'integer',
+    nullable: true,
+    minimum: 1,
+    maximum: 600,
+    description:
+      '還要幾個月 ＝（目標 − 目前）÷ 每月儲蓄，無條件進位；status 不是 ok 時是 null',
+    example: 300,
+  })
+  monthsLeft!: number | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      '預計達成的月份（YYYY-MM）＝ 台北的本月 ＋ monthsLeft；status 不是 ok 時是 null',
+    example: '2051-11',
+  })
+  finishMonth!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      '推算用的每月儲蓄，金額字串，來源同 fireAssumptions.savingSource；沒有實際記帳也沒有自估值時是 null',
+    example: '15000.00',
+  })
+  monthlySaving!: string | null;
+}
+
 /** 目標進度＋財富自由年齡（GET /goal/progress、POST /onboarding 的回應） */
 export class GoalProgressDto {
   @ApiProperty({ description: '目標金額，金額字串', example: '12000000.00' })
@@ -124,6 +169,9 @@ export class GoalProgressDto {
     example: 'ok',
   })
   fireAgeStatus!: FireAgeStatus;
+
+  @ApiProperty({ type: FinishEstimateDto })
+  finishEstimate!: FinishEstimateDto;
 
   @ApiProperty({ type: FireAssumptionsDto })
   fireAssumptions!: FireAssumptionsDto;

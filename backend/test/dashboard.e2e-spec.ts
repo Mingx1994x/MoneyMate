@@ -525,6 +525,12 @@ describe('Dashboard API（e2e）', () => {
       },
       fireAge: null,
       fireAgeStatus: 'need_birth_year',
+      finishEstimate: {
+        status: 'need_saving',
+        monthsLeft: null,
+        finishMonth: null,
+        monthlySaving: null,
+      },
       fireAssumptions: {
         annualSpending: '480000.00',
         annualSaving: null,

@@ -173,6 +173,12 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
         },
         fireAge: null,
         fireAgeStatus: 'need_birth_year',
+        finishEstimate: {
+          status: 'need_saving',
+          monthsLeft: null,
+          finishMonth: null,
+          monthlySaving: null,
+        },
         fireAssumptions: {
           annualSpending: '480000.00',
           annualSaving: null,
@@ -248,6 +254,11 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
         nextMilestone: null,
         fireAge: null,
         fireAgeStatus: 'achieved',
+        finishEstimate: {
+          status: 'achieved',
+          monthsLeft: null,
+          finishMonth: null,
+        },
       });
       expect(
         bodyOf(res).milestones.every((m: { reached: boolean }) => m.reached),
@@ -287,6 +298,7 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
         fireAge: null,
         fireAgeStatus: 'need_saving',
         fireAssumptions: { annualSaving: null, savingSource: null, age: 36 },
+        finishEstimate: { status: 'need_saving', monthlySaving: null },
       });
     });
 
@@ -301,6 +313,12 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
       expect(res.body).toMatchObject({
         fireAge: null,
         fireAgeStatus: 'unreachable',
+        finishEstimate: {
+          status: 'unreachable',
+          monthsLeft: null,
+          finishMonth: null,
+          monthlySaving: '-10000.00',
+        },
       });
     });
 
@@ -328,6 +346,31 @@ describe('目標進度 GET /goal/progress、送出問卷 POST /onboarding（e2e�
         expect(bodyOf(res).fireAssumptions).toMatchObject({
           annualSaving: '600000.00',
           savingSource: 'actual',
+        });
+      });
+
+      it('推算達成日用同一個實際平均：還差 985 萬、每月 5 萬 → 197 個月，2043-04（D-A-004）', async () => {
+        await recordMonth(bank, '2026-10', '100000.00', '50000.00');
+        await recordMonth(bank, '2026-09', '100000.00', '50000.00');
+        await recordMonth(bank, '2026-08', '100000.00', '50000.00');
+
+        const res = await progress().expect(200);
+        // 目標 1,500 萬；目前 500 萬＋三個月各存 5 萬 ＝ 515 萬
+        expect(bodyOf(res).finishEstimate).toEqual({
+          status: 'ok',
+          monthsLeft: 197,
+          finishMonth: '2043-04',
+          monthlySaving: '50000.00',
+        });
+      });
+
+      it('自估每月 1 萬、還差 1,000 萬 → 1,000 個月 > 600 → over_50_years', async () => {
+        const res = await progress().expect(200);
+        expect(bodyOf(res).finishEstimate).toEqual({
+          status: 'over_50_years',
+          monthsLeft: null,
+          finishMonth: null,
+          monthlySaving: '10000.00',
         });
       });
 
