@@ -130,7 +130,7 @@ const todayBills = computed(() => [
               <p class="num mt-1 text-2xl font-bold text-amber-700">差 {{ formatMoney(data.fundingGap) }}</p>
             </div>
             <p v-if="!unavailable('bills') && data.hasCashAccounts" class="mt-2 text-xs text-slate-500">
-              可用現金（現金＋銀行）{{ formatMoney(data.availableCash) }}；不含投資、信用卡與估計帳戶
+              可用現金（現金＋銀行）{{ formatMoney(data.availableCash) }}；不含投資與信用卡
             </p>
           </section>
         </div>
