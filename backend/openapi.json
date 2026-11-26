@@ -2267,6 +2267,100 @@
           "dashboard"
         ]
       }
+    },
+    "/api/v1/dashboard/layout": {
+      "get": {
+        "description": "可以隱藏的區塊：第一屏 today-bills、cash-gap；報表 monthly-summary、net-worth、upcoming-bills、loans、trend。一句下一步、快速記帳固定顯示，沒有代碼（D-A-008）。\n\n只存「隱藏」的清單：之後新增的區塊不在清單裡，預設就會顯示。隱藏只影響畫面，/dashboard/summary 照常計算所有區塊（nextStep 也照常判斷逾期帳單）。\n\nhiddenBlocks 一律去重、依上面列的固定順序回傳，不代表畫面上的順序。\n\ntoken 對應的使用者不存在時（例如資料庫被重設）回 401 AUTH_UNAUTHENTICATED，和 /auth/me 相同。\n\n還沒設定過時回 []（全部顯示）。資料庫裡已經不存在的舊代碼會被過濾掉。",
+        "operationId": "DashboardLayout_getLayout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLayoutResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "取得 Dashboard 隱藏的區塊",
+        "tags": [
+          "dashboard"
+        ]
+      },
+      "put": {
+        "description": "可以隱藏的區塊：第一屏 today-bills、cash-gap；報表 monthly-summary、net-worth、upcoming-bills、loans、trend。一句下一步、快速記帳固定顯示，沒有代碼（D-A-008）。\n\n只存「隱藏」的清單：之後新增的區塊不在清單裡，預設就會顯示。隱藏只影響畫面，/dashboard/summary 照常計算所有區塊（nextStep 也照常判斷逾期帳單）。\n\nhiddenBlocks 一律去重、依上面列的固定順序回傳，不代表畫面上的順序。\n\ntoken 對應的使用者不存在時（例如資料庫被重設）回 401 AUTH_UNAUTHENTICATED，和 /auth/me 相同。\n\n送整份清單、整份取代，[] 代表全部顯示。順序不影響結果，重複的代碼會去重；回傳整理後存進資料庫的清單。\n\n不認得的代碼、不是陣列、超過 20 個元素回 VALIDATION_FAILED（field: hiddenBlocks）。去重後 5 個報表區塊全部隱藏時回 DASHBOARD_REPORT_REQUIRED（field: hiddenBlocks），設定不變。",
+        "operationId": "DashboardLayout_updateLayout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDashboardLayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLayoutResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位\n\n`DASHBOARD_REPORT_REQUIRED`：報表至少要留一個區塊",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新 Dashboard 隱藏的區塊（整份取代）",
+        "tags": [
+          "dashboard"
+        ]
+      }
     }
   },
   "info": {
@@ -2398,6 +2492,7 @@
           "TRANSACTION_FIELDS_MISMATCH",
           "TRANSACTION_NOT_FOUND",
           "TRANSFER_SAME_ACCOUNT",
+          "DASHBOARD_REPORT_REQUIRED",
           "BILL_ALREADY_PAID",
           "BILL_NOT_FOUND",
           "BILL_NOT_PAID",
@@ -4472,6 +4567,58 @@
           "goal",
           "nextStep",
           "unavailable"
+        ]
+      },
+      "DashboardBlock": {
+        "type": "string",
+        "enum": [
+          "today-bills",
+          "cash-gap",
+          "monthly-summary",
+          "net-worth",
+          "upcoming-bills",
+          "loans",
+          "trend"
+        ],
+        "description": "隱藏的區塊代碼，已去重、依固定順序排列（不代表畫面上的順序）；[] 代表全部顯示"
+      },
+      "DashboardLayoutResponseDto": {
+        "type": "object",
+        "properties": {
+          "hiddenBlocks": {
+            "type": "array",
+            "description": "隱藏的區塊代碼，已去重、依固定順序排列（不代表畫面上的順序）；[] 代表全部顯示",
+            "example": [
+              "loans",
+              "trend"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DashboardBlock"
+            }
+          }
+        },
+        "required": [
+          "hiddenBlocks"
+        ]
+      },
+      "UpdateDashboardLayoutDto": {
+        "type": "object",
+        "properties": {
+          "hiddenBlocks": {
+            "type": "array",
+            "maxItems": 20,
+            "description": "要隱藏的區塊代碼，整份取代；[] 代表全部顯示。順序不影響結果、重複的代碼會去重。報表區塊（monthly-summary、net-worth、upcoming-bills、loans、trend）全部隱藏時回 DASHBOARD_REPORT_REQUIRED",
+            "example": [
+              "loans",
+              "trend"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DashboardBlock"
+            }
+          }
+        },
+        "required": [
+          "hiddenBlocks"
         ]
       }
     }

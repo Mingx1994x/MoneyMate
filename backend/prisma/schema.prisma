@@ -18,6 +18,8 @@ model User {
   email        String        @unique
   passwordHash String        @map("password_hash")
   displayName  String?       @map("display_name")
+  // D-A-008：Dashboard 隱藏的區塊代碼（值見 dashboard-block.enum.ts），空陣列＝全部顯示；只由 dashboard layout 寫入
+  dashboardHiddenBlocks String[] @default([]) @map("dashboard_hidden_blocks")
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   accounts     Account[]

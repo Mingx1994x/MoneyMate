@@ -81,6 +81,12 @@ export const ERROR_CODES = {
   TRANSACTION_NOT_FOUND: { status: 404, message: '找不到這筆交易' },
   TRANSFER_SAME_ACCOUNT: { status: 400, message: '不能轉帳給同一個帳戶' },
 
+  // ── dashboard layout（E）
+  DASHBOARD_REPORT_REQUIRED: {
+    status: 400,
+    message: '報表至少要留一個區塊',
+  },
+
   // ── bills（E）
   BILL_ALREADY_PAID: { status: 409, message: '這張帳單已經繳過了' },
   BILL_NOT_FOUND: { status: 404, message: '找不到這張帳單' },
