@@ -92,6 +92,12 @@
 | `TRANSACTION_NOT_FOUND`       | 404  | 找不到這筆交易                   |                                                                    | `[]`          | `test/transactions.e2e-spec.ts` |
 | `TRANSFER_SAME_ACCOUNT`       | 400  | 不能轉帳給同一個帳戶             |                                                                    | `toAccountId` | `test/transactions.e2e-spec.ts` |
 
+## dashboard layout（E）
+
+| 代碼                        | HTTP | 訊息                 | 何時發生                                                                                                                        | details.field  | 測試位置                            |
+| --------------------------- | ---- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------- | ----------------------------------- |
+| `DASHBOARD_REPORT_REQUIRED` | 400  | 報表至少要留一個區塊 | `PUT /dashboard/layout` 的 `hiddenBlocks` 去重後包含全部 5 個報表區塊（`monthly-summary`、`net-worth`、`upcoming-bills`、`loans`、`trend`，D-A-008） | `hiddenBlocks` | `test/dashboard-layout.e2e-spec.ts` |
+
 ## bills（E）
 
 | 代碼                     | HTTP | 訊息                               | 何時發生                                                                           | details.field | 測試位置                                                                                     |
