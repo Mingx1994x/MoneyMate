@@ -78,6 +78,9 @@ export function useMemory() {
     setLastAccountId: (id: string) => write('last-account', id),
     lastCategoryId: (type: string) => read(`last-category-${type}`),
     setLastCategoryId: (type: string, id: string) => write(`last-category-${type}`, id),
+    /** 目標頁的財富自由年齡卡片是否收合（A） */
+    goalFireCollapsed: () => read('goal-fire-collapsed') === '1',
+    setGoalFireCollapsed: (v: boolean) => write('goal-fire-collapsed', v ? '1' : '0'),
     categoryUsage,
     bumpCategory(id: string) {
       const u = categoryUsage()

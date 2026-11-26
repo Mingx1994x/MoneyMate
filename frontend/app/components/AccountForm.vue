@@ -10,7 +10,12 @@ import { ACCOUNT_TYPE_ICON, ACCOUNT_TYPE_LABEL } from '~/utils/labels'
 
 type AccountFormValues = Omit<CreateAccountBody, 'deductFromEstimate'>
 
-const props = defineProps<{ initial?: Account | null; save: (v: AccountFormValues) => Promise<void> }>()
+const props = defineProps<{
+  initial?: Account | null
+  /** 新增時預選的類型（例如快速記帳引導「新增信用卡帳戶」） */
+  defaultType?: AccountType
+  save: (v: AccountFormValues) => Promise<void>
+}>()
 const emit = defineEmits<{ cancel: [] }>()
 
 const blank = () => ({ name: '', accountType: 'bank' as AccountType, openingBalance: '', note: '' })
@@ -23,6 +28,8 @@ const form = props.initial
       note: props.initial.note ?? '',
     })
   : draft.values
+// 從引導按鈕進來時，類型以引導指定的為準（蓋過草稿）
+if (!props.initial && props.defaultType) form.value.accountType = props.defaultType
 
 const errors = ref<Record<string, string | undefined>>({})
 const submitError = ref<string | null>(null)
