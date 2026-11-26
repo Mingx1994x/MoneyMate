@@ -544,6 +544,8 @@ export interface paths {
          *     年儲蓄：最近 6 個完整月（不含本月）裡有記帳（收入或支出不是 0）的月有 3 個以上時，用那些月的平均（收入 − 支出）× 12（savingSource: actual），沒記帳的月不算進平均；否則用 estMonthlySaving × 12（estimate）；都沒有時 fireAgeStatus 是 need_saving。
          *
          *     狀態的判斷順序：achieved → need_birth_year → need_saving → unreachable → over_100 → ok。已達成（現在資產 ≥ FIRE 目標）不需要出生年和儲蓄，所以最先判斷，沒填出生年也是 achieved（PRD 15.7）；其他狀態 fireAge 是 null。
+         *
+         *     推算達成日 finishEstimate（PRD 15.6）：每月儲蓄和上面的年儲蓄同一個來源（÷ 12 前的值）；所需月數 ＝（目標 − 目前）÷ 每月儲蓄，無條件進位，預計達成月 ＝ 台北的本月 ＋ 所需月數。判斷順序：achieved → need_saving → unreachable（每月儲蓄 ≤ 0）→ over_50_years（> 600 個月）→ ok；不是 ok 時 monthsLeft、finishMonth 是 null。
          */
         get: operations["Goals_progress"];
         put?: never;
@@ -1417,6 +1419,33 @@ export interface components {
         /** @enum {string} */
         FireAgeStatus: "ok" | "achieved" | "need_birth_year" | "need_saving" | "unreachable" | "over_100";
         /**
+         * @description ok：算得出來；achieved：已達成；need_saving：資料不足，請填每月收支自估；unreachable：以目前收支無法達成；over_50_years：以目前速度超過 50 年
+         * @enum {string}
+         */
+        FinishEstimateStatus: "ok" | "achieved" | "need_saving" | "unreachable" | "over_50_years";
+        FinishEstimateDto: {
+            /**
+             * @description ok：算得出來；achieved：已達成；need_saving：資料不足，請填每月收支自估；unreachable：以目前收支無法達成；over_50_years：以目前速度超過 50 年
+             * @example ok
+             */
+            status: components["schemas"]["FinishEstimateStatus"];
+            /**
+             * @description 還要幾個月 ＝（目標 − 目前）÷ 每月儲蓄，無條件進位；status 不是 ok 時是 null
+             * @example 300
+             */
+            monthsLeft: number | null;
+            /**
+             * @description 預計達成的月份（YYYY-MM）＝ 台北的本月 ＋ monthsLeft；status 不是 ok 時是 null
+             * @example 2051-11
+             */
+            finishMonth: string | null;
+            /**
+             * @description 推算用的每月儲蓄，金額字串，來源同 fireAssumptions.savingSource；沒有實際記帳也沒有自估值時是 null
+             * @example 15000.00
+             */
+            monthlySaving: string | null;
+        };
+        /**
          * @description 年儲蓄的來源；annualSaving 是 null 時也是 null
          * @enum {string}
          */
@@ -1447,6 +1476,50 @@ export interface components {
              * @example 36
              */
             age: number | null;
+        };
+        /**
+         * @description ok：算得出來；no_cash_account：沒有現金、銀行帳戶；need_data：記帳不滿 3 個完整月；no_expense：平均每月支出是 0，無法計算
+         * @enum {string}
+         */
+        EmergencyFundStatus: "ok" | "no_cash_account" | "need_data" | "no_expense";
+        EmergencyFundDto: {
+            /**
+             * @description ok：算得出來；no_cash_account：沒有現金、銀行帳戶；need_data：記帳不滿 3 個完整月；no_expense：平均每月支出是 0，無法計算
+             * @example ok
+             */
+            status: components["schemas"]["EmergencyFundStatus"];
+            /**
+             * @description 可撐幾個月 ＝ availableCash ÷ monthlyExpense，小數一位（無條件捨去）；可用現金 ≤ 0 時 0；status 不是 ok 時是 null
+             * @example 4.8
+             */
+            months: number | null;
+            /**
+             * @description 可用現金（PRD 15.1）＝ 啟用中現金＋銀行帳戶的目前餘額，不含投資、信用卡，可為負，金額字串
+             * @example 240000.00
+             */
+            availableCash: string;
+            /**
+             * @description 平均每月支出，金額字串；有記帳的完整月不滿 3 個時是 null
+             * @example 50000.00
+             */
+            monthlyExpense: string | null;
+        };
+        TargetSuggestionDto: {
+            /**
+             * @description 實際平均每月支出，四捨五入到整數；和 PATCH /goal 的 monthlySpending 同一個格式，可以原樣送出
+             * @example 45000
+             */
+            monthlySpending: number;
+            /**
+             * @description 建議目標 ＝ monthlySpending × 300，金額字串
+             * @example 13500000.00
+             */
+            targetAmount: string;
+            /**
+             * @description 和目前目標的差距 ＝ 建議目標 − 目前目標；正數是建議調高，負數是建議調低，0 是不用調，金額字串
+             * @example 1500000.00
+             */
+            difference: string;
         };
         GoalProgressDto: {
             /**
@@ -1485,7 +1558,11 @@ export interface components {
             fireAge: number | null;
             /** @example ok */
             fireAgeStatus: components["schemas"]["FireAgeStatus"];
+            finishEstimate: components["schemas"]["FinishEstimateDto"];
             fireAssumptions: components["schemas"]["FireAssumptionsDto"];
+            emergencyFund: components["schemas"]["EmergencyFundDto"];
+            /** @description 依真實支出建議的目標；有記帳的完整月不滿 3 個、或平均每月支出四捨五入後不在 1,000–333,000（PATCH /goal 的範圍）時是 null（不顯示建議） */
+            targetSuggestion: components["schemas"]["TargetSuggestionDto"] | null;
             /**
              * @description active 貸款的未償餘額合計，金額字串；> 0 時前端顯示「目前資產未扣除貸款 X 元」
              * @example 0.00
