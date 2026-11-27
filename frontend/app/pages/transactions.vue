@@ -3,6 +3,7 @@
  * 交易列表頁 —— PRD §20.1、§20.4：由 C 負責（篩選邏輯和 C 的 API 綁最緊），A 審查。
  * 以 B 的暫時版本為基礎；記帳表單（TransactionForm）是 B 的共用元件。
  * - 篩選：日期、類型、分類、帳戶（FR-11、AC-07）；分頁 20 筆
+ * - 版面（D-A-010）：類型用分頁標籤；分類、帳戶放上方；起日、迄日收進「進階篩選」，有日期條件時按鈕上有數字、收合時顯示日期摘要
  * - 篩選條件與頁碼放在網址上，重新整理、分享連結都保留
  * - 帳單產生的交易隱藏修改／刪除（§16.5）；轉出或轉入帳戶已停用的交易也隱藏（§15.11、AC-26）
  */
@@ -94,6 +95,44 @@ function clearFilters() {
   filters.value = { ...EMPTY_FILTERS }
 }
 
+// ---------- 類型分頁標籤（D-A-010；繳卡費也是轉帳） ----------
+const TYPE_TABS: { value: '' | TransactionType; label: string }[] = [
+  { value: '', label: '全部' },
+  { value: 'income', label: '收入' },
+  { value: 'expense', label: '支出' },
+  { value: 'transfer', label: '轉帳' },
+]
+/** 切換類型時清空分類：收入、支出的分類不同，轉帳沒有分類 */
+function selectType(v: '' | TransactionType) {
+  if (filters.value.transactionType === v) return
+  filters.value.transactionType = v
+  filters.value.categoryId = ''
+}
+const tabEls: (HTMLButtonElement | null)[] = []
+/** 鍵盤操作（WAI-ARIA tabs）：左右鍵切換、Home／End 到頭尾 */
+function onTabKeydown(e: KeyboardEvent, i: number) {
+  const last = TYPE_TABS.length - 1
+  const keyMap: Record<string, number> = { ArrowRight: i === last ? 0 : i + 1, ArrowLeft: i === 0 ? last : i - 1, Home: 0, End: last }
+  const next = keyMap[e.key]
+  const tab = next === undefined ? undefined : TYPE_TABS[next]
+  if (next === undefined || !tab) return
+  e.preventDefault()
+  selectType(tab.value)
+  tabEls[next]?.focus()
+}
+
+// ---------- 進階篩選（起日、迄日） ----------
+const dateFilterCount = computed(() => [filters.value.dateFrom, filters.value.dateTo].filter(Boolean).length)
+// 網址上已經有日期條件時，一進來就展開
+const advancedOpen = ref(dateFilterCount.value > 0)
+// 日期有錯時一定展開，錯誤訊息才看得到
+const showAdvanced = computed(() => advancedOpen.value || !!dateRangeError.value)
+const dateSummary = computed(() => `${filters.value.dateFrom ? formatDate(filters.value.dateFrom) : '不限'} ～ ${filters.value.dateTo ? formatDate(filters.value.dateTo) : '不限'}`)
+function clearDates() {
+  filters.value.dateFrom = ''
+  filters.value.dateTo = ''
+}
+
 const editing = ref<Transaction | null>(null)
 const editOpen = computed({ get: () => editing.value !== null, set: (v) => !v && (editing.value = null) })
 
@@ -122,38 +161,76 @@ function amountClass(t: Transaction) {
       </template>
     </PageHeader>
 
-    <!-- 篩選 -->
-    <div class="card mb-4 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
-      <AppField label="起日" for="f-from"><input id="f-from" v-model="filters.dateFrom" type="date" class="field-input"></AppField>
-      <AppField label="迄日" for="f-to" :error="dateRangeError">
-        <input id="f-to" v-model="filters.dateTo" type="date" class="field-input" :min="filters.dateFrom || undefined" :aria-invalid="!!dateRangeError || undefined">
-      </AppField>
-      <AppField label="類型" for="f-type">
-        <select id="f-type" v-model="filters.transactionType" class="field-input" @change="filters.categoryId = ''">
-          <option value="">全部</option>
-          <option value="income">收入</option>
-          <option value="expense">支出</option>
-          <option value="transfer">轉帳</option>
-        </select>
-      </AppField>
-      <AppField label="分類" for="f-cat">
-        <select id="f-cat" v-model="filters.categoryId" class="field-input" :disabled="filters.transactionType === 'transfer'">
-          <option value="">全部</option>
-          <option v-for="c in filterCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
-      </AppField>
-      <AppField label="帳戶" for="f-acc">
-        <select id="f-acc" v-model="filters.accountId" class="field-input">
-          <option value="">全部</option>
-          <option v-for="a in accounts.data.value ?? []" :key="a.id" :value="a.id">{{ a.name }}</option>
-        </select>
-      </AppField>
-      <div v-if="hasFilter" class="sm:col-span-2 lg:col-span-5">
-        <button class="text-sm font-semibold text-brand-700 hover:underline" @click="clearFilters">清除篩選</button>
+    <!-- 篩選（D-A-010）：分類、帳戶、進階篩選在上方，類型是分頁標籤 -->
+    <div class="card mb-4 p-4 pb-0">
+      <div class="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <AppField label="分類" for="f-cat">
+          <!-- 轉帳沒有分類：提示寫在選單裡，不另外加一行字，三個欄位才會對齊 -->
+          <select id="f-cat" v-model="filters.categoryId" class="field-input" :disabled="filters.transactionType === 'transfer'">
+            <option value="">{{ filters.transactionType === 'transfer' ? '轉帳沒有分類' : '全部' }}</option>
+            <option v-for="c in filterCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+        </AppField>
+        <AppField label="帳戶" for="f-acc">
+          <select id="f-acc" v-model="filters.accountId" class="field-input">
+            <option value="">全部</option>
+            <option v-for="a in accounts.data.value ?? []" :key="a.id" :value="a.id">{{ a.name }}</option>
+          </select>
+        </AppField>
+        <!-- 清除篩選放在這裡，不放在分頁標籤那排：出現時分頁不會跳動，手機上也不會被右下角的「＋」蓋住 -->
+        <div class="flex items-center gap-2">
+          <AppButton
+            :variant="dateFilterCount > 0 ? 'soft' : 'secondary'"
+            :aria-expanded="showAdvanced"
+            aria-controls="advanced-filters"
+            @click="advancedOpen = !showAdvanced"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 5h18l-7 8v6l-4-2v-4z" />
+            </svg>
+            進階篩選
+            <span v-if="dateFilterCount > 0" class="num rounded-full bg-brand-700 px-1.5 text-xs leading-5 text-white" :aria-label="`已設定 ${dateFilterCount} 個日期條件`">{{ dateFilterCount }}</span>
+          </AppButton>
+          <AppButton v-if="hasFilter" variant="ghost" class="text-brand-700" @click="clearFilters">清除篩選</AppButton>
+        </div>
+      </div>
+
+      <div v-if="showAdvanced" id="advanced-filters" class="mt-3 grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+        <AppField label="起日" for="f-from"><input id="f-from" v-model="filters.dateFrom" type="date" class="field-input"></AppField>
+        <AppField label="迄日" for="f-to" :error="dateRangeError">
+          <input id="f-to" v-model="filters.dateTo" type="date" class="field-input" :min="filters.dateFrom || undefined" :aria-invalid="!!dateRangeError || undefined">
+        </AppField>
+      </div>
+      <!-- 收合時仍看得出有日期條件 -->
+      <p v-else-if="dateFilterCount > 0" class="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+        <span>日期：<span class="num">{{ dateSummary }}</span></span>
+        <button type="button" class="font-semibold text-brand-700 hover:underline" @click="clearDates">清除日期</button>
+      </p>
+
+      <div class="mt-4 border-b border-slate-200">
+        <div role="tablist" aria-label="交易類型" class="flex">
+          <button
+            v-for="(tab, i) in TYPE_TABS"
+            :id="`tx-tab-${tab.value || 'all'}`"
+            :key="tab.value"
+            :ref="(el) => { tabEls[i] = el as HTMLButtonElement | null }"
+            type="button"
+            role="tab"
+            :aria-selected="filters.transactionType === tab.value"
+            :tabindex="filters.transactionType === tab.value ? 0 : -1"
+            aria-controls="tx-list"
+            class="-mb-px flex-1 border-b-2 px-2 pt-1 pb-2.5 text-sm font-semibold transition"
+            :class="filters.transactionType === tab.value ? 'border-brand-700 text-brand-800' : 'border-transparent text-slate-500 hover:text-slate-700'"
+            @click="selectType(tab.value)"
+            @keydown="onTabKeydown($event, i)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
       </div>
     </div>
 
-    <div class="card overflow-hidden">
+    <div id="tx-list" role="tabpanel" :aria-labelledby="`tx-tab-${filters.transactionType || 'all'}`" class="card overflow-hidden">
       <StateView
         :loading="result.loading.value"
         :error="result.error.value"
