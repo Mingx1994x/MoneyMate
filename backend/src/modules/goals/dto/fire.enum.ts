@@ -26,3 +26,39 @@ export const SavingSource = {
 } as const;
 
 export type SavingSource = (typeof SavingSource)[keyof typeof SavingSource];
+
+/**
+ * 推算達成日的狀態（PRD 15.6）。ok 時 monthsLeft、finishMonth 有值，其他狀態都是 null，前端依狀態顯示一句提示。
+ */
+export const FinishEstimateStatus = {
+  /** 算得出還要幾個月 */
+  ok: 'ok',
+  /** 目前金額已經 ≥ 目標金額 */
+  achieved: 'achieved',
+  /** 記帳不滿 3 個完整月，而且沒有自估的每月儲蓄 →「資料不足，請填每月收支自估」 */
+  need_saving: 'need_saving',
+  /** 每月儲蓄 ≤ 0 →「以目前收支無法達成」 */
+  unreachable: 'unreachable',
+  /** 超過 600 個月 →「以目前速度超過 50 年」 */
+  over_50_years: 'over_50_years',
+} as const;
+
+export type FinishEstimateStatus =
+  (typeof FinishEstimateStatus)[keyof typeof FinishEstimateStatus];
+
+/**
+ * 緊急預備金夠幾個月的狀態（D-A-006）。ok 時 months 有值，其他狀態 months 是 null，前端依狀態顯示一句提示。
+ */
+export const EmergencyFundStatus = {
+  /** 算得出可撐幾個月 */
+  ok: 'ok',
+  /** 沒有啟用中的現金、銀行帳戶 →「新增現金或銀行帳戶後就能算」 */
+  no_cash_account: 'no_cash_account',
+  /** 最近 6 個完整月裡有記帳的月不滿 3 個 →「記帳滿 3 個月後就能算」 */
+  need_data: 'need_data',
+  /** 平均每月支出是 0（只記了收入）→ 無法計算 */
+  no_expense: 'no_expense',
+} as const;
+
+export type EmergencyFundStatus =
+  (typeof EmergencyFundStatus)[keyof typeof EmergencyFundStatus];

@@ -5,7 +5,11 @@ defineProps<{ title: string; description?: string }>()
 <template>
   <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
     <div>
-      <h1 class="text-2xl font-bold tracking-tight text-slate-900">{{ title }}</h1>
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-slate-900">{{ title }}</h1>
+        <!-- 標題旁的小按鈕（例如目標頁的收合） -->
+        <slot name="title-extra" />
+      </div>
       <p v-if="description" class="mt-1 text-sm text-slate-500">{{ description }}</p>
     </div>
     <div class="flex gap-2"><slot name="actions" /></div>

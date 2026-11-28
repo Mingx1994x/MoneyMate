@@ -16,16 +16,21 @@ import type { GoalDto } from './dto/goal.dto.js';
 import type { UpdateGoalDto } from './dto/update-goal.dto.js';
 import { calculateFireAge } from './fire-age.js';
 import {
+  averageMonthlyExpense,
   averageMonthlySaving,
   buildMilestones,
+  estimateEmergencyFund,
+  estimateFinish,
   goalPercent,
   MAX_SAVING_MONTHS,
   recentCompleteMonths,
+  suggestTarget,
+  TARGET_MULTIPLIER,
   type Milestone,
 } from './goal-progress.js';
 
-/** 目標金額 ＝ 每月花費 × 300（PRD 15.3：4% 提領率，× 12 ÷ 4%） */
-export const TARGET_MULTIPLIER = 300;
+// TARGET_MULTIPLIER 搬到 goal-progress.ts（建議目標的純函式也要用），這裡照舊匯出
+export { TARGET_MULTIPLIER };
 
 @Injectable()
 export class GoalsService {
@@ -103,6 +108,8 @@ export class GoalsService {
    * - 目前金額 ＝ 帳戶合計（啟用帳戶、含估計帳戶與信用卡負值、不扣貸款、不含未來交易）。
    * - 年儲蓄：最近 6 個完整月裡有記帳的月 ≥ 3 個 → 那些月的平均（收入 − 支出）× 12（actual）；
    *   否則用 estMonthlySaving × 12（estimate）；都沒有是 null。
+   * - 推算達成日（PRD 15.6）用同一個每月儲蓄，見 estimateFinish。
+   * - 緊急預備金（D-A-006）＝ 可用現金 ÷ 同一組月份的平均每月支出；建議目標（D-A-007）也用這個平均支出。
    * - 還沒完成問卷 → 回 null，由呼叫端決定：端點回 409、Dashboard 顯示問卷提示。
    */
   async getGoalProgress(
@@ -112,9 +119,10 @@ export class GoalsService {
     const goal = await this.prisma.goal.findUnique({ where: { userId } });
     if (!goal) return null;
 
-    const [current, loanSummary, ...months] = await Promise.all([
+    const [current, loanSummary, cash, ...months] = await Promise.all([
       this.finance.getAccountsTotal(userId, today),
       this.loans.getLoanSummary(userId, today),
+      this.finance.getAvailableCash(userId, today),
       ...recentCompleteMonths(today, MAX_SAVING_MONTHS).map((month) =>
         this.finance.getMonthlyTotals(userId, month, today),
       ),
@@ -146,6 +154,10 @@ export class GoalsService {
       age,
     });
 
+    const finish = estimateFinish(target, current, monthlySaving, today);
+    const monthlyExpense = averageMonthlyExpense(months);
+    const suggestion = suggestTarget(target, monthlyExpense);
+
     const remaining = target.minus(current);
     return {
       targetAmount: toMoneyString(target),
@@ -164,6 +176,11 @@ export class GoalsService {
         : null,
       fireAge: fire.status === 'ok' ? fire.age : null,
       fireAgeStatus: fire.status,
+      finishEstimate: {
+        ...finish,
+        monthlySaving:
+          monthlySaving === null ? null : toMoneyString(round2(monthlySaving)),
+      },
       fireAssumptions: {
         annualSpending: toMoneyString(annualSpending),
         annualSaving:
@@ -171,6 +188,19 @@ export class GoalsService {
         savingSource,
         currentAssets: toMoneyString(current),
         age,
+      },
+      emergencyFund: {
+        ...estimateEmergencyFund(cash, monthlyExpense),
+        availableCash: toMoneyString(cash.total),
+        monthlyExpense:
+          monthlyExpense === null
+            ? null
+            : toMoneyString(round2(monthlyExpense)),
+      },
+      targetSuggestion: suggestion && {
+        monthlySpending: suggestion.monthlySpending.toNumber(),
+        targetAmount: toMoneyString(suggestion.targetAmount),
+        difference: toMoneyString(suggestion.difference),
       },
       activeLoanTotal: toMoneyString(loanSummary.outstandingTotal),
     };
