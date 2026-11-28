@@ -24,6 +24,8 @@ type TrendMonth = {
   incomeTotal: string;
   expenseTotal: string;
 };
+const itemsOf = (res: { body: unknown }) =>
+  (res.body as { items: TrendMonth[] }).items;
 
 /**
  * 月收支趨勢圖（D-A-005、US-14）：GET /dashboard/trend?months=N
@@ -97,7 +99,10 @@ describe('Dashboard 月收支趨勢（e2e）', () => {
   it('沒有交易：預設 6 個完整月（2026-05～2026-10），收支都是 0', async () => {
     const months = ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
     const res = await trend().expect(200);
-    expect(res.body).toEqual([...months, '2026-10'].map(zero));
+    // 不分頁的列表也包一層 items（README「回應格式」）
+    expect(res.body).toEqual({
+      items: [...months, '2026-10'].map(zero),
+    });
   });
 
   it('依月份加總收入、支出；月初、月底都算進該月；範圍外與本月不算', async () => {
@@ -111,7 +116,7 @@ describe('Dashboard 月收支趨勢（e2e）', () => {
     await income('66666', '2026-12-25'); // 未來：不算
 
     const res = await trend().expect(200);
-    expect(res.body).toEqual([
+    expect(itemsOf(res)).toEqual([
       { month: '2026-05', incomeTotal: '50000.00', expenseTotal: '1200.50' },
       zero('2026-06'),
       zero('2026-07'),
@@ -173,7 +178,7 @@ describe('Dashboard 月收支趨勢（e2e）', () => {
     });
 
     const res = await trend('?months=1').expect(200);
-    expect(res.body).toEqual([
+    expect(itemsOf(res)).toEqual([
       { month: '2026-10', incomeTotal: '500.00', expenseTotal: '3500.00' },
     ]);
   });
@@ -187,7 +192,7 @@ describe('Dashboard 月收支趨勢（e2e）', () => {
       .get('/api/v1/dashboard/summary?month=2026-09')
       .set('Authorization', auth)
       .expect(200);
-    const [september] = t.body as TrendMonth[];
+    const [september] = itemsOf(t);
     const totals = s.body as { income: string; expense: string };
     expect(september).toEqual({
       month: '2026-09',
@@ -204,7 +209,7 @@ describe('Dashboard 月收支趨勢（e2e）', () => {
     await income('3000', '2026-01-01');
 
     const res = await trend('?months=12').expect(200);
-    const body = res.body as TrendMonth[];
+    const body = itemsOf(res);
     expect(body).toHaveLength(12);
     expect(body.map((m) => m.month)).toEqual([
       '2025-11',
@@ -233,7 +238,7 @@ describe('Dashboard 月收支趨勢（e2e）', () => {
     clock.set('2026-11-30T16:30:00Z'); // 台北 2026-12-01 00:30
 
     const res = await trend('?months=2').expect(200);
-    expect(res.body).toEqual([
+    expect(itemsOf(res)).toEqual([
       zero('2026-10'),
       { month: '2026-11', incomeTotal: '2000.00', expenseTotal: '0.00' },
     ]);
@@ -245,7 +250,7 @@ describe('Dashboard 月收支趨勢（e2e）', () => {
     await income('0.05', '2026-10-03');
 
     const res = await trend('?months=1').expect(200);
-    expect(res.body).toEqual([
+    expect(itemsOf(res)).toEqual([
       { month: '2026-10', incomeTotal: '0.05', expenseTotal: '0.30' },
     ]);
   });

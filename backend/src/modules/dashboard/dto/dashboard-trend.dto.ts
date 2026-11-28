@@ -38,3 +38,12 @@ export class DashboardTrendMonthDto {
   })
   expenseTotal!: string;
 }
+
+/** 不分頁的列表也包一層 items（README「回應格式」） */
+export class DashboardTrendResponseDto {
+  @ApiProperty({
+    type: [DashboardTrendMonthDto],
+    description: '由舊到新，固定 months 筆',
+  })
+  items!: DashboardTrendMonthDto[];
+}

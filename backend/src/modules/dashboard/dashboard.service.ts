@@ -19,7 +19,7 @@ import type {
   DashboardLoansDto,
   DashboardSummaryResponseDto,
 } from './dto/dashboard-summary.dto.js';
-import type { DashboardTrendMonthDto } from './dto/dashboard-trend.dto.js';
+import type { DashboardTrendResponseDto } from './dto/dashboard-trend.dto.js';
 import { decideNextStep } from './next-step.js';
 
 /** 每個帳單清單在 Dashboard 最多顯示幾筆（PRD 17） */
@@ -43,7 +43,7 @@ export class DashboardService {
     userId: string,
     today: DateOnly,
     months: number,
-  ): Promise<DashboardTrendMonthDto[]> {
+  ): Promise<DashboardTrendResponseDto> {
     const { from, to } = trendRange(today, months);
     const rows = await this.finance.getMonthlyTotalsRange(
       userId,
@@ -51,11 +51,13 @@ export class DashboardService {
       to,
       today,
     );
-    return rows.map((r) => ({
-      month: r.month,
-      incomeTotal: toMoneyString(r.income),
-      expenseTotal: toMoneyString(r.expense),
-    }));
+    return {
+      items: rows.map((r) => ({
+        month: r.month,
+        incomeTotal: toMoneyString(r.income),
+        expenseTotal: toMoneyString(r.expense),
+      })),
+    };
   }
 
   /**

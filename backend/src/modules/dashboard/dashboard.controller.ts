@@ -7,8 +7,8 @@ import { DashboardService } from './dashboard.service.js';
 import { DashboardSummaryQueryDto } from './dto/dashboard-query.dto.js';
 import { DashboardSummaryResponseDto } from './dto/dashboard-summary.dto.js';
 import {
-  DashboardTrendMonthDto,
   DashboardTrendQueryDto,
+  DashboardTrendResponseDto,
 } from './dto/dashboard-trend.dto.js';
 
 /**
@@ -49,14 +49,15 @@ export class DashboardController {
     description: [
       '回傳最近 months 個完整月的收入、支出合計（D-A-005、US-14），不含台北本月，由舊到新排序。例：台北今天 2026-11-20、months=6 → 2026-05～2026-10。',
       '規則與 summary 的本月收支相同（PRD 15.2）：只加收入、支出，不含轉帳與繳卡費；停用帳戶的交易也算。沒有交易的月也會回傳，收支都是 "0.00"。',
+      '回應包一層 { items: [...] }，和其他不分頁的列表相同。',
     ].join('\n\n'),
   })
-  @ApiOkResponse({ type: [DashboardTrendMonthDto] })
+  @ApiOkResponse({ type: DashboardTrendResponseDto })
   @ApiErrors('VALIDATION_FAILED')
   trend(
     @CurrentUser() user: AuthUser,
     @Query() query: DashboardTrendQueryDto,
-  ): Promise<DashboardTrendMonthDto[]> {
+  ): Promise<DashboardTrendResponseDto> {
     return this.dashboard.getTrend(user.id, this.clock.today(), query.months);
   }
 }

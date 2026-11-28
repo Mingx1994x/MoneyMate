@@ -2270,7 +2270,7 @@
     },
     "/api/v1/dashboard/trend": {
       "get": {
-        "description": "回傳最近 months 個完整月的收入、支出合計（D-A-005、US-14），不含台北本月，由舊到新排序。例：台北今天 2026-11-20、months=6 → 2026-05～2026-10。\n\n規則與 summary 的本月收支相同（PRD 15.2）：只加收入、支出，不含轉帳與繳卡費；停用帳戶的交易也算。沒有交易的月也會回傳，收支都是 \"0.00\"。",
+        "description": "回傳最近 months 個完整月的收入、支出合計（D-A-005、US-14），不含台北本月，由舊到新排序。例：台北今天 2026-11-20、months=6 → 2026-05～2026-10。\n\n規則與 summary 的本月收支相同（PRD 15.2）：只加收入、支出，不含轉帳與繳卡費；停用帳戶的交易也算。沒有交易的月也會回傳，收支都是 \"0.00\"。\n\n回應包一層 { items: [...] }，和其他不分頁的列表相同。",
         "operationId": "Dashboard_trend",
         "parameters": [
           {
@@ -2292,10 +2292,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DashboardTrendMonthDto"
-                  }
+                  "$ref": "#/components/schemas/DashboardTrendResponseDto"
                 }
               }
             }
@@ -4561,6 +4558,21 @@
           "month",
           "incomeTotal",
           "expenseTotal"
+        ]
+      },
+      "DashboardTrendResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "由舊到新，固定 months 筆",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardTrendMonthDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       }
     }
