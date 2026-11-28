@@ -6,10 +6,15 @@ import { CurrentUser, type AuthUser } from '../auth/index.js';
 import { DashboardService } from './dashboard.service.js';
 import { DashboardSummaryQueryDto } from './dto/dashboard-query.dto.js';
 import { DashboardSummaryResponseDto } from './dto/dashboard-summary.dto.js';
+import {
+  DashboardTrendQueryDto,
+  DashboardTrendResponseDto,
+} from './dto/dashboard-trend.dto.js';
 
 /**
  * dashboard（C）：本月收支、儲蓄率、帳戶合計、可用現金（C），帳單、貸款（E），目標（D）；未實作的區塊列進 unavailable。
- * 目標接上 D 的 getGoalProgress：還沒完成問卷時 goal 是 null、nextStep 是 onboarding。GET /dashboard/trend 是 P1，P0 不建。
+ * 目標接上 D 的 getGoalProgress：還沒完成問卷時 goal 是 null、nextStep 是 onboarding。
+ * GET /dashboard/trend（P1，D-A-005）：月收支趨勢圖用的最近 N 個完整月收支。
  */
 @ApiTags('dashboard')
 @ApiAuth()
@@ -36,5 +41,23 @@ export class DashboardController {
     @Query() query: DashboardSummaryQueryDto,
   ): Promise<DashboardSummaryResponseDto> {
     return this.dashboard.getSummary(user.id, this.clock.today(), query.month);
+  }
+
+  @Get('trend')
+  @ApiOperation({
+    summary: '月收支趨勢（最近 N 個完整月）',
+    description: [
+      '回傳最近 months 個完整月的收入、支出合計（D-A-005、US-14），不含台北本月，由舊到新排序。例：台北今天 2026-11-20、months=6 → 2026-05～2026-10。',
+      '規則與 summary 的本月收支相同（PRD 15.2）：只加收入、支出，不含轉帳與繳卡費；停用帳戶的交易也算。沒有交易的月也會回傳，收支都是 "0.00"。',
+      '回應包一層 { items: [...] }，和其他不分頁的列表相同。',
+    ].join('\n\n'),
+  })
+  @ApiOkResponse({ type: DashboardTrendResponseDto })
+  @ApiErrors('VALIDATION_FAILED')
+  trend(
+    @CurrentUser() user: AuthUser,
+    @Query() query: DashboardTrendQueryDto,
+  ): Promise<DashboardTrendResponseDto> {
+    return this.dashboard.getTrend(user.id, this.clock.today(), query.months);
   }
 }

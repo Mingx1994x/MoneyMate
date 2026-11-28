@@ -2267,6 +2267,67 @@
           "dashboard"
         ]
       }
+    },
+    "/api/v1/dashboard/trend": {
+      "get": {
+        "description": "回傳最近 months 個完整月的收入、支出合計（D-A-005、US-14），不含台北本月，由舊到新排序。例：台北今天 2026-11-20、months=6 → 2026-05～2026-10。\n\n規則與 summary 的本月收支相同（PRD 15.2）：只加收入、支出，不含轉帳與繳卡費；停用帳戶的交易也算。沒有交易的月也會回傳，收支都是 \"0.00\"。\n\n回應包一層 { items: [...] }，和其他不分頁的列表相同。",
+        "operationId": "Dashboard_trend",
+        "parameters": [
+          {
+            "name": "months",
+            "required": false,
+            "in": "query",
+            "description": "最近幾個完整月（不含台北本月）",
+            "schema": {
+              "minimum": 1,
+              "maximum": 12,
+              "default": 6,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardTrendResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`VALIDATION_FAILED`：輸入的資料有誤，請檢查標示的欄位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`AUTH_UNAUTHENTICATED`：請先登入",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "月收支趨勢（最近 N 個完整月）",
+        "tags": [
+          "dashboard"
+        ]
+      }
     }
   },
   "info": {
@@ -4472,6 +4533,46 @@
           "goal",
           "nextStep",
           "unavailable"
+        ]
+      },
+      "DashboardTrendMonthDto": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "description": "月份 YYYY-MM",
+            "example": "2026-10"
+          },
+          "incomeTotal": {
+            "type": "string",
+            "description": "該月收入合計，金額字串；沒有交易是 \"0.00\"",
+            "example": "52000.00"
+          },
+          "expenseTotal": {
+            "type": "string",
+            "description": "該月支出合計，金額字串；不含轉帳、繳卡費",
+            "example": "31850.00"
+          }
+        },
+        "required": [
+          "month",
+          "incomeTotal",
+          "expenseTotal"
+        ]
+      },
+      "DashboardTrendResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "由舊到新，固定 months 筆",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardTrendMonthDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       }
     }
