@@ -3,6 +3,8 @@
  * 交易表單（B 主責）。同一個元件用在：
  * - 快速記帳（mode="quick"）：只要金額＋點分類，日期／帳戶／備註收在「更多」（PRD FR-09、§17）
  * - 轉帳、繳卡費（kind="transfer"／"card"）：繳卡費＝銀行 → 信用卡的轉帳，不算支出（§15.10）
+ *   繳卡費只從帳戶頁信用卡的「繳卡費」打開（start-kind="card"），只顯示繳卡費、不切換類型、不存草稿；
+ *   快速記帳只有支出／收入／轉帳（11/28 會議：卡費金額會跟著切到其他類型，所以分開）
  * - 交易頁的編輯（initial 有值）
  */
 import { errorText, fieldErrors } from '~/lib/api-error'
@@ -31,6 +33,8 @@ const mem = useMemory()
 const { accounts, categories, usableAccounts, categoriesOf } = useLookups()
 
 const isEdit = computed(() => !!props.initial)
+// 繳卡費視窗：只有繳卡費一種，金額每次都依欠款重新帶入
+const isCardOnly = !props.initial && props.startKind === 'card'
 const today = todayTaipei()
 
 // ---------- 表單值（新增時會存草稿） ----------
@@ -45,8 +49,10 @@ function blank() {
     note: '',
   }
 }
-const draft = useDraft(`tx-${props.mode}`, blank)
-const form = isEdit.value ? ref(blank()) : draft.values
+// 草稿只用在快速記帳、交易頁的新增；編輯和繳卡費不存，避免卡費金額被帶到下次的快速記帳
+const useDraftHere = !isEdit.value && !isCardOnly
+const draft = useDraftHere ? useDraft(`tx-${props.mode}`, blank) : null
+const form = draft ? draft.values : ref(blank())
 if (props.initial) {
   const t = props.initial
   form.value = {
@@ -57,6 +63,12 @@ if (props.initial) {
   if (props.startKind !== 'expense' || props.cardId) {
     form.value.kind = props.startKind
     if (props.cardId) form.value.toAccountId = props.cardId
+  }
+  // 改版前存的草稿可能停在繳卡費：快速記帳已經沒有這個類型，改回支出、清掉卡費帶入的金額
+  if (!isCardOnly && form.value.kind === 'card') {
+    form.value.kind = 'expense'
+    form.value.amount = ''
+    form.value.toAccountId = ''
   }
   // 日期一律從今天開始（AC-21）：草稿只留金額、分類等內容，日期不沿用上次選的；要補記別天的，在表單裡改
   form.value.transactionDate = today
@@ -209,7 +221,7 @@ async function submit() {
       mem.setLastCategoryId(body.transactionType, body.categoryId)
       mem.bumpCategory(body.categoryId)
     }
-    if (!isEdit.value) draft.clear()
+    draft?.clear()
     const label = f.kind === 'card' ? '繳卡費' : f.kind === 'transfer' ? '轉帳' : f.kind === 'income' ? '收入' : '支出'
     toast.success(`已${isEdit.value ? '更新' : '記下'}${label} ${formatMoney(body.amount)}`)
     bump()
@@ -225,11 +237,11 @@ async function submit() {
   }
 }
 
+// 繳卡費不在這裡切換（只從帳戶頁打開）
 const KIND_OPTIONS = [
   { value: 'expense' as Kind, label: '支出' },
   { value: 'income' as Kind, label: '收入' },
   { value: 'transfer' as Kind, label: '轉帳' },
-  { value: 'card' as Kind, label: '繳卡費' },
 ]
 const accountLabel = (a: { name: string; currentBalance: string; isActive: boolean }) =>
   `${a.name}（${formatMoney(a.currentBalance)}）${a.isActive ? '' : '［已停用］'}`
@@ -263,11 +275,11 @@ const summaryText = computed(() => {
 
   <form v-else class="space-y-4" novalidate @submit.prevent="submit">
     <FormError :message="submitError" />
-    <p v-if="draft.hasDraft.value && !isEdit" class="text-xs text-slate-500">
-      已帶入上次沒存的內容 · <button type="button" class="underline" @click="draft.clear()">清除</button>
+    <p v-if="draft?.hasDraft.value" class="text-xs text-slate-500">
+      已帶入上次沒存的內容 · <button type="button" class="underline" @click="draft?.clear()">清除</button>
     </p>
 
-    <Segmented :model-value="form.kind" :options="isEdit ? KIND_OPTIONS.slice(0, 3) : KIND_OPTIONS" label="交易類型" @update:model-value="setKind" />
+    <Segmented v-if="!isCardOnly" :model-value="form.kind" :options="KIND_OPTIONS" label="交易類型" @update:model-value="setKind" />
 
     <!-- 帳戶不夠目前的類型用：說明＋新增按鈕，不顯示空的選單（D-A-009）。切回支出、收入就能繼續記 -->
     <div v-if="accountGuide" class="rounded-xl bg-slate-50 px-4 py-6 text-center">
