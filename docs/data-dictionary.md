@@ -31,6 +31,7 @@
 | `email` | text, unique | 否 | — | 一律轉小寫後儲存 |
 | `password_hash` | text | 否 | — | bcrypt 雜湊，不存明碼 |
 | `display_name` | text | 是 | 使用者沒填名字 → 畫面顯示 Email `@` 前面的部分 | 註冊時選填 |
+| `dashboard_hidden_blocks` | text[]，預設 `{}` | 否 | — | Dashboard 使用者隱藏的區塊代碼（D-A-008）。空陣列＝全部顯示；之後新增的區塊不在清單裡，預設就顯示。可用的代碼見 `backend/src/modules/dashboard/dto/dashboard-block.enum.ts`，只在 API 檢查，資料庫不加 CHECK。只由 `PUT /dashboard/layout` 寫入 |
 | `created_at`、`updated_at` | timestamptz | 否 | — | |
 
 ---
